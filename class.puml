@@ -1,0 +1,139 @@
+@startuml
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+' =========================
+' Utilisateurs
+' =========================
+abstract class Utilisateur {
+  - id : int
+  - nom : String
+  - prenom : String
+  - email : String
+  - actif : boolean
+  + seAuthentifier() : boolean
+  + consulterCourrier() : List<Courrier>
+  + rechercherCourrier(critere : String) : List<Courrier>
+  + envoyerMessage(msg : Message, dest : Utilisateur) : void
+}
+
+class Secretaire {
+  + creerCourrier(c : Courrier) : void
+  + recevoirCourrier(c : Courrier) : void
+}
+
+class ChefDePoste {
+  + validerCourrier(c : Courrier) : void
+}
+
+class Administrateur {
+  + gererNiveauxConfidentialite() : void
+}
+
+Utilisateur <|-- Secretaire
+Utilisateur <|-- ChefDePoste
+Utilisateur <|-- Administrateur
+
+' =========================
+' Courrier
+' =========================
+class Courrier {
+  - id : int
+  - numero : String
+  - objet : String
+  - type : String
+  - cheminFichier : String
+  - dateCreation : Date
+  - dateReception : Date
+  - expediteur : String
+  - statut : StatutCourrier
+  + classifier(niveau : NiveauConfidentialite) : void
+  + archiver() : void
+  + estVisible(u : Utilisateur) : boolean
+}
+
+enum StatutCourrier {
+  CREE
+  RECU
+  TRANSMIS
+  VALIDE
+  ARCHIVE
+}
+
+class NiveauConfidentialite {
+  - id : int
+  - libelle : String
+  - rang : int
+}
+
+' =========================
+' DemandeValidation (classe d'association)
+' =========================
+class DemandeValidation {
+  - id : int
+  - dateDemande : Date
+  - statut : StatutDemande
+  - commentaire : String
+  - chefDestinataire : ChefDePoste
+  + approuver() : void
+  + rejeter() : void
+  + notifierChef() : void
+}
+
+enum StatutDemande {
+  EN_ATTENTE
+  APPROUVEE
+  REJETEE
+}
+
+' =========================
+' Message
+' =========================
+class Message {
+  - id : int
+  - contenu : String
+  - dateEnvoi : Date
+  - lu : boolean
+  - emetteur : Utilisateur
+  - destinataire : Utilisateur
+  - courrier : Courrier
+  + envoyer() : void
+  + marquerLu() : void
+}
+
+' =========================
+' Service
+' =========================
+class Service {
+  - id : int
+  - libelle : String
+}
+
+' =========================
+' Relations
+' =========================
+Courrier --> StatutCourrier                    : a statut
+DemandeValidation--> StatutDemande: a statut
+Courrier "1" --> "1" NiveauConfidentialite
+Administrateur"1" --> "1" NiveauConfidentialite    : gére
+Message "0..*" --> "0..1" Courrier             : concerne
+Utilisateur "1" --> "0..*" Message             : emetteur
+Utilisateur "1" --> "0..*" Message             : destinataire
+Secretaire "1" --> "0..*" Courrier             : crée / reçoit
+Utilisateur "0..*" --> "0..*" Courrier         : consulte
+Utilisateur "0..*" --> "1" Service             : appartient à
+DemandeValidation"1" --> "0..*" ChefDePoste : envoye a
+Service "1" <-- "1" ChefDePoste : est chef
+Service "0..*" <-- "0..*" ChefDePoste :envoyer Courier
+(ChefDePoste ,Service ) .. Courier
+
+
+
+' === Classe d'association ===
+(Secretaire, Courrier) .. DemandeValidation
+@enduml

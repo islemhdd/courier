@@ -1,0 +1,105 @@
+@startuml class
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor White
+  BorderColor Black
+  ArrowColor Black
+}
+
+abstract class Utilisateur {
+  - id : int
+  - nom : String
+  - prenom : String
+  - email : String
+  - actif : boolean
+  -confidentialite : NiveauConfidentialite
+  + seAuthentifier() : boolean
+  + consulterCourrier() : List<Courrier>
+  + rechercherCourrier(critere : String) : List<Courrier>
+  + envoyerMessage(msg : Message, dest : Utilisateur) : void
+
+}
+
+class Secretaire {
+  + creerCourrier(c : Courrier) : void
+  + recevoirCourrier(c : Courrier) : void
+}
+
+class ChefDePoste {
+  + validerCourrier(c : Courrier) : void
+}
+
+class Administrateur {
+  + gererNiveauxConfidentialite() : void
+}
+
+Utilisateur <|-- Secretaire
+Utilisateur <|-- ChefDePoste
+Utilisateur <|-- Administrateur
+
+class Courrier {
+  - id : int
+  - numero : String
+  - objet : String
+  - type : String
+  - cheminFichier : String
+  - dateCreation : Date
+  - dateReception : Date
+  - expediteur : String
+  - statut : StatutCourrier
+  + classifier(niveau : NiveauConfidentialite) : void
+  + archiver() : void
+  + estVisible(u : Utilisateur) : boolean
+}
+
+enum StatutCourrier {
+  CREE
+  RECU
+  TRANSMIS
+  VALIDE
+  ARCHIVE
+}
+
+class NiveauConfidentialite {
+  - id : int
+  - libelle : String
+  - rang : int
+}
+
+class Message {
+  - id : int
+  - contenu : String
+  - dateEnvoi : Date
+  - lu : boolean
+  - emetteur : Utilisateur
+  - destinataire : Utilisateur
+  - courrier : Courrier
+  + envoyer() : void
+  + marquerLu() : void
+}
+
+class Service {
+  - id : int
+  - libelle : String
+}
+
+' Relations
+Courrier --> StatutCourrier : a statut
+Courrier "1" --> "0..*" NiveauConfidentialite : classifié par
+Administrateur "1" --> "0..*" NiveauConfidentialite : gère
+
+Utilisateur "1" --> "*" Message : emetteur
+Message "1" --> "1" Utilisateur : destinataire (flèche inverse : Message -> Utilisateur)
+' On peut aussi écrire : Utilisateur "1" <-- "*" Message : destinataire
+
+Secretaire "1" --> "*" Courrier : crée / reçoit
+Utilisateur "0..*" --> "*" Courrier : consulte
+Utilisateur "0..*" --> "1" Service : appartient à
+
+Service "1" <-- "1" ChefDePoste : est chef
+
+' Optionnel : un chef peut valider des courriers (déjà méthode validerCourrier dans ChefDePoste)
+' Mais pour montrer qu'un courrier est validé par un chef, on peut ajouter :
+Courrier "0..*" --> "0..1" ChefDePoste : validé par
+@enduml
