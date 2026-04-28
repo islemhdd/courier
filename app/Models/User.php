@@ -8,11 +8,12 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable;
 
     /**
      * Les rôles disponibles pour les utilisateurs.
@@ -27,6 +28,7 @@ class User extends Authenticatable
      * @var array<string>
      */
     protected $fillable = [
+        'name',
         'nom',
         'prenom',
         'email',
@@ -149,6 +151,25 @@ class User extends Authenticatable
     public function getNomCompletAttribute(): string
     {
         return $this->prenom . ' ' . $this->nom;
+    }
+
+    /**
+     * Compatibilite avec les formulaires Laravel Breeze qui utilisent "name".
+     */
+    public function getNameAttribute(): string
+    {
+        return trim($this->prenom . ' ' . $this->nom);
+    }
+
+    /**
+     * Convertit le champ "name" en prenom/nom pour le schema metier.
+     */
+    public function setNameAttribute(?string $value): void
+    {
+        $parts = preg_split('/\s+/', trim((string) $value), 2);
+
+        $this->attributes['prenom'] = $parts[0] ?? '';
+        $this->attributes['nom'] = $parts[1] ?? $parts[0] ?? '';
     }
 
     /**

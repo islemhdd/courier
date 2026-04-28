@@ -56,6 +56,7 @@ class Courrier extends Model
         'date_creation',
         'date_reception',
         'expediteur',
+        'destinataire',
         'statut',
         'niveau_confidentialite_id',
         'createur_id',
@@ -181,6 +182,18 @@ class Courrier extends Model
         }
 
         return $query->where('expediteur', 'like', '%' . $expediteur . '%');
+    }
+
+    /**
+     * Scope : filtre les courriers par destinataire (recherche partielle).
+     */
+    public function scopeDestinataire(Builder $query, ?string $destinataire): Builder
+    {
+        if (!$destinataire) {
+            return $query;
+        }
+
+        return $query->where('destinataire', 'like', '%' . $destinataire . '%');
     }
 
     /**
@@ -315,27 +328,31 @@ class Courrier extends Model
     /**
      * Vérifie si le courrier peut être archivé par l'utilisateur donné.
      */
-    public function peutEtreArchivéPar(User $user): bool
-    {
-        return $user->estAdmin() || $this->createur_id === $user->id;
+   public function peutEtreArchivePar(User $user): bool
+{
+    return $user->estAdmin() || $this->createur_id === $user->id;
+}
+
+public function peutEtreValidePar(User $user): bool
+{
+    if (!$user->estChef() && !$user->estAdmin()) {
+        return false;
     }
 
-    /**
-     * Vérifie si le courrier peut être validé par l'utilisateur donné.
-     * Un chef peut valider les courriers créés par les utilisateurs de son service.
-     */
-    public function peutEtreValidéPar(User $user): bool
-    {
-        if (!$user->estChef()) {
-            return false;
-        }
-
-        if (!$this->createur) {
-            return false;
-        }
-
-        return $this->createur->service_id === $user->service_id;
+    if ($user->estAdmin()) {
+        return true;
     }
+
+    if (!$this->createur) {
+        $this->load('createur');
+    }
+
+    if (!$this->createur) {
+        return false;
+    }
+
+    return $this->createur->service_id === $user->service_id;
+}
 
     /**
      * Retourne l'URL du fichier associé au courrier.

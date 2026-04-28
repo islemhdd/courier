@@ -9,7 +9,7 @@ use App\Models\NiveauConfidentialite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Inertia\Inertia;
+
 
 /**
  * Contrôleur pour la gestion des courriers.
@@ -27,9 +27,11 @@ class CourrierController extends Controller
 
         // Récupérer les filtres
         $filtres = $request->only([
+            'q',
             'numero',
             'objet',
             'expediteur',
+            'destinataire',
             'statut',
             'type',
             'niveau_confidentialite_id',
@@ -39,9 +41,18 @@ class CourrierController extends Controller
         // Construire la requête avec les scopes
         $courriers = Courrier::with(['niveauConfidentialite', 'createur', 'valideur'])
             ->visiblePourUser($user)
+            ->when($filtres['q'] ?? null, function ($query, $value) {
+                $query->where(function ($subQuery) use ($value) {
+                    $subQuery->where('numero', 'like', '%' . $value . '%')
+                        ->orWhere('objet', 'like', '%' . $value . '%')
+                        ->orWhere('expediteur', 'like', '%' . $value . '%')
+                        ->orWhere('destinataire', 'like', '%' . $value . '%');
+                });
+            })
             ->when($filtres['numero'] ?? null, fn($q, $v) => $q->numero($v))
             ->when($filtres['objet'] ?? null, fn($q, $v) => $q->objet($v))
             ->when($filtres['expediteur'] ?? null, fn($q, $v) => $q->expediteur($v))
+            ->when($filtres['destinataire'] ?? null, fn($q, $v) => $q->destinataire($v))
             ->when($filtres['statut'] ?? null, fn($q, $v) => $q->statut($v))
             ->when($filtres['type'] ?? null, fn($q, $v) => $q->type($v))
             ->when($filtres['niveau_confidentialite_id'] ?? null, fn($q, $v) => $q->niveauConfidentialite($v))
@@ -64,40 +75,123 @@ class CourrierController extends Controller
     /**
      * Vérifie si l'utilisateur peut voir les détails complets d'un courrier.
      */
-    private function userPeutVoirDetails($user, Courrier $courrier): bool
+    public function recus(Request $request): JsonResponse
     {
-        if (!$user) {
-            return false;
-        }
+        $request->merge(['type' => Courrier::TYPE_ENTRANT]);
 
-        // L'admin a toujours accès
-        if ($user->estAdmin()) {
-            return true;
-        }
+        return $this->index($request);
+    }
 
-        // Vérifier le niveau de confidentialité
-        $rangCourrier = $courrier->niveauConfidentialite?->rang ?? 0;
-        $rangUser = $user->getRangNiveauConfidentialite();
+    public function envoyes(Request $request): JsonResponse
+    {
+        $request->merge(['type' => Courrier::TYPE_SORTANT]);
 
-        if ($rangCourrier > $rangUser) {
-            return false;
-        }
+        return $this->index($request);
+    }
 
-        // Pour le chef, vérifier qu'il est dans le même service que le créateur
-        if ($user->estChef()) {
-            if (!$courrier->createur || $courrier->createur->service_id !== $user->service_id) {
-                return false;
-            }
-        }
-
-        // Pour le secretaire, vérifier qu'il a créé le courrier
-        if ($user->estSecretaire()) {
-            return $courrier->createur_id === $user->id;
-        }
-
+    private function userPeutVoirDetails($user, Courrier $courrier): bool
+{
+    if (!$user) {
         return false;
     }
 
+    if ($user->estAdmin()) {
+        return true;
+    }
+
+    if (!$courrier->relationLoaded('niveauConfidentialite')) {
+        $courrier->load('niveauConfidentialite');
+    }
+
+    if (!$courrier->relationLoaded('createur')) {
+        $courrier->load('createur');
+    }
+
+    $rangCourrier = $courrier->niveauConfidentialite?->rang ?? 0;
+    $rangUser = $user->getRangNiveauConfidentialite();
+
+    if ($rangCourrier > $rangUser) {
+        return false;
+    }
+
+    if ($user->estChef()) {
+        return $courrier->createur
+            && $courrier->createur->service_id === $user->service_id;
+    }
+
+    if ($user->estSecretaire()) {
+        return $courrier->createur_id === $user->id || $rangCourrier <= $rangUser;
+    }
+
+    return false;
+}
+
+
+public function update(Request $request, Courrier $courrier): JsonResponse
+{
+    $user = $request->user();
+
+    if (!$user) {
+        return response()->json([
+            'error' => 'Vous devez être connecté.'
+        ], 401);
+    }
+
+    if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
+        return response()->json([
+            'error' => 'Vous n\'avez pas le droit de modifier ce courrier.'
+        ], 403);
+    }
+
+    if ($courrier->statut === Courrier::STATUT_ARCHIVE) {
+        return response()->json([
+            'error' => 'Impossible de modifier un courrier archivé.'
+        ], 422);
+    }
+
+    $validated = $request->validate([
+        'objet' => ['required', 'string', 'max:100'],
+        'type' => ['required', 'in:entrant,sortant'],
+
+        'expediteur' => ['nullable', 'string', 'max:100'],
+        'destinataire' => ['nullable', 'string', 'max:100'],
+
+        'niveau_confidentialite_id' => [
+            'required',
+            'integer',
+            'exists:niveau_confidentialites,id',
+        ],
+
+        'fichier' => [
+            'nullable',
+            'file',
+            'mimes:pdf,doc,docx,jpg,jpeg,png',
+            'max:10240',
+        ],
+    ]);
+
+    // Sécurité : la date d'envoi ne doit jamais être modifiée.
+    unset($validated['date_reception']);
+
+    if ($request->hasFile('fichier')) {
+        if ($courrier->chemin_fichier) {
+            Storage::disk('public')->delete($courrier->chemin_fichier);
+        }
+
+        $validated['chemin_fichier'] = $request
+            ->file('fichier')
+            ->store('courriers', 'public');
+    }
+
+    $courrier->update($validated);
+
+    $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
+
+    return response()->json([
+        'message' => 'Courrier modifié avec succès.',
+        'courrier' => $courrier,
+    ]);
+}
     /**
      * Retourne les données nécessaires pour le formulaire de création.
      */
@@ -131,217 +225,156 @@ class CourrierController extends Controller
     /**
      * Enregistre un nouveau courrier.
      */
-    public function store(StoreCourrierRequest $request): JsonResponse
-    {
-        $user = $request->user();
+      public function store(StoreCourrierRequest $request): JsonResponse
+{
+    $user = $request->user();
 
-        // Vérifier les droits de création
-        if (!$user->peutCreerCourrier()) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de créer des courriers.'
-            ], 403);
-        }
-
-        $donnees = $request->validated();
-
-        // Générer le numéro de courrier
-        $annee = date('Y');
-        $caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $random = '';
-        for ($i = 0; $i < 8; $i++) {
-            $random .= $caracteres[rand(0, strlen($caracteres) - 1)];
-        }
-        $donnees['numero'] = 'COUR-' . $annee . '-' . $random;
-
-        // Gérer le fichier uploadé
-        if ($request->hasFile('fichier')) {
-            $fichier = $request->file('fichier');
-            $nomFichier = time() . '_' . $fichier->getClientOriginalName();
-            $chemin = $fichier->storeAs('courriers', $nomFichier, 'public');
-            $donnees['chemin_fichier'] = $chemin;
-        }
-
-        // Définir les valeurs par défaut
-        $donnees['statut'] = Courrier::STATUT_CREE;
-        $donnees['date_creation'] = now();
-        $donnees['createur_id'] = $user->id;
-
-        $courrier = Courrier::create($donnees);
-        $courrier->load(['niveauConfidentialite', 'createur']);
-
+    if (!$user->peutCreerCourrier()) {
         return response()->json([
-            'message' => 'Courrier créé avec succès.',
-            'courrier' => $courrier,
-        ], 201);
+            'error' => 'Vous n\'avez pas le droit de créer des courriers.'
+        ], 403);
     }
 
+    $donnees = $request->validated();
+
+    if (($donnees['type'] ?? null) === Courrier::TYPE_SORTANT) {
+        $donnees['expediteur'] = $donnees['expediteur']
+            ?? $user->service?->libelle
+            ?? $user->nom_complet
+            ?? $user->name
+            ?? 'Interne';
+    }
+
+    if (($donnees['type'] ?? null) === Courrier::TYPE_ENTRANT) {
+        $donnees['destinataire'] = $donnees['destinataire']
+            ?? $user->service?->libelle
+            ?? $user->nom_complet
+            ?? $user->name
+            ?? 'Interne';
+    }
+
+    $donnees['numero'] = 'COUR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -8));
+
+    if ($request->hasFile('fichier')) {
+        $donnees['chemin_fichier'] = $request
+            ->file('fichier')
+            ->store('courriers', 'public');
+    }
+
+    $donnees['statut'] = Courrier::STATUT_CREE;
+    $donnees['date_creation'] = now();
+    $donnees['createur_id'] = $user->id;
+
+    $courrier = Courrier::create($donnees);
+
+    $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
+
+    return response()->json([
+        'message' => 'Courrier créé avec succès.',
+        'courrier' => $courrier,
+    ], 201);
+}
     /**
      * Affiche les détails d'un courrier.
      */
     public function show(Courrier $courrier, Request $request): JsonResponse
-    {
-        $user = $request->user();
+{
+    $user = $request->user();
 
-        // Vérifier si l'utilisateur peut voir les détails
-        if (!$this->userPeutVoirDetails($user, $courrier)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de voir ce courrier.'
-            ], 403);
-        }
+    $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
 
-        $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
-
+    if (!$this->userPeutVoirDetails($user, $courrier)) {
         return response()->json([
-            'courrier' => $courrier,
-        ]);
+            'error' => 'Vous n\'avez pas le droit de voir ce courrier.'
+        ], 403);
     }
 
-    /**
-     * Retourne les données nécessaires pour le formulaire d'édition.
-     */
-    public function edit(Courrier $courrier, Request $request): JsonResponse
-    {
-        $user = $request->user();
-
-        // Vérifier les droits de modification
-        if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de modifier ce courrier.'
-            ], 403);
-        }
-
-        // Récupérer les niveaux de confidentialité accessibles
-        $niveaux = NiveauConfidentialite::where('rang', '<=', $user->getRangNiveauConfidentialite())
-            ->orderBy('rang')
-            ->get();
-
-        $types = [
-            ['value' => 'entrant', 'label' => 'Entrant'],
-            ['value' => 'sortant', 'label' => 'Sortant'],
-        ];
-
-        $courrier->load(['niveauConfidentialite', 'createur']);
-
-        return response()->json([
-            'courrier' => $courrier,
-            'niveaux_confidentialite' => $niveaux,
-            'types' => $types,
-        ]);
-    }
+    return response()->json([
+        'courrier' => $courrier,
+    ]);
+}
+   
 
     /**
      * Met à jour un courrier existant.
      */
-    public function update(UpdateCourrierRequest $request, Courrier $courrier): JsonResponse
-    {
-        $user = $request->user();
-
-        // Vérifier les droits de modification
-        if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de modifier ce courrier.'
-            ], 403);
-        }
-
-        $donnees = $request->validated();
-
-        // Gérer le nouveau fichier uploadé
-        if ($request->hasFile('fichier')) {
-            // Supprimer l'ancien fichier s'il existe
-            if ($courrier->chemin_fichier) {
-                Storage::disk('public')->delete($courrier->chemin_fichier);
-            }
-
-            $fichier = $request->file('fichier');
-            $nomFichier = time() . '_' . $fichier->getClientOriginalName();
-            $chemin = $fichier->storeAs('courriers', $nomFichier, 'public');
-            $donnees['chemin_fichier'] = $chemin;
-        }
-
-        $courrier->update($donnees);
-        $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
-
-        return response()->json([
-            'message' => 'Courrier mis à jour avec succès.',
-            'courrier' => $courrier,
-        ]);
-    }
+      
 
     /**
      * Supprime un courrier.
      */
-    public function destroy(Courrier $courrier, Request $request): JsonResponse
-    {
-        $user = $request->user();
+      public function destroy(Courrier $courrier, Request $request): JsonResponse
+{
+    $user = $request->user();
 
-        // Vérifier les droits de suppression (seul le créateur ou l'admin)
-        if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de supprimer ce courrier.'
-            ], 403);
-        }
-
-        // Supprimer le fichier associé s'il existe
-        if ($courrier->chemin_fichier) {
-            Storage::disk('public')->delete($courrier->chemin_fichier);
-        }
-
-        $courrier->delete();
-
+    if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
         return response()->json([
-            'message' => 'Courrier supprimé avec succès.',
-        ]);
+            'error' => 'Vous n\'avez pas le droit de supprimer ce courrier.'
+        ], 403);
     }
 
+    if ($courrier->chemin_fichier) {
+        Storage::disk('public')->delete($courrier->chemin_fichier);
+    }
+
+    $courrier->delete();
+
+    return response()->json([
+        'message' => 'Courrier supprimé avec succès.',
+    ]);
+}
     /**
      * Archive un courrier.
      * Accessible à l'admin et au créateur du courrier.
      */
-    public function archiver(Courrier $courrier, Request $request): JsonResponse
-    {
-        $user = $request->user();
+     public function archiver(Courrier $courrier, Request $request): JsonResponse
+{
+    $user = $request->user();
 
-        // Vérifier les droits d'archivage
-        if (!$courrier->peutEtreArchivéPar($user)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit d\'archiver ce courrier.'
-            ], 403);
-        }
-
-        $courrier->update(['statut' => Courrier::STATUT_ARCHIVE]);
-        $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
-
+    if (!$courrier->peutEtreArchivePar($user)) {
         return response()->json([
-            'message' => 'Courrier archivé avec succès.',
-            'courrier' => $courrier,
-        ]);
+            'error' => 'Vous n\'avez pas le droit d\'archiver ce courrier.'
+        ], 403);
     }
 
+    $courrier->update([
+        'statut' => Courrier::STATUT_ARCHIVE,
+    ]);
+
+    $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
+
+    return response()->json([
+        'message' => 'Courrier archivé avec succès.',
+        'courrier' => $courrier,
+    ]);
+}
     /**
      * Valide un courrier.
      * Accessible au chef dont le service correspond au créateur.
      */
-    public function valider(Courrier $courrier, Request $request): JsonResponse
-    {
-        $user = $request->user();
+     public function valider(Courrier $courrier, Request $request): JsonResponse
+{
+    $user = $request->user();
 
-        // Vérifier les droits de validation
-        if (!$courrier->peutEtreValidéPar($user)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de valider ce courrier.'
-            ], 403);
-        }
+    $courrier->load('createur');
 
-        $courrier->update([
-            'statut' => Courrier::STATUT_VALIDE,
-            'valideur_id' => $user->id,
-        ]);
-        $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
-
+    if (!$courrier->peutEtreValidePar($user)) {
         return response()->json([
-            'message' => 'Courrier validé avec succès.',
-            'courrier' => $courrier,
-        ]);
+            'error' => 'Vous n\'avez pas le droit de valider ce courrier.'
+        ], 403);
     }
+
+    $courrier->update([
+        'statut' => Courrier::STATUT_VALIDE,
+        'valideur_id' => $user->id,
+    ]);
+
+    $courrier->load(['niveauConfidentialite', 'createur', 'valideur']);
+
+    return response()->json([
+        'message' => 'Courrier validé avec succès.',
+        'courrier' => $courrier,
+    ]);
+}
 
 }
