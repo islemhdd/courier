@@ -16,16 +16,13 @@ return new class extends Migration
 
             $table->string('nom')->after('id');
             $table->string('prenom')->after('nom');
-            $table->boolean('actif')->default(true)->after('password');
-            $table->enum('role', ['admin', 'chef', 'secretaire'])->default('secretaire')->after('actif');
+            $table->boolean('actif')->default(true);
+            $table->enum('role', ['admin', 'chef', 'secretaire'])->default('secretaire');
 
-            // Clés étrangères (nullable d'abord pour éviter les erreurs)
-            // $table->foreignId('service_id')->nullable()->after('role');
-            $table->foreignId('niveau_confidentialite_id')->nullable()->after('service_id');
 
             // Contraintes (ajoutées après coup si les tables existent)
-            $table->foreign('service_id')->references('id')->on('services')->onDelete('set null');
-            $table->foreign('niveau_confidentialite_id')->references('id')->on('niveau_confidentialites')->onDelete('set null');
+            $table->foreignId('service_id')->nullable()->constrained('services')->onDelete('set null');
+            $table->foreignId('niveau_confidentialite_id')->nullable()->constrained('niveau_confidentialites')->onDelete('set null');
         });
     }
 

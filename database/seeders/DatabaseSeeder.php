@@ -2,22 +2,302 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Carbon\Carbon;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // ============================================================
+        // 1. Niveaux de confidentialité (indispensables en premier)
+        // ============================================================
+        $niveaux = [
+            ['libelle' => 'Public',       'rang' => 0, 'created_at' => now(), 'updated_at' => now()],
+            ['libelle' => 'Confidentiel',  'rang' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['libelle' => 'Secret',        'rang' => 2, 'created_at' => now(), 'updated_at' => now()],
+        ];
+        DB::table('niveau_confidentialites')->insert($niveaux);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $niveauPublic       = 1; // id = 1 (Public)
+        $niveauConfidentiel = 2;
+        $niveauSecret       = 3;
+
+        // ============================================================
+        // 2. Services
+        // ============================================================
+        $services = [
+            ['libelle' => 'Direction Générale',  'created_at' => now(), 'updated_at' => now()],
+            ['libelle' => 'Ressources Humaines', 'created_at' => now(), 'updated_at' => now()],
+            ['libelle' => 'Service Informatique', 'created_at' => now(), 'updated_at' => now()],
+            ['libelle' => 'Service Comptabilité', 'created_at' => now(), 'updated_at' => now()],
+        ];
+        DB::table('services')->insert($services);
+
+        $serviceDirection    = 1;
+        $serviceRH           = 2;
+        $serviceInformatique = 3;
+        $serviceComptabilite = 4;
+
+        // ============================================================
+        // 3. Utilisateurs (avec rôles : admin, chef, secretaire)
+        // ============================================================
+        $users = [
+            // Admin
+            [
+                'nom'                        => 'Admin',
+                'prenom'                     => 'Système',
+                'email'                      => 'admin@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'admin',
+                'service_id'                 => $serviceInformatique,
+                'niveau_confidentialite_id'  => $niveauSecret,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            // Chefs de service (4)
+            [
+                'nom'                        => 'Hadj',
+                'prenom'                     => 'Ahmed',
+                'email'                      => 'chef.direction@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'chef',
+                'service_id'                 => $serviceDirection,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'nom'                        => 'Mansouri',
+                'prenom'                     => 'Fatima',
+                'email'                      => 'chef.rh@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'chef',
+                'service_id'                 => $serviceRH,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'nom'                        => 'Belkacem',
+                'prenom'                     => 'Mohamed',
+                'email'                      => 'chef.info@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'chef',
+                'service_id'                 => $serviceInformatique,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'nom'                        => 'Khelifi',
+                'prenom'                     => 'Samira',
+                'email'                      => 'chef.compta@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'chef',
+                'service_id'                 => $serviceComptabilite,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            // Secrétaires (3)
+            [
+                'nom'                        => 'Saidi',
+                'prenom'                     => 'Leila',
+                'email'                      => 'secretaire.dir@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'secretaire',
+                'service_id'                 => $serviceDirection,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'nom'                        => 'Toumi',
+                'prenom'                     => 'Nadia',
+                'email'                      => 'secretaire.rh@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'secretaire',
+                'service_id'                 => $serviceRH,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'nom'                        => 'Boudiaf',
+                'prenom'                     => 'Karim',
+                'email'                      => 'secretaire.info@courrier.dz',
+                'password'                   => Hash::make('password'),
+                'actif'                      => true,
+                'role'                       => 'secretaire',
+                'service_id'                 => $serviceInformatique,
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+        ];
+        DB::table('users')->insert($users);
+
+        // Récupérer les IDs des utilisateurs créés (par email)
+        $admin = DB::table('users')->where('email', 'admin@courrier.dz')->first()->id;
+        $chefDirection = DB::table('users')->where('email', 'chef.direction@courrier.dz')->first()->id;
+        $chefInfo = DB::table('users')->where('email', 'chef.info@courrier.dz')->first()->id;
+        $secretaireDir = DB::table('users')->where('email', 'secretaire.dir@courrier.dz')->first()->id;
+        $secretaireRH = DB::table('users')->where('email', 'secretaire.rh@courrier.dz')->first()->id;
+        $secretaireInfo = DB::table('users')->where('email', 'secretaire.info@courrier.dz')->first()->id;
+
+        // ============================================================
+        // 4. Courriers
+        // ============================================================
+        $courriers = [
+            [
+                'numero'                     => 'COUR-2025-0001',
+                'objet'                      => 'Demande de congé annuel',
+                'type'                       => 'lettre',
+                'chemin_fichier'             => 'courriers/cour-0001.pdf',
+                'date_creation'              => now()->subDays(10),
+                'date_reception'             => now()->subDays(12),
+                'expediteur'                 => 'Direction Centrale',
+                'statut'                     => 'VALIDE',
+                'niveau_confidentialite_id'  => $niveauPublic,
+                'createur_id'                => $secretaireDir,
+                'valideur_id'                => $chefDirection,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'numero'                     => 'COUR-2025-0002',
+                'objet'                      => 'Rapport financier confidentiel',
+                'type'                       => 'email',
+                'chemin_fichier'             => 'courriers/cour-0002.pdf',
+                'date_creation'              => now()->subDays(5),
+                'date_reception'             => now()->subDays(6),
+                'expediteur'                 => 'Banque Nationale',
+                'statut'                     => 'CREE',
+                'niveau_confidentialite_id'  => $niveauConfidentiel,
+                'createur_id'                => $secretaireRH,
+                'valideur_id'                => null,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'numero'                     => 'COUR-2025-0003',
+                'objet'                      => 'Note de service - Sécurité',
+                'type'                       => 'fax',
+                'chemin_fichier'             => null,
+                'date_creation'              => now()->subDays(2),
+                'date_reception'             => now()->subDays(3),
+                'expediteur'                 => 'Ministère',
+                'statut'                     => 'RECU',
+                'niveau_confidentialite_id'  => $niveauSecret,
+                'createur_id'                => $secretaireInfo,
+                'valideur_id'                => null,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'numero'                     => 'COUR-2025-0004',
+                'objet'                      => 'Commande de fournitures',
+                'type'                       => 'lettre',
+                'chemin_fichier'             => 'courriers/cour-0004.pdf',
+                'date_creation'              => now()->subDays(1),
+                'date_reception'             => now(),
+                'expediteur'                 => 'Fournisseur XYZ',
+                'statut'                     => 'TRANSMIS',
+                'niveau_confidentialite_id'  => $niveauPublic,
+                'createur_id'                => $secretaireDir,
+                'valideur_id'                => null,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+            [
+                'numero'                     => 'COUR-2025-0005',
+                'objet'                      => 'Archivage des dossiers 2024',
+                'type'                       => 'email',
+                'chemin_fichier'             => null,
+                'date_creation'              => now()->subDays(30),
+                'date_reception'             => now()->subDays(31),
+                'expediteur'                 => 'Archives Nationales',
+                'statut'                     => 'ARCHIVE',
+                'niveau_confidentialite_id'  => $niveauPublic,
+                'createur_id'                => $secretaireDir,
+                'valideur_id'                => $chefDirection,
+                'created_at'                 => now(),
+                'updated_at'                 => now(),
+            ],
+        ];
+        DB::table('courriers')->insert($courriers);
+
+        // Récupérer les IDs des courriers par numéro
+        $cour1 = DB::table('courriers')->where('numero', 'COUR-2025-0001')->first()->id;
+        $cour2 = DB::table('courriers')->where('numero', 'COUR-2025-0002')->first()->id;
+        // Les autres courriers pour référence
+        $cour3 = DB::table('courriers')->where('numero', 'COUR-2025-0003')->first()->id;
+
+        // ============================================================
+        // 5. Messages
+        // ============================================================
+        $messages = [
+            [
+                'contenu'         => 'Merci de traiter ce courrier en priorité.',
+                'date_envoi'      => now()->subDays(9),
+                'lu'              => true,
+                'emetteur_id'     => $chefDirection,
+                'destinataire_id' => $secretaireDir,
+                'courrier_id'     => $cour1,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            [
+                'contenu'         => 'J\'ai vérifié, le rapport est complet.',
+                'date_envoi'      => now()->subDays(4),
+                'lu'              => false,
+                'emetteur_id'     => $secretaireRH,
+                'destinataire_id' => DB::table('users')->where('email', 'chef.direction@courrier.dz')->first()->id, // chef direction
+                'courrier_id'     => $cour2,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            [
+                'contenu'         => 'Réunion demain à 10h pour les nouveaux courriers.',
+                'date_envoi'      => now()->subDays(1),
+                'lu'              => false,
+                'emetteur_id'     => $chefDirection,
+                'destinataire_id' => $secretaireDir,
+                'courrier_id'     => null,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            [
+                'contenu'         => 'Nouveaux niveaux de confidentialité ajoutés.',
+                'date_envoi'      => now()->subDays(3),
+                'lu'              => true,
+                'emetteur_id'     => $admin,
+                'destinataire_id' => $chefInfo,
+                'courrier_id'     => null,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+            [
+                'contenu'         => 'Peux-tu me transmettre le courrier #COUR-2025-0003 ?',
+                'date_envoi'      => now()->subHours(5),
+                'lu'              => false,
+                'emetteur_id'     => $secretaireDir,
+                'destinataire_id' => $secretaireInfo,
+                'courrier_id'     => null,
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ],
+        ];
+        DB::table('messages')->insert($messages);
     }
 }
