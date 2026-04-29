@@ -230,26 +230,6 @@ class MessageController extends Controller
 
     private function userPeutVoirCourrier(User $user, Courrier $courrier): bool
     {
-        if ($user->estAdmin()) {
-            return true;
-        }
-
-        $rangCourrier = $courrier->niveauConfidentialite?->rang ?? 0;
-        $rangUser = $user->getRangNiveauConfidentialite();
-
-        if ($rangCourrier > $rangUser) {
-            return false;
-        }
-
-        if ($user->estChef()) {
-            return $courrier->createur
-                && $courrier->createur->service_id === $user->service_id;
-        }
-
-        if ($user->estSecretaire()) {
-            return $courrier->createur_id === $user->id || $rangCourrier <= $rangUser;
-        }
-
-        return false;
+        return $courrier->peutEtreVuEnDetailPar($user);
     }
 }

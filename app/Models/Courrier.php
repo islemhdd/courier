@@ -31,11 +31,12 @@ class Courrier extends Model
     /**
      * Les statuts disponibles pour un courrier.
      */
-    public const STATUT_CREE = 'CREE';
-    public const STATUT_RECU = 'RECU';
-    public const STATUT_TRANSMIS = 'TRANSMIS';
-    public const STATUT_VALIDE = 'VALIDE';
-    public const STATUT_ARCHIVE = 'ARCHIVE';
+   public const STATUT_NON_VALIDE = 'NON_VALIDE';
+public const STATUT_CREE = 'CREE';
+public const STATUT_RECU = 'RECU';
+public const STATUT_TRANSMIS = 'TRANSMIS';
+public const STATUT_VALIDE = 'VALIDE';
+public const STATUT_ARCHIVE = 'ARCHIVE';
 
     /**
      * Les types de courriers.
@@ -83,6 +84,7 @@ class Courrier extends Model
     protected $appends = [
         'est_accessible',
         'url_fichier',
+        'est_validable',
     ];
 
     /**
@@ -132,17 +134,12 @@ class Courrier extends Model
         }
 
         if ($user->estChef()) {
-            return $query->whereHas('createur', function (Builder $subQuery) use ($user) {
-                $subQuery->where('service_id', $user->service_id);
-            });
+            return $query;
         }
 
         if ($user->estSecretaire()) {
-            return $query->where(function (Builder $subQuery) use ($user) {
-                $subQuery->where('createur_id', $user->id)
-                    ->orWhereHas('niveauConfidentialite', function (Builder $niveauQuery) use ($user) {
-                        $niveauQuery->where('rang', '<=', $user->getRangNiveauConfidentialite());
-                    });
+            return $query->whereHas('createur', function (Builder $subQuery) use ($user) {
+                $subQuery->where('service_id', $user->service_id);
             });
         }
 
@@ -221,6 +218,16 @@ class Courrier extends Model
         return $query->where('type', $type);
     }
 
+  public function scopeEnValidation(Builder $query): Builder
+{
+    return $query->whereIn('statut', [
+        self::STATUT_NON_VALIDE,
+        self::STATUT_CREE,
+        self::STATUT_RECU,
+        self::STATUT_TRANSMIS,
+    ]);
+}
+
     /**
      * Scope : filtre les courriers par niveau de confidentialité.
      */
@@ -280,16 +287,7 @@ class Courrier extends Model
             return false;
         }
 
-        // L'admin a toujours accès
-        if ($user->estAdmin()) {
-            return true;
-        }
-
-        // Vérifier le niveau de confidentialité
-        $rangCourrier = $this->niveauConfidentialite?->rang ?? 0;
-        $rangUser = $user->getRangNiveauConfidentialite();
-
-        return $rangCourrier <= $rangUser;
+        return $this->peutEtreVuEnDetailPar($user);
     }
 
     /**
@@ -313,10 +311,10 @@ class Courrier extends Model
     /**
      * Mutateur : définit le statut par défaut à la création.
      */
-    public function setStatutAttribute(?string $value): void
-    {
-        $this->attributes['statut'] = $value ?? self::STATUT_CREE;
-    }
+   public function setStatutAttribute(?string $value): void
+{
+    $this->attributes['statut'] = $value ?? self::STATUT_NON_VALIDE;
+}
 
     /**
      * Mutateur : définit la date de création par défaut.
@@ -324,6 +322,68 @@ class Courrier extends Model
     public function setDateCreationAttribute(?string $value): void
     {
         $this->attributes['date_creation'] = $value ?? now();
+    }
+
+   
+     public function estValidable(): bool
+{
+    return in_array($this->statut, [
+        self::STATUT_NON_VALIDE,
+        self::STATUT_CREE,
+        self::STATUT_RECU,
+        self::STATUT_TRANSMIS,
+    ], true);
+}
+    public function getEstValidableAttribute(): bool
+    {
+        return $this->estValidable();
+    }
+
+    public function appartientAuServiceDe(User $user): bool
+    {
+        if (!$this->createur) {
+            $this->load('createur');
+        }
+
+        return (bool) $this->createur && $this->createur->service_id === $user->service_id;
+    }
+
+    public function niveauEstAutorisePour(User $user): bool
+    {
+        if (!$this->relationLoaded('niveauConfidentialite')) {
+            $this->load('niveauConfidentialite');
+        }
+
+        $rangCourrier = $this->niveauConfidentialite?->rang ?? 0;
+        $rangUser = $user->getRangNiveauConfidentialite();
+
+        return $rangCourrier <= $rangUser;
+    }
+
+    public function peutVoirExistencePar(User $user): bool
+    {
+        if ($user->estAdmin() || $user->estChef()) {
+            return true;
+        }
+
+        if ($user->estSecretaire()) {
+            return $this->appartientAuServiceDe($user);
+        }
+
+        return false;
+    }
+
+    public function peutEtreVuEnDetailPar(User $user): bool
+    {
+        if ($user->estAdmin() || $user->estChef()) {
+            return true;
+        }
+
+        if ($user->estSecretaire()) {
+            return $this->appartientAuServiceDe($user) && $this->niveauEstAutorisePour($user);
+        }
+
+        return false;
     }
 
     /**
@@ -340,6 +400,10 @@ public function peutEtreValidePar(User $user): bool
         return false;
     }
 
+    if (!$this->estValidable()) {
+        return false;
+    }
+
     if ($user->estAdmin()) {
         return true;
     }
@@ -352,12 +416,75 @@ public function peutEtreValidePar(User $user): bool
         return false;
     }
 
+    if ($this->createur_id === $user->id) {
+        return false;
+    }
+
     return $this->createur->service_id === $user->service_id;
 }
 
     /**
      * Retourne l'URL du fichier associé au courrier.
      */
+    public function estNonValide(): bool
+{
+    return $this->statut === self::STATUT_NON_VALIDE;
+}
+
+public function estValide(): bool
+{
+    return $this->statut === self::STATUT_VALIDE;
+}
+
+public function estArchive(): bool
+{
+    return $this->statut === self::STATUT_ARCHIVE;
+}
+
+public function peutEtreSupprimePar(User $user): bool
+{
+    // Un courrier validé ou archivé ne peut jamais être supprimé.
+    if ($this->estValide() || $this->estArchive()) {
+        return false;
+    }
+
+    // Admin garde le droit sur les courriers non validés.
+    if ($user->estAdmin()) {
+        return true;
+    }
+
+    // Le secrétaire peut supprimer seulement un courrier non validé de son service.
+    if ($user->estSecretaire()) {
+        return $this->estNonValide() && $this->appartientAuServiceDe($user);
+    }
+
+    return false;
+}
+
+public function peutEtreModifiePar(User $user): bool
+{
+    // Un courrier archivé ne peut jamais être modifié.
+    if ($this->estArchive()) {
+        return false;
+    }
+
+    // Admin garde le droit global.
+    if ($user->estAdmin()) {
+        return true;
+    }
+
+    // Un courrier validé ne peut être modifié que par le chef du même service.
+    if ($this->estValide()) {
+        return $user->estChef() && $this->appartientAuServiceDe($user);
+    }
+
+    // Un courrier non validé peut être modifié par le secrétaire du même service.
+    if ($this->estNonValide()) {
+        return $user->estSecretaire() && $this->appartientAuServiceDe($user);
+    }
+
+    return false;
+}
     public function getUrlFichierAttribute(): ?string
     {
         if (!$this->chemin_fichier) {

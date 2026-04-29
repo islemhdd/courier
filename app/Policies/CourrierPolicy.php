@@ -30,33 +30,7 @@ class CourrierPolicy
      */
     public function view(User $user, Courrier $courrier): bool
     {
-        // L'admin a toujours accès
-        if ($user->estAdmin()) {
-            return true;
-        }
-
-        // Vérifier le niveau de confidentialité
-        $rangCourrier = $courrier->niveauConfidentialite?->rang ?? 0;
-        $rangUser = $user->getRangNiveauConfidentialite();
-
-        if ($rangCourrier > $rangUser) {
-            return false;
-        }
-
-        // Pour le chef, vérifier qu'il est dans le même service que le créateur
-        if ($user->estChef()) {
-            if (!$courrier->createur || $courrier->createur->service_id !== $user->service_id) {
-                return false;
-            }
-            return true;
-        }
-
-        // Pour le secretaire, vérifier qu'il a créé le courrier
-        if ($user->estSecretaire()) {
-            return $courrier->createur_id === $user->id;
-        }
-
-        return false;
+        return $courrier->peutVoirExistencePar($user);
     }
 
     /**
@@ -109,11 +83,19 @@ class CourrierPolicy
      */
     public function valider(User $user, Courrier $courrier): bool
     {
-        if (!$user->estChef()) {
+        if (!$user->estChef() && !$user->estAdmin()) {
             return false;
         }
 
-        if (!$courrier->createur) {
+        if (!$courrier->estValidable()) {
+            return false;
+        }
+
+        if ($user->estAdmin()) {
+            return true;
+        }
+
+        if (!$courrier->createur || $courrier->createur_id === $user->id) {
             return false;
         }
 

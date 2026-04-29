@@ -38,30 +38,7 @@ class AuthServiceProvider extends ServiceProvider
 
         // Gate pour vérifier si un utilisateur peut voir les détails d'un courrier
         Gate::define('courrier.view', function (User $user, Courrier $courrier) {
-            // L'admin a toujours accès
-            if ($user->estAdmin()) {
-                return true;
-            }
-
-            // Vérifier le niveau de confidentialité
-            $rangCourrier = $courrier->niveauConfidentialite?->rang ?? 0;
-            $rangUser = $user->getRangNiveauConfidentialite();
-
-            if ($rangCourrier > $rangUser) {
-                return false;
-            }
-
-            // Pour le chef, vérifier qu'il est dans le même service que le créateur
-            if ($user->estChef()) {
-                return $courrier->createur && $courrier->createur->service_id === $user->service_id;
-            }
-
-            // Pour le secretaire, vérifier qu'il a créé le courrier
-            if ($user->estSecretaire()) {
-                return $courrier->createur_id === $user->id;
-            }
-
-            return false;
+            return $courrier->peutVoirExistencePar($user);
         });
 
         // Gate pour archiver un courrier
@@ -71,11 +48,21 @@ class AuthServiceProvider extends ServiceProvider
 
         // Gate pour valider un courrier
         Gate::define('courrier.valider', function (User $user, Courrier $courrier) {
-            if (!$user->estChef()) {
+            if (!$user->estChef() && !$user->estAdmin()) {
                 return false;
             }
 
-            return $courrier->createur && $courrier->createur->service_id === $user->service_id;
+            if (!$courrier->estValidable()) {
+                return false;
+            }
+
+            if ($user->estAdmin()) {
+                return true;
+            }
+
+            return $courrier->createur
+                && $courrier->createur_id !== $user->id
+                && $courrier->createur->service_id === $user->service_id;
         });
     }
 }

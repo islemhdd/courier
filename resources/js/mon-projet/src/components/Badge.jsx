@@ -17,7 +17,7 @@ export default function Badge({ children, variant = 'gray' }) {
         variants[variant]
       )}
     >
-     hjklmkj {children}
+      {children}
     </span>
   )
 }

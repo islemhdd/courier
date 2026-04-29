@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Send,
   ShieldCheck,
+  ShieldAlert,
   UserRound,
   Users,
   X,
@@ -18,6 +19,7 @@ import Dashboard from './pages/Dashboard'
 import Messages from './pages/Messages'
 import Archives from './pages/Archives'
 import SentCourriers from './pages/SentCourriers'
+import Validation from './pages/Validation'
 import Login from './pages/Login'
 import { AuthProvider } from './context/AuthProvider'
 import { useAuth } from './context/auth-context'
@@ -123,6 +125,7 @@ function AuthenticatedApp() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/archives" element={<Archives />} />
+              <Route path="/validation" element={<Validation />} />
 
               <Route
                 path="/envoyes"
@@ -179,6 +182,16 @@ function SidebarContent({ user, onLogout, onNavigate }) {
         <MenuLink to="/archives" icon={<Archive size={18} />} onNavigate={onNavigate}>
           Archives
         </MenuLink>
+
+        {(user?.role === 'chef' || user?.role === 'admin') && (
+          <MenuLink
+            to="/validation"
+            icon={<ShieldAlert size={18} />}
+            onNavigate={onNavigate}
+          >
+            Validation
+          </MenuLink>
+        )}
 
         <MenuLink
           to="/utilisateurs"

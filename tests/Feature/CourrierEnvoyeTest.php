@@ -148,3 +148,198 @@ test('creator can archive a courrier but cannot archive it twice', function () {
         ->assertStatus(422)
         ->assertJsonPath('error', 'Ce courrier est déjà archivé.');
 });
+
+test('validation endpoint returns only courriers pending validation', function () {
+    [$chef, $niveau, $service] = createCourrierUser('chef');
+
+    $createur = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    Courrier::create([
+        'numero' => 'COUR-VALID-001',
+        'objet' => 'A valider',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $createur->id,
+    ]);
+
+    Courrier::create([
+        'numero' => 'COUR-VALID-002',
+        'objet' => 'Deja valide',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Prefecture',
+        'statut' => 'VALIDE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $createur->id,
+    ]);
+
+    $this->actingAs($chef)
+        ->getJson('/api/courriers/validation')
+        ->assertOk()
+        ->assertJsonPath('courriers.total', 1)
+        ->assertJsonPath('courriers.data.0.numero', 'COUR-VALID-001')
+        ->assertJsonPath('courriers.data.0.peut_etre_valide', true);
+});
+
+test('chef can validate courrier once but cannot validate it twice', function () {
+    [$chef, $niveau, $service] = createCourrierUser('chef');
+
+    $createur = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-VALID-ACTION',
+        'objet' => 'Dossier en attente',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Wilaya',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $createur->id,
+    ]);
+
+    $this->actingAs($chef)
+        ->patchJson("/api/courriers/{$courrier->id}/valider")
+        ->assertOk()
+        ->assertJsonPath('courrier.statut', 'VALIDE');
+
+    $this->actingAs($chef)
+        ->patchJson("/api/courriers/{$courrier->id}/valider")
+        ->assertStatus(422)
+        ->assertJsonPath('error', 'Ce courrier ne peut plus être validé.');
+});
+
+test('chef can see all courriers with full details', function () {
+    [$chef, $niveau] = createCourrierUser('chef');
+
+    $autreService = Service::create([
+        'libelle' => 'Finances',
+    ]);
+
+    $createur = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $autreService->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-VIS-CHEF',
+        'objet' => 'Budget confidentiel',
+        'type' => 'entrant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Tresor',
+        'destinataire' => 'Direction',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $createur->id,
+    ]);
+
+    $this->actingAs($chef)
+        ->getJson('/api/courriers')
+        ->assertOk()
+        ->assertJsonPath('courriers.total', 1)
+        ->assertJsonPath('courriers.data.0.peut_voir_details', true)
+        ->assertJsonPath('courriers.data.0.objet', 'Budget confidentiel');
+
+    $this->actingAs($chef)
+        ->getJson("/api/courriers/{$courrier->id}")
+        ->assertOk()
+        ->assertJsonPath('courrier.objet', 'Budget confidentiel')
+        ->assertJsonPath('courrier.peut_voir_details', true);
+});
+
+test('secretary sees only courriers from the same service and restricted details are masked', function () {
+    $niveauFaible = NiveauConfidentialite::create([
+        'libelle' => 'Interne',
+        'rang' => 1,
+    ]);
+
+    $niveauEleve = NiveauConfidentialite::create([
+        'libelle' => 'Secret',
+        'rang' => 5,
+    ]);
+
+    $service = Service::create([
+        'libelle' => 'Direction',
+    ]);
+
+    $autreService = Service::create([
+        'libelle' => 'Technique',
+    ]);
+
+    $secretaire = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveauFaible->id,
+    ]);
+
+    $memeService = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveauEleve->id,
+    ]);
+
+    $autreCreateur = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $autreService->id,
+        'niveau_confidentialite_id' => $niveauFaible->id,
+    ]);
+
+    $courrierRestreint = Courrier::create([
+        'numero' => 'COUR-VIS-RESTREINT',
+        'objet' => 'Objet confidentiel',
+        'type' => 'entrant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Ministere',
+        'destinataire' => 'Direction',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveauEleve->id,
+        'createur_id' => $memeService->id,
+    ]);
+
+    Courrier::create([
+        'numero' => 'COUR-HORS-SERVICE',
+        'objet' => 'Hors service',
+        'type' => 'entrant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Externe',
+        'destinataire' => 'Technique',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveauFaible->id,
+        'createur_id' => $autreCreateur->id,
+    ]);
+
+    $this->actingAs($secretaire)
+        ->getJson('/api/courriers')
+        ->assertOk()
+        ->assertJsonPath('courriers.total', 1)
+        ->assertJsonPath('courriers.data.0.numero', 'COUR-VIS-RESTREINT')
+        ->assertJsonPath('courriers.data.0.peut_voir_details', false)
+        ->assertJsonPath('courriers.data.0.objet', 'Contenu restreint');
+
+    $this->actingAs($secretaire)
+        ->getJson("/api/courriers/{$courrierRestreint->id}")
+        ->assertOk()
+        ->assertJsonPath('courrier.peut_voir_details', false)
+        ->assertJsonPath('courrier.objet', 'Contenu restreint')
+        ->assertJsonPath('courrier.expediteur', 'Accès restreint');
+});

@@ -17,6 +17,10 @@ export const courrierApi = {
     return api.get('/courriers/archives', { params })
   },
 
+  getValidationQueue(params = {}) {
+    return api.get('/courriers/validation', { params })
+  },
+
   getCreateData() {
     return api.get('/courriers/create')
   },

@@ -150,16 +150,6 @@ class Message extends Model
             return false;
         }
 
-        // Vérifier les règles de visibilité du courrier
-        $rangCourrier = $this->courrier->niveauConfidentialite?->rang ?? 0;
-        $rangUser = $destinataire->getRangNiveauConfidentialite();
-
-        // Pour l'admin, toujours accessible
-        if ($destinataire->estAdmin()) {
-            return true;
-        }
-
-        // Vérifier le niveau de confidentialité
-        return $rangCourrier <= $rangUser;
+        return $this->courrier->peutEtreVuEnDetailPar($destinataire);
     }
 }

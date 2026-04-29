@@ -1,39 +1,46 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Archive,
-  CalendarDays,
-  FileArchive,
-  FileText,
-  FolderOpen,
+  CalendarClock,
+  CheckCircle2,
+  FileCheck2,
   RefreshCw,
   Search,
-  Shield,
-  Trash2,
+  ShieldCheck,
+  UserRoundCheck,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
+import { useAuth } from '../context/auth-context'
 
-export default function Archives() {
-  const [archives, setArchives] = useState([])
+export default function Validation() {
+  const { user } = useAuth()
+  const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
   const [search, setSearch] = useState('')
   const [type, setType] = useState('')
-  const [dateReception, setDateReception] = useState('')
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
 
-  async function loadArchives(params = {}) {
+  const canManageValidation = user?.role === 'admin' || user?.role === 'chef'
+
+  async function loadValidationQueue(params = {}) {
     try {
       setLoading(true)
       setError('')
 
-      const response = await courrierApi.getArchived(params)
-      const paginatedArchives = response.data.courriers
-      const list = paginatedArchives?.data || []
+      const response = await courrierApi.getValidationQueue({
+        q: search || undefined,
+        type: type || undefined,
+        ...params,
+      })
 
-      setArchives(list)
-      setPagination(paginatedArchives)
+      const paginatedCourriers = response.data.courriers
+      const list = paginatedCourriers?.data || []
+
+      setCourriers(list)
+      setPagination(paginatedCourriers)
       setSelectedCourrier((current) => {
         if (current && list.some((item) => item.id === current.id)) {
           return list.find((item) => item.id === current.id)
@@ -46,7 +53,7 @@ export default function Archives() {
       setError(
         err.response?.data?.error ||
           err.response?.data?.message ||
-          "Impossible de charger les courriers archivés.",
+          'Impossible de charger la file de validation.',
       )
     } finally {
       setLoading(false)
@@ -55,91 +62,103 @@ export default function Archives() {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      void loadArchives()
+      void loadValidationQueue()
     }, 0)
 
     return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function handleSearch(event) {
-    event.preventDefault()
-
-    loadArchives({
-      q: search || undefined,
-      type: type || undefined,
-      date_reception: dateReception || undefined,
-    })
-  }
-
-  async function handleDelete() {
+  async function handleValidate() {
     if (!selectedCourrier) return
-
-    const confirmed = window.confirm(
-      `Supprimer définitivement le courrier archivé ${selectedCourrier.numero} ?`,
-    )
-
-    if (!confirmed) return
 
     try {
       setActionLoading(true)
       setError('')
-
-      await courrierApi.delete(selectedCourrier.id)
-      await loadArchives({
-        q: search || undefined,
-        type: type || undefined,
-        date_reception: dateReception || undefined,
-      })
+      await courrierApi.validate(selectedCourrier.id)
+      await loadValidationQueue()
     } catch (err) {
       console.error(err)
       setError(
         err.response?.data?.error ||
           err.response?.data?.message ||
-          "Impossible de supprimer l'archive.",
+          'Impossible de valider ce courrier.',
       )
     } finally {
       setActionLoading(false)
     }
   }
 
-  const stats = useMemo(() => {
-    return {
-      total: pagination?.total || archives.length,
-      entrants: archives.filter((item) => item.type === 'entrant').length,
-      sortants: archives.filter((item) => item.type === 'sortant').length,
-      proteges: archives.filter(
-        (item) => getConfidentialityLabel(item) !== '-',
-      ).length,
+  async function handleArchive() {
+    if (!selectedCourrier) return
+
+    try {
+      setActionLoading(true)
+      setError('')
+      await courrierApi.archive(selectedCourrier.id)
+      await loadValidationQueue()
+    } catch (err) {
+      console.error(err)
+      setError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          "Impossible d'archiver ce courrier.",
+      )
+    } finally {
+      setActionLoading(false)
     }
-  }, [archives, pagination])
+  }
+
+  function handleFilter(event) {
+    event.preventDefault()
+    void loadValidationQueue()
+  }
+
+  const stats = useMemo(
+    () => ({
+      total: pagination?.total || courriers.length,
+      entrants: courriers.filter((item) => item.type === 'entrant').length,
+      sortants: courriers.filter((item) => item.type === 'sortant').length,
+      validables: courriers.filter((item) => item.peut_etre_valide).length,
+    }),
+    [courriers, pagination],
+  )
+
+  if (!canManageValidation) {
+    return (
+      <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 shadow-sm">
+        Cette zone de validation est réservée aux chefs de service et aux administrateurs.
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
         <div className="relative isolate px-6 py-7">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(251,191,36,0.18),_transparent_34%),linear-gradient(135deg,_#f8fafc,_#ffffff)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(34,197,94,0.12),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.12),_transparent_34%),linear-gradient(135deg,_#ffffff,_#f8fafc)]" />
 
           <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-2xl">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-300/40">
-                <FileArchive size={24} />
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-300/30">
+                <FileCheck2 size={24} />
               </div>
 
               <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-                Centre d&apos;archivage
+                Validation des courriers
               </h1>
 
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Consultation, filtrage et suppression des courriers archivés avec
-                un panneau de détail complet.
+                File dédiée aux courriers en attente de décision, avec contrôle
+                de rôle et garde-fous métier côté API.
               </p>
             </div>
 
             <form
-              onSubmit={handleSearch}
-              className="grid gap-3 xl:min-w-[760px] xl:grid-cols-[minmax(0,1.4fr)_180px_180px_auto_auto]"
+              onSubmit={handleFilter}
+              className="grid gap-3 xl:min-w-[680px] xl:grid-cols-[minmax(0,1fr)_180px_auto_auto]"
             >
-              <label className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-4 shadow-sm backdrop-blur">
+              <label className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
                 <Search size={17} className="text-slate-400" />
                 <input
                   value={search}
@@ -152,19 +171,12 @@ export default function Archives() {
               <select
                 value={type}
                 onChange={(event) => setType(event.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-700 outline-none shadow-sm"
+                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none"
               >
                 <option value="">Tous les types</option>
                 <option value="entrant">Entrants</option>
                 <option value="sortant">Sortants</option>
               </select>
-
-              <input
-                type="month"
-                value={dateReception}
-                onChange={(event) => setDateReception(event.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 bg-white/90 px-4 text-sm text-slate-700 outline-none shadow-sm"
-              />
 
               <button
                 type="submit"
@@ -176,13 +188,7 @@ export default function Archives() {
 
               <button
                 type="button"
-                onClick={() =>
-                  loadArchives({
-                    q: search || undefined,
-                    type: type || undefined,
-                    date_reception: dateReception || undefined,
-                  })
-                }
+                onClick={() => void loadValidationQueue()}
                 className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <RefreshCw size={16} />
@@ -200,80 +206,81 @@ export default function Archives() {
       )}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Archives visibles" value={stats.total} icon={<Archive size={20} />} />
-        <StatCard title="Courriers entrants" value={stats.entrants} icon={<FolderOpen size={20} />} />
-        <StatCard title="Courriers sortants" value={stats.sortants} icon={<FileText size={20} />} />
-        <StatCard title="Niveaux renseignés" value={stats.proteges} icon={<Shield size={20} />} />
+        <StatCard title="Dossiers en attente" value={stats.total} icon={<CalendarClock size={20} />} />
+        <StatCard title="Entrants" value={stats.entrants} icon={<ShieldCheck size={20} />} />
+        <StatCard title="Sortants" value={stats.sortants} icon={<UserRoundCheck size={20} />} />
+        <StatCard title="Validables par vous" value={stats.validables} icon={<CheckCircle2 size={20} />} />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_410px]">
         <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">
-                Registre des archives
+                File de validation
               </h2>
               <p className="text-sm text-slate-500">
-                {pagination?.total || 0} courrier(s) archivé(s).
+                {pagination?.total || 0} courrier(s) en attente.
               </p>
             </div>
 
-            <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-              Archive
+            <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
+              En attente
             </div>
           </div>
 
-          <ArchivesTable
-            archives={archives}
+          <ValidationTable
+            courriers={courriers}
             loading={loading}
             selectedCourrier={selectedCourrier}
             onSelect={setSelectedCourrier}
           />
         </div>
 
-        <ArchiveDetails
+        <ValidationDetails
           courrier={selectedCourrier}
           actionLoading={actionLoading}
-          onDelete={handleDelete}
+          onValidate={handleValidate}
+          onArchive={handleArchive}
         />
       </section>
     </div>
   )
 }
 
-function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
+function ValidationTable({ courriers, loading, selectedCourrier, onSelect }) {
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-slate-500">
-        Chargement des archives...
+        Chargement de la file de validation...
       </div>
     )
   }
 
-  if (archives.length === 0) {
+  if (courriers.length === 0) {
     return (
       <div className="p-8 text-center text-sm text-slate-500">
-        Aucun courrier archivé ne correspond aux filtres.
+        Aucun courrier en attente de validation.
       </div>
     )
   }
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[840px] text-left text-sm">
+      <table className="w-full min-w-[820px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
             <th className="px-5 py-3">Numéro</th>
             <th className="px-5 py-3">Objet</th>
             <th className="px-5 py-3">Type</th>
-            <th className="px-5 py-3">Circuit</th>
-            <th className="px-5 py-3">Date</th>
-            <th className="px-5 py-3">Confidentialité</th>
+            <th className="px-5 py-3">Créateur</th>
+            <th className="px-5 py-3">Statut</th>
+            <th className="px-5 py-3">Action</th>
           </tr>
         </thead>
 
         <tbody>
-          {archives.map((courrier) => {
+          {courriers.map((courrier) => {
             const active = selectedCourrier?.id === courrier.id
 
             return (
@@ -281,36 +288,27 @@ function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
                 key={courrier.id}
                 onClick={() => onSelect(courrier)}
                 className={`cursor-pointer border-t border-slate-100 transition ${
-                  active ? 'bg-amber-50/70' : 'hover:bg-slate-50'
+                  active ? 'bg-emerald-50/70' : 'hover:bg-slate-50'
                 }`}
               >
                 <td className="px-5 py-4 font-semibold text-slate-900">
                   {courrier.numero}
                 </td>
-
-                <td className="px-5 py-4 text-slate-700">
-                  {courrier.objet}
-                </td>
-
-                <td className="px-5 py-4">
-                  <InlineBadge tone={courrier.type === 'sortant' ? 'amber' : 'sky'}>
-                    {courrier.type === 'sortant' ? 'Sortant' : 'Entrant'}
-                  </InlineBadge>
-                </td>
-
+                <td className="px-5 py-4 text-slate-700">{courrier.objet}</td>
                 <td className="px-5 py-4 text-slate-600">
-                  {courrier.type === 'sortant'
-                    ? courrier.destinataire || '-'
-                    : courrier.expediteur || '-'}
+                  {courrier.type === 'sortant' ? 'Sortant' : 'Entrant'}
                 </td>
-
-                <td className="px-5 py-4 text-slate-500">
-                  {formatDate(courrier.date_reception || courrier.date_creation)}
+                <td className="px-5 py-4 text-slate-600">
+                  {courrier.createur
+                    ? `${courrier.createur.prenom || ''} ${courrier.createur.nom || ''}`.trim()
+                    : '-'}
                 </td>
-
                 <td className="px-5 py-4">
-                  <InlineBadge tone="slate">
-                    {getConfidentialityLabel(courrier)}
+                  <InlineBadge tone="amber">{courrier.statut}</InlineBadge>
+                </td>
+                <td className="px-5 py-4">
+                  <InlineBadge tone={courrier.peut_etre_valide ? 'emerald' : 'slate'}>
+                    {courrier.peut_etre_valide ? 'Validable' : 'Bloqué'}
                   </InlineBadge>
                 </td>
               </tr>
@@ -322,11 +320,11 @@ function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
   )
 }
 
-function ArchiveDetails({ courrier, actionLoading, onDelete }) {
+function ValidationDetails({ courrier, actionLoading, onValidate, onArchive }) {
   if (!courrier) {
     return (
       <aside className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
-        Sélectionnez une archive pour consulter son détail.
+        Sélectionnez un courrier en attente pour afficher le détail.
       </aside>
     )
   }
@@ -335,8 +333,8 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
     <aside className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-            <Archive size={24} />
+          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+            <CheckCircle2 size={24} />
           </div>
 
           <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
@@ -348,28 +346,22 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
           </p>
         </div>
 
-        <InlineBadge tone="emerald">ARCHIVE</InlineBadge>
+        <InlineBadge tone={courrier.peut_etre_valide ? 'emerald' : 'slate'}>
+          {courrier.peut_etre_valide ? 'Validable' : 'Non validable'}
+        </InlineBadge>
       </div>
 
       <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
         {!courrier.peut_voir_details && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Cette archive existe dans votre service, mais son contenu est masque par la confidentialite.
+            Ce dossier est visible dans votre perimetre, mais son contenu est masque par la confidentialite.
           </div>
         )}
 
         <DetailRow label="Type" value={courrier.type === 'sortant' ? 'Sortant' : 'Entrant'} />
+        <DetailRow label="Statut" value={courrier.statut || '-'} />
         <DetailRow label="Expéditeur" value={courrier.expediteur || '-'} />
         <DetailRow label="Destinataire" value={courrier.destinataire || '-'} />
-        <DetailRow
-          label="Date d'enregistrement"
-          value={formatDate(courrier.date_creation)}
-        />
-        <DetailRow
-          label="Date de réception"
-          value={formatDate(courrier.date_reception)}
-        />
-        <DetailRow label="Confidentialité" value={getConfidentialityLabel(courrier)} />
         <DetailRow
           label="Créateur"
           value={
@@ -378,49 +370,31 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
               : '-'
           }
         />
+        <DetailRow label="Confidentialité" value={getConfidentialityLabel(courrier)} />
+        <DetailRow label="Date" value={formatDate(courrier.date_reception || courrier.date_creation)} />
       </div>
 
-      <div className="mt-6 rounded-3xl border border-slate-100 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-          Historique
-        </p>
+      <div className="mt-6 grid gap-3">
+        <button
+          type="button"
+          onClick={onValidate}
+          disabled={actionLoading || !courrier.peut_etre_valide}
+          className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <CheckCircle2 size={16} />
+          Valider ce courrier
+        </button>
 
-        <div className="mt-4 space-y-4">
-          <TimelineItem
-            icon={<CalendarDays size={15} />}
-            title="Création du courrier"
-            text={formatDate(courrier.date_creation)}
-          />
-
-          <TimelineItem
-            icon={<Archive size={15} />}
-            title="Statut métier"
-            text={courrier.statut || 'ARCHIVE'}
-          />
-
-          {courrier.url_fichier && (
-            <a
-              href={courrier.url_fichier}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <FolderOpen size={16} />
-              Ouvrir le fichier
-            </a>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={onArchive}
+          disabled={actionLoading}
+          className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <Archive size={16} />
+          Archiver
+        </button>
       </div>
-
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={actionLoading}
-        className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-      >
-        <Trash2 size={17} />
-        Supprimer l&apos;archive
-      </button>
     </aside>
   )
 }
@@ -431,7 +405,6 @@ function StatCard({ title, value, icon }) {
       <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
         {icon}
       </div>
-
       <p className="text-sm text-slate-500">{title}</p>
       <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
         {value}
@@ -444,7 +417,6 @@ function InlineBadge({ children, tone = 'slate' }) {
   const tones = {
     amber: 'bg-amber-100 text-amber-800',
     emerald: 'bg-emerald-100 text-emerald-700',
-    sky: 'bg-sky-100 text-sky-700',
     slate: 'bg-slate-100 text-slate-600',
   }
 
@@ -468,24 +440,8 @@ function DetailRow({ label, value }) {
   )
 }
 
-function TimelineItem({ icon, title, text }) {
-  return (
-    <div className="flex gap-3">
-      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-        {icon}
-      </div>
-
-      <div>
-        <p className="text-sm font-semibold text-slate-800">{title}</p>
-        <p className="text-xs text-slate-500">{text || '-'}</p>
-      </div>
-    </div>
-  )
-}
-
 function formatDate(date) {
   if (!date) return '-'
-
   return new Date(date).toLocaleDateString('fr-FR')
 }
 

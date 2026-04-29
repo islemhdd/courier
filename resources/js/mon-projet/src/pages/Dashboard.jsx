@@ -12,8 +12,10 @@ import {
   Trash2,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
+import { useAuth } from '../context/auth-context'
 
 export default function Dashboard() {
+  const { user } = useAuth()
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -144,7 +146,11 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    loadCourriers()
+    const timeoutId = setTimeout(() => {
+      void loadCourriers()
+    }, 0)
+
+    return () => clearTimeout(timeoutId)
   }, [])
 
   function handleSearch(e) {
@@ -332,6 +338,7 @@ export default function Dashboard() {
 
         <CourrierDetails
           courrier={selectedCourrier}
+          user={user}
           actionLoading={actionLoading}
           onValidate={handleValidate}
           onArchive={handleArchive}
@@ -344,6 +351,7 @@ export default function Dashboard() {
 
 function CourrierDetails({
   courrier,
+  user,
   actionLoading,
   onValidate,
   onArchive,
@@ -361,6 +369,9 @@ function CourrierDetails({
 
   const isArchived = normalizeStatus(courrier.statut) === 'ARCHIVE'
   const isValidated = normalizeStatus(courrier.statut) === 'VALIDE'
+  const canValidate =
+    (user?.role === 'chef' || user?.role === 'admin') &&
+    Boolean(courrier.peut_etre_valide)
 
   return (
     <aside className="rounded-3xl bg-white p-6 shadow-sm">
@@ -383,6 +394,11 @@ function CourrierDetails({
       </div>
 
       <div className="space-y-3 border-y border-slate-100 py-5 text-sm">
+        {!courrier.peut_voir_details && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            Ce courrier existe dans votre service, mais son contenu est masque par la confidentialite.
+          </div>
+        )}
         <Detail label="Expéditeur" value={courrier.expediteur || '-'} />
         <Detail label="Destinataire" value={courrier.destinataire || '-'} />
         <Detail label="Date création" value={formatDate(courrier.date_creation)} />
@@ -434,7 +450,7 @@ function CourrierDetails({
       <div className="mt-6 grid grid-cols-2 gap-3">
         <button
           onClick={onValidate}
-          disabled={actionLoading || isValidated || isArchived}
+          disabled={actionLoading || isValidated || isArchived || !canValidate}
           className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Valider
