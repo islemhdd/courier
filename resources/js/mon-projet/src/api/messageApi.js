@@ -1,9 +1,9 @@
 import api from './axios'
 
 export const messageApi = {
-  getAll(type = 'recu') {
+  getAll(params = {}) {
     return api.get('/messages', {
-      params: { type },
+      params,
     })
   },
 
@@ -13,6 +13,14 @@ export const messageApi = {
 
   send(data) {
     return api.post('/messages', data)
+  },
+
+  update(id, data) {
+    return api.patch(`/messages/${id}`, data)
+  },
+
+  delete(id) {
+    return api.delete(`/messages/${id}`)
   },
 
   markAsRead(id) {

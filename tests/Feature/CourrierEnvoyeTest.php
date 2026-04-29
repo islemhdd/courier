@@ -61,6 +61,43 @@ test('sent courriers endpoint returns only outgoing courriers', function () {
         ->assertJsonPath('courriers.data.0.destinataire', 'Ministere');
 });
 
+test('archives endpoint returns only archived courriers visible to the user', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    Courrier::create([
+        'numero' => 'COUR-TEST-ARCHIVE-1',
+        'objet' => 'Archive officielle',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Archives Nationales',
+        'statut' => 'ARCHIVE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+    ]);
+
+    Courrier::create([
+        'numero' => 'COUR-TEST-ACTIF-2',
+        'objet' => 'Courrier actif',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/archives')
+        ->assertOk()
+        ->assertJsonPath('courriers.total', 1)
+        ->assertJsonPath('courriers.data.0.statut', 'ARCHIVE')
+        ->assertJsonPath('courriers.data.0.numero', 'COUR-TEST-ARCHIVE-1');
+});
+
 test('authorized users can create an outgoing courrier', function () {
     [$user, $niveau, $service] = createCourrierUser('secretaire');
 
@@ -83,4 +120,31 @@ test('authorized users can create an outgoing courrier', function () {
         'destinataire' => 'Wilaya',
         'expediteur' => $service->libelle,
     ]);
+});
+
+test('creator can archive a courrier but cannot archive it twice', function () {
+    [$user, $niveau] = createCourrierUser('secretaire');
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-TEST-ARCHIVE-ACTION',
+        'objet' => 'Dossier a archiver',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Prefecture',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+    ]);
+
+    $this->actingAs($user)
+        ->patchJson("/api/courriers/{$courrier->id}/archiver")
+        ->assertOk()
+        ->assertJsonPath('courrier.statut', 'ARCHIVE');
+
+    $this->actingAs($user)
+        ->patchJson("/api/courriers/{$courrier->id}/archiver")
+        ->assertStatus(422)
+        ->assertJsonPath('error', 'Ce courrier est déjà archivé.');
 });

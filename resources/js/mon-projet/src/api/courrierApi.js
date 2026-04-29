@@ -13,6 +13,10 @@ export const courrierApi = {
     return api.get('/courriers/envoyes', { params })
   },
 
+  getArchived(params = {}) {
+    return api.get('/courriers/archives', { params })
+  },
+
   getCreateData() {
     return api.get('/courriers/create')
   },

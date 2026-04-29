@@ -89,6 +89,13 @@ class CourrierController extends Controller
         return $this->index($request);
     }
 
+    public function archives(Request $request): JsonResponse
+    {
+        $request->merge(['statut' => Courrier::STATUT_ARCHIVE]);
+
+        return $this->index($request);
+    }
+
     private function userPeutVoirDetails($user, Courrier $courrier): bool
 {
     if (!$user) {
@@ -127,7 +134,7 @@ class CourrierController extends Controller
 }
 
 
-public function update(Request $request, Courrier $courrier): JsonResponse
+public function update(UpdateCourrierRequest $request, Courrier $courrier): JsonResponse
 {
     $user = $request->user();
 
@@ -149,29 +156,26 @@ public function update(Request $request, Courrier $courrier): JsonResponse
         ], 422);
     }
 
-    $validated = $request->validate([
-        'objet' => ['required', 'string', 'max:100'],
-        'type' => ['required', 'in:entrant,sortant'],
-
-        'expediteur' => ['nullable', 'string', 'max:100'],
-        'destinataire' => ['nullable', 'string', 'max:100'],
-
-        'niveau_confidentialite_id' => [
-            'required',
-            'integer',
-            'exists:niveau_confidentialites,id',
-        ],
-
-        'fichier' => [
-            'nullable',
-            'file',
-            'mimes:pdf,doc,docx,jpg,jpeg,png',
-            'max:10240',
-        ],
-    ]);
+    $validated = $request->validated();
 
     // Sécurité : la date d'envoi ne doit jamais être modifiée.
     unset($validated['date_reception']);
+
+    if (($validated['type'] ?? $courrier->type) === Courrier::TYPE_SORTANT && empty($validated['expediteur'])) {
+        $validated['expediteur'] = $courrier->expediteur
+            ?: $user->service?->libelle
+            ?: $user->nom_complet
+            ?: $user->name
+            ?: 'Interne';
+    }
+
+    if (($validated['type'] ?? $courrier->type) === Courrier::TYPE_ENTRANT && empty($validated['destinataire'])) {
+        $validated['destinataire'] = $courrier->destinataire
+            ?: $user->service?->libelle
+            ?: $user->nom_complet
+            ?: $user->name
+            ?: 'Interne';
+    }
 
     if ($request->hasFile('fichier')) {
         if ($courrier->chemin_fichier) {
@@ -330,6 +334,12 @@ public function update(Request $request, Courrier $courrier): JsonResponse
      public function archiver(Courrier $courrier, Request $request): JsonResponse
 {
     $user = $request->user();
+
+    if ($courrier->statut === Courrier::STATUT_ARCHIVE) {
+        return response()->json([
+            'error' => 'Ce courrier est déjà archivé.'
+        ], 422);
+    }
 
     if (!$courrier->peutEtreArchivePar($user)) {
         return response()->json([

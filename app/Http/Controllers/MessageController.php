@@ -3,26 +3,22 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreMessageRequest;
+use App\Http\Requests\UpdateMessageRequest;
 use App\Models\Courrier;
 use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-/**
- * Contrôleur pour la gestion des messages.
- * Toutes les réponses sont au format JSON pour l'API.
- */
 class MessageController extends Controller
 {
-    /**
-     * Affiche la liste paginée des messages pour l'utilisateur connecté.
-     * Peut filtrer par messages reçus ou envoyés.
-     */
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
-        $type = $request->get('type', 'recu'); // 'recu' ou 'envoye'
+        $type = $request->get('type', 'recu');
+        $search = trim((string) $request->get('q', ''));
+        $lu = $request->get('lu');
+        $courrierId = $request->get('courrier_id');
 
         $query = Message::with(['emetteur', 'destinataire', 'courrier']);
 
@@ -32,11 +28,33 @@ class MessageController extends Controller
             $query->where('destinataire_id', $user->id);
         }
 
-        $messages = $query->orderBy('date_envoi', 'desc')
-            ->paginate(15);
+        if ($search !== '') {
+            $query->where(function ($subQuery) use ($search) {
+                $subQuery->where('contenu', 'like', '%' . $search . '%')
+                    ->orWhereHas('emetteur', function ($userQuery) use ($search) {
+                        $userQuery->where('nom', 'like', '%' . $search . '%')
+                            ->orWhere('prenom', 'like', '%' . $search . '%')
+                            ->orWhere('email', 'like', '%' . $search . '%');
+                    })
+                    ->orWhereHas('destinataire', function ($userQuery) use ($search) {
+                        $userQuery->where('nom', 'like', '%' . $search . '%')
+                            ->orWhere('prenom', 'like', '%' . $search . '%')
+                            ->orWhere('email', 'like', '%' . $search . '%');
+                    });
+            });
+        }
 
-        // Pour chaque message, vérifier si le destinataire peut voir le courrier
-        $messages->getCollection()->transform(function ($message) {
+        if ($lu !== null && $lu !== '') {
+            $query->where('lu', filter_var($lu, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false);
+        }
+
+        if ($courrierId) {
+            $query->where('courrier_id', $courrierId);
+        }
+
+        $messages = $query->orderBy('date_envoi', 'desc')->paginate(15);
+
+        $messages->getCollection()->transform(function (Message $message) {
             $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
             return $message;
         });
@@ -44,25 +62,25 @@ class MessageController extends Controller
         return response()->json([
             'messages' => $messages,
             'type' => $type,
+            'filtres' => [
+                'q' => $search,
+                'lu' => $lu,
+                'courrier_id' => $courrierId,
+            ],
         ]);
     }
 
-    /**
-     * Envoie un nouveau message.
-     */
     public function store(StoreMessageRequest $request): JsonResponse
     {
         $user = $request->user();
         $donnees = $request->validated();
 
-        // Vérifier que le destinataire n'est pas l'expéditeur lui-même
         if ($donnees['destinataire_id'] === $user->id) {
             return response()->json([
                 'error' => 'Vous ne pouvez pas vous envoyer un message à vous-même.'
             ], 422);
         }
 
-        // Vérifier si le courrier référencé existe et si l'utilisateur peut le voir
         if (!empty($donnees['courrier_id'])) {
             $courrier = Courrier::with('niveauConfidentialite', 'createur')->find($donnees['courrier_id']);
 
@@ -72,7 +90,6 @@ class MessageController extends Controller
                 ], 422);
             }
 
-            // Vérifier les droits de consultation du courrier
             if (!$this->userPeutVoirCourrier($user, $courrier)) {
                 return response()->json([
                     'error' => 'Vous n\'avez pas le droit de référencer ce courrier.'
@@ -80,13 +97,13 @@ class MessageController extends Controller
             }
         }
 
-        // Définir les valeurs par défaut
         $donnees['emetteur_id'] = $user->id;
         $donnees['date_envoi'] = now();
         $donnees['lu'] = false;
 
         $message = Message::create($donnees);
         $message->load(['emetteur', 'destinataire', 'courrier']);
+        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
 
         return response()->json([
             'message' => 'Message envoyé avec succès.',
@@ -94,14 +111,10 @@ class MessageController extends Controller
         ], 201);
     }
 
-    /**
-     * Affiche les détails d'un message.
-     */
     public function show(Message $message, Request $request): JsonResponse
     {
         $user = $request->user();
 
-        // Vérifier que l'utilisateur est soit l'émetteur soit le destinataire
         if ($message->emetteur_id !== $user->id && $message->destinataire_id !== $user->id) {
             return response()->json([
                 'error' => 'Vous n\'avez pas le droit de voir ce message.'
@@ -110,25 +123,57 @@ class MessageController extends Controller
 
         $message->load(['emetteur', 'destinataire', 'courrier']);
 
-        // Si l'utilisateur est le destinataire et que le message n'est pas lu, le marquer comme lu
         if ($message->destinataire_id === $user->id && !$message->lu) {
             $message->marquerCommeLu();
             $message->refresh();
         }
+
+        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
 
         return response()->json([
             'message' => $message,
         ]);
     }
 
-    /**
-     * Marque un message comme lu.
-     */
+    public function update(UpdateMessageRequest $request, Message $message): JsonResponse
+    {
+        if ($message->lu) {
+            return response()->json([
+                'error' => 'Impossible de modifier un message déjà lu.'
+            ], 422);
+        }
+
+        $message->update($request->validated());
+        $message->load(['emetteur', 'destinataire', 'courrier']);
+        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+
+        return response()->json([
+            'message' => 'Message modifié avec succès.',
+            'data' => $message,
+        ]);
+    }
+
+    public function destroy(Message $message, Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($message->emetteur_id !== $user->id && $message->destinataire_id !== $user->id) {
+            return response()->json([
+                'error' => 'Vous n\'avez pas le droit de supprimer ce message.'
+            ], 403);
+        }
+
+        $message->delete();
+
+        return response()->json([
+            'message' => 'Message supprimé avec succès.',
+        ]);
+    }
+
     public function markRead(Message $message, Request $request): JsonResponse
     {
         $user = $request->user();
 
-        // Vérifier que l'utilisateur est le destinataire
         if ($message->destinataire_id !== $user->id) {
             return response()->json([
                 'error' => 'Vous n\'avez pas le droit de modifier ce message.'
@@ -143,13 +188,10 @@ class MessageController extends Controller
         ]);
     }
 
-    /**
-     * Recherche des utilisateurs par nom ou email pour l'autocomplétion.
-     */
     public function rechercherDestinataires(Request $request): JsonResponse
     {
         $user = $request->user();
-        $terme = $request->get('q', '');
+        $terme = trim((string) $request->get('q', ''));
 
         if (strlen($terme) < 2) {
             return response()->json([
@@ -173,9 +215,6 @@ class MessageController extends Controller
         ]);
     }
 
-    /**
-     * Retourne le nombre de messages non lus pour l'utilisateur connecté.
-     */
     public function nombreNonLus(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -189,18 +228,12 @@ class MessageController extends Controller
         ]);
     }
 
-    /**
-     * Vérifie si l'utilisateur peut voir le courrier.
-     * Utilise les mêmes règles que pour l'affichage du détail.
-     */
     private function userPeutVoirCourrier(User $user, Courrier $courrier): bool
     {
-        // L'admin a toujours accès
         if ($user->estAdmin()) {
             return true;
         }
 
-        // Vérifier le niveau de confidentialité
         $rangCourrier = $courrier->niveauConfidentialite?->rang ?? 0;
         $rangUser = $user->getRangNiveauConfidentialite();
 
@@ -208,20 +241,15 @@ class MessageController extends Controller
             return false;
         }
 
-        // Pour le chef, vérifier qu'il est dans le même service que le créateur
         if ($user->estChef()) {
-            if (!$courrier->createur || $courrier->createur->service_id !== $user->service_id) {
-                return false;
-            }
+            return $courrier->createur
+                && $courrier->createur->service_id === $user->service_id;
         }
 
-        // Pour le secretaire, vérifier qu'il a créé le courrier ou que le niveau est accessible
         if ($user->estSecretaire()) {
-            if ($courrier->createur_id !== $user->id) {
-                return $rangCourrier <= $rangUser;
-            }
+            return $courrier->createur_id === $user->id || $rangCourrier <= $rangUser;
         }
 
-        return true;
+        return false;
     }
 }

@@ -82,6 +82,7 @@ class Courrier extends Model
      */
     protected $appends = [
         'est_accessible',
+        'url_fichier',
     ];
 
     /**
