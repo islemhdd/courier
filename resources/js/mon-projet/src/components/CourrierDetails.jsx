@@ -17,7 +17,7 @@ export default function CourrierDetails({
   if (!courrier) {
     return (
       <div className="rounded-3xl bg-white p-6 shadow-sm">
-        Sélectionne un courrier.
+        Selectionne un courrier.
       </div>
     )
   }
@@ -29,14 +29,12 @@ export default function CourrierDetails({
   const peutValider = courrier.peut_etre_valide === true
   const peutModifier = courrier.peut_etre_modifie === true
   const peutSupprimer = courrier.peut_etre_supprime === true
-  const peutArchiver = !contenuRestreint && courrier.statut !== 'ARCHIVE'
+  const peutArchiver = !contenuRestreint && courrier.peut_etre_archive === true
 
   const handleDelete = () => {
     if (!onDelete) return
 
-    const ok = window.confirm(
-      'Voulez-vous vraiment supprimer ce courrier ?'
-    )
+    const ok = window.confirm('Voulez-vous vraiment supprimer ce courrier ?')
 
     if (ok) {
       onDelete(courrier.id)
@@ -48,16 +46,14 @@ export default function CourrierDetails({
       <div className="mb-6 flex items-start justify-between">
         <div>
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
-            📄
+            <span aria-hidden="true">DOC</span>
           </div>
 
           <h2 className="text-xl font-bold text-slate-800">
             {courrier.numero || '-'}
           </h2>
 
-          <p className="text-sm text-slate-500">
-            {courrier.objet || '-'}
-          </p>
+          <p className="text-sm text-slate-500">{courrier.objet || '-'}</p>
         </div>
 
         <button
@@ -77,19 +73,16 @@ export default function CourrierDetails({
       >
         <div
           className={
-            contenuRestreint
-              ? 'pointer-events-none select-none blur-sm'
-              : ''
+            contenuRestreint ? 'pointer-events-none select-none blur-sm' : ''
           }
         >
-          <Detail label="Expéditeur" value={courrier.expediteur} />
+          <Detail label="Expediteur" value={courrier.expediteur} />
           <Detail label="Destinataire" value={courrier.destinataire} />
-          <Detail label="Date de réception" value={courrier.date_reception} />
+          <Detail label="Date de reception" value={courrier.date_reception} />
           <Detail
-            label="Confidentialité"
-            value={courrier.niveau_confidentialite?.nom}
+            label="Confidentialite"
+            value={courrier.niveau_confidentialite?.libelle}
           />
-          <Detail label="Priorité" value={courrier.priorite} />
           <Detail label="Statut" value={courrier.statut} />
         </div>
 
@@ -108,27 +101,25 @@ export default function CourrierDetails({
         </h3>
 
         <div className="space-y-4">
-          <TimelineItem title="Création" text="Courrier créé dans le système" />
+          <TimelineItem title="Creation" text="Courrier cree dans le systeme" />
 
-          {courrier.statut === 'NON_VALIDE' && (
+          {courrier.statut === 'CREE' && (
             <TimelineItem
-              title="Non validé"
+              title="Cree"
               text="En attente de validation par le chef"
             />
           )}
 
           {courrier.statut === 'VALIDE' && (
-            <TimelineItem
-              title="Validé"
-              text="Courrier validé par le chef"
-            />
+            <TimelineItem title="Valide" text="Courrier valide par le chef" />
           )}
 
-          {courrier.statut === 'ARCHIVE' && (
-            <TimelineItem
-              title="Archivé"
-              text="Courrier archivé"
-            />
+          {courrier.statut === 'TRANSMIS' && (
+            <TimelineItem title="Transmis" text="Courrier transmis" />
+          )}
+
+          {courrier.statut === 'RECU' && (
+            <TimelineItem title="Recu" text="Courrier recu par le service" />
           )}
         </div>
       </div>
@@ -193,18 +184,6 @@ export default function CourrierDetails({
           Supprimer
         </button>
       )}
-
-      {!peutModifier && !peutSupprimer && courrier.statut === 'VALIDE' && (
-        <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm text-blue-700">
-          Ce courrier est validé. Il ne peut être modifié que par le chef.
-        </div>
-      )}
-
-      {courrier.statut === 'ARCHIVE' && (
-        <div className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
-          Ce courrier est archivé. Il ne peut plus être modifié ni supprimé.
-        </div>
-      )}
     </aside>
   )
 }
@@ -213,9 +192,7 @@ function Detail({ label, value }) {
   return (
     <div className="flex justify-between gap-4">
       <span className="text-slate-400">{label}</span>
-      <span className="font-medium text-slate-700">
-        {value || '-'}
-      </span>
+      <span className="font-medium text-slate-700">{value || '-'}</span>
     </div>
   )
 }

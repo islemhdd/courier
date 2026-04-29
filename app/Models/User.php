@@ -142,7 +142,7 @@ class User extends Authenticatable
      */
     public function peutCreerCourrier(): bool
     {
-        return $this->estAdmin() || $this->estSecretaire();
+        return $this->estAdmin() || $this->estChef() || $this->estSecretaire();
     }
 
     /**

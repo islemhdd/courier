@@ -25,7 +25,9 @@ Route::middleware(['auth'])->group(function () {
 
     // Routes supplémentaires pour les courriers
     Route::patch('/courriers/{courrier}/archiver', [CourrierController::class, 'archiver'])->name('courriers.archiver');
+    Route::patch('/courriers/{courrier}/transmettre', [CourrierController::class, 'transmettre'])->name('courriers.transmettre');
     Route::patch('/courriers/{courrier}/valider', [CourrierController::class, 'valider'])->name('courriers.valider');
+    Route::delete('/archives/{archive}', [CourrierController::class, 'destroyArchive'])->name('archives.destroy');
 
     // Routes pour les messages
     Route::get('/messages', [MessageController::class, 'index'])->name('messages.index');

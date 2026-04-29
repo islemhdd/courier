@@ -170,9 +170,7 @@ export default function Dashboard() {
       validation: courriers.filter((c) => normalizeStatus(c.statut) === 'CREE')
         .length,
       messages: 0,
-      archives: courriers.filter(
-        (c) => normalizeStatus(c.statut) === 'ARCHIVE',
-      ).length,
+      archives: courriers.filter((c) => c.peut_etre_archive).length,
     }
   }, [courriers, pagination])
 
@@ -367,8 +365,8 @@ function CourrierDetails({
     )
   }
 
-  const isArchived = normalizeStatus(courrier.statut) === 'ARCHIVE'
   const isValidated = normalizeStatus(courrier.statut) === 'VALIDE'
+  const canArchive = Boolean(courrier.peut_etre_archive)
   const canValidate =
     (user?.role === 'chef' || user?.role === 'admin') &&
     Boolean(courrier.peut_etre_valide)
@@ -450,7 +448,7 @@ function CourrierDetails({
       <div className="mt-6 grid grid-cols-2 gap-3">
         <button
           onClick={onValidate}
-          disabled={actionLoading || isValidated || isArchived || !canValidate}
+          disabled={actionLoading || isValidated || !canValidate}
           className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Valider
@@ -458,7 +456,7 @@ function CourrierDetails({
 
         <button
           onClick={onArchive}
-          disabled={actionLoading || isArchived}
+          disabled={actionLoading || !canArchive}
           className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Archiver
@@ -548,7 +546,6 @@ function getStatusColor(statut) {
 
   const normalized = normalizeStatus(statut)
 
-  if (normalized.includes('ARCHIVE')) return 'gray'
   if (normalized.includes('VALIDE')) return 'green'
   if (normalized.includes('CREE') || normalized.includes('TRANSMIS')) {
     return 'orange'

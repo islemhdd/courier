@@ -29,7 +29,7 @@ export default function Archives() {
       setError('')
 
       const response = await courrierApi.getArchived(params)
-      const paginatedArchives = response.data.courriers
+      const paginatedArchives = response.data.archives || response.data.courriers
       const list = paginatedArchives?.data || []
 
       setArchives(list)
@@ -84,7 +84,7 @@ export default function Archives() {
       setActionLoading(true)
       setError('')
 
-      await courrierApi.delete(selectedCourrier.id)
+      await courrierApi.deleteArchive(selectedCourrier.id)
       await loadArchives({
         q: search || undefined,
         type: type || undefined,
@@ -395,7 +395,7 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
           <TimelineItem
             icon={<Archive size={15} />}
             title="Statut métier"
-            text={courrier.statut || 'ARCHIVE'}
+            text={courrier.statut_original || '-'}
           />
 
           {courrier.url_fichier && (
@@ -415,7 +415,7 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
       <button
         type="button"
         onClick={onDelete}
-        disabled={actionLoading}
+        disabled={actionLoading || !courrier.peut_etre_supprime}
         className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
       >
         <Trash2 size={17} />

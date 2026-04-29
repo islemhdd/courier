@@ -22,8 +22,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::match(['post', 'patch'], '/{courrier}', [CourrierController::class, 'update']);
         Route::delete('/{courrier}', [CourrierController::class, 'destroy']);
         Route::patch('/{courrier}/archiver', [CourrierController::class, 'archiver']);
+        Route::patch('/{courrier}/transmettre', [CourrierController::class, 'transmettre']);
         Route::patch('/{courrier}/valider', [CourrierController::class, 'valider']);
     });
+
+    Route::delete('/archives/{archive}', [CourrierController::class, 'destroyArchive']);
 
     Route::prefix('/messages')->group(function () {
         Route::get('/', [MessageController::class, 'index']);

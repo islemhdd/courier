@@ -388,7 +388,7 @@ function ValidationDetails({ courrier, actionLoading, onValidate, onArchive }) {
         <button
           type="button"
           onClick={onArchive}
-          disabled={actionLoading}
+          disabled={actionLoading || !courrier.peut_etre_archive}
           className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
         >
           <Archive size={16} />

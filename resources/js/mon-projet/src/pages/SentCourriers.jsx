@@ -225,11 +225,27 @@ export default function SentCourriers() {
     }
   }
 
+  async function handleTransmit() {
+    if (!selectedCourrier) return
+
+    try {
+      await courrierApi.transmit(selectedCourrier.id)
+      await loadSentCourriers()
+    } catch (err) {
+      console.error(err)
+      setError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Impossible de transmettre le courrier.',
+      )
+    }
+  }
+
   const stats = useMemo(() => {
     return {
       total: pagination?.total || courriers.length,
       valides: courriers.filter((item) => item.statut === 'VALIDE').length,
-      archives: courriers.filter((item) => item.statut === 'ARCHIVE').length,
+      aArchiver: courriers.filter((item) => item.peut_etre_archive).length,
     }
   }, [courriers, pagination])
 
@@ -274,7 +290,6 @@ export default function SentCourriers() {
               <option value="CREE">Créé</option>
               <option value="TRANSMIS">Transmis</option>
               <option value="VALIDE">Validé</option>
-              <option value="ARCHIVE">Archivé</option>
             </select>
 
             <button
@@ -308,7 +323,7 @@ export default function SentCourriers() {
       <section className="grid gap-4 sm:grid-cols-3">
         <Stat title="Total sortants" value={stats.total} icon={<Send size={20} />} />
         <Stat title="Validés" value={stats.valides} icon={<CheckCircle size={20} />} />
-        <Stat title="Archives" value={stats.archives} icon={<Archive size={20} />} />
+        <Stat title="Archivables" value={stats.aArchiver} icon={<Archive size={20} />} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -342,6 +357,7 @@ export default function SentCourriers() {
         <SentDetails
           courrier={selectedCourrier}
           onArchive={handleArchive}
+          onTransmit={handleTransmit}
           onEdit={openEditForm}
         />
       </section>
@@ -438,7 +454,7 @@ function SentTable({ courriers, loading, selectedCourrier, onSelect }) {
   )
 }
 
-function SentDetails({ courrier, onArchive, onEdit }) {
+function SentDetails({ courrier, onArchive, onTransmit, onEdit }) {
   if (!courrier) {
     return (
       <aside className="rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-500 shadow-sm">
@@ -447,7 +463,9 @@ function SentDetails({ courrier, onArchive, onEdit }) {
     )
   }
 
-  const isArchived = courrier.statut === 'ARCHIVE'
+  const canEdit = courrier.peut_etre_modifie === true
+  const canArchive = courrier.peut_etre_archive === true
+  const canTransmit = courrier.peut_etre_transmis === true
 
   return (
     <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
@@ -489,7 +507,7 @@ function SentDetails({ courrier, onArchive, onEdit }) {
       <button
         type="button"
         onClick={() => onEdit(courrier)}
-        disabled={isArchived}
+        disabled={!canEdit}
         className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Modifier
@@ -497,8 +515,17 @@ function SentDetails({ courrier, onArchive, onEdit }) {
 
       <button
         type="button"
+        onClick={onTransmit}
+        disabled={!canTransmit}
+        className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        Transmettre
+      </button>
+
+      <button
+        type="button"
         onClick={onArchive}
-        disabled={isArchived}
+        disabled={!canArchive}
         className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <Archive size={17} />
@@ -728,7 +755,6 @@ function formatDate(date) {
 
 function getStatusTone(statut) {
   if (statut === 'VALIDE') return 'emerald'
-  if (statut === 'ARCHIVE') return 'slate'
   if (statut === 'REFUSE') return 'red'
 
   return 'amber'

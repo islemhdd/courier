@@ -49,8 +49,16 @@ export const courrierApi = {
     return api.delete(`/courriers/${id}`)
   },
 
+  deleteArchive(id) {
+    return api.delete(`/archives/${id}`)
+  },
+
   archive(id) {
     return api.patch(`/courriers/${id}/archiver`)
+  },
+
+  transmit(id, data = {}) {
+    return api.patch(`/courriers/${id}/transmettre`, data)
   },
 
   validate(id) {

@@ -21,7 +21,7 @@ return new class extends Migration
             $table->dateTime('date_creation');
             $table->dateTime('date_reception');
             $table->string('expediteur', 100);             // VARCHAR(100)
-            $table->enum('statut', ['CREE', 'RECU', 'TRANSMIS', 'VALIDE', 'ARCHIVE'])->default('CREE');
+            $table->enum('statut', ['CREE', 'VALIDE', 'TRANSMIS', 'RECU'])->default('CREE');
 
             // FK
 

@@ -223,7 +223,12 @@ class DatabaseSeeder extends Seeder
                 'created_at'                 => now(),
                 'updated_at'                 => now(),
             ],
+        ];
+        DB::table('courriers')->insert($courriers);
+
+        DB::table('archives')->insert([
             [
+                'courrier_original_id'       => null,
                 'numero'                     => 'COUR-2025-0005',
                 'objet'                      => 'Archivage des dossiers 2024',
                 'type'                       => 'sortant',
@@ -232,15 +237,21 @@ class DatabaseSeeder extends Seeder
                 'date_reception'             => now()->subDays(31),
                 'expediteur'                 => 'Direction Generale',
                 'destinataire'               => 'Archives Nationales',
-                'statut'                     => 'ARCHIVE',
+                'statut_original'            => 'TRANSMIS',
                 'niveau_confidentialite_id'  => $niveauPublic,
                 'createur_id'                => $secretaireDir,
                 'valideur_id'                => $chefDirection,
+                'service_source_id'          => $serviceDirection,
+                'service_destinataire_id'    => null,
+                'transmis_par_id'            => $secretaireDir,
+                'transmis_le'                => now()->subDays(29),
+                'archive_par_id'             => $secretaireDir,
+                'archive_le'                 => now()->subDays(29),
+                'motif'                      => 'Archivage de reference',
                 'created_at'                 => now(),
                 'updated_at'                 => now(),
             ],
-        ];
-        DB::table('courriers')->insert($courriers);
+        ]);
 
         // Récupérer les IDs des courriers par numéro
         $cour1 = DB::table('courriers')->where('numero', 'COUR-2025-0001')->first()->id;

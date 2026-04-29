@@ -14,7 +14,7 @@ class StoreCourrierRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user && ($user->estAdmin() || $user->estSecretaire());
+        return $user && $user->peutCreerCourrier();
     }
 
     public function rules(): array
@@ -32,6 +32,8 @@ class StoreCourrierRequest extends FormRequest
                 'integer',
                 'exists:niveau_confidentialites,id',
             ],
+            'transmission_directe' => ['sometimes', 'boolean'],
+            'service_destinataire_id' => ['nullable', 'integer', 'exists:services,id'],
 
             'fichier' => [
                 'nullable',

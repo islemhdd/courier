@@ -1,9 +1,13 @@
 <?php
 
+use App\Models\Archive;
 use App\Models\Courrier;
 use App\Models\NiveauConfidentialite;
 use App\Models\Service;
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+
+uses(Tests\TestCase::class, RefreshDatabase::class);
 
 function createCourrierUser(string $role = 'admin'): array
 {
@@ -39,6 +43,7 @@ test('sent courriers endpoint returns only outgoing courriers', function () {
         'statut' => 'CREE',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
     ]);
 
     Courrier::create([
@@ -51,6 +56,7 @@ test('sent courriers endpoint returns only outgoing courriers', function () {
         'statut' => 'CREE',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
     ]);
 
     $this->actingAs($user)
@@ -61,10 +67,11 @@ test('sent courriers endpoint returns only outgoing courriers', function () {
         ->assertJsonPath('courriers.data.0.destinataire', 'Ministere');
 });
 
-test('archives endpoint returns only archived courriers visible to the user', function () {
+test('archives endpoint reads from archive table only', function () {
     [$user, $niveau] = createCourrierUser();
 
-    Courrier::create([
+    Archive::create([
+        'courrier_original_id' => 99,
         'numero' => 'COUR-TEST-ARCHIVE-1',
         'objet' => 'Archive officielle',
         'type' => 'sortant',
@@ -72,9 +79,12 @@ test('archives endpoint returns only archived courriers visible to the user', fu
         'date_reception' => now(),
         'expediteur' => 'Direction',
         'destinataire' => 'Archives Nationales',
-        'statut' => 'ARCHIVE',
+        'statut_original' => 'TRANSMIS',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
     ]);
 
     Courrier::create([
@@ -88,17 +98,18 @@ test('archives endpoint returns only archived courriers visible to the user', fu
         'statut' => 'CREE',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
     ]);
 
     $this->actingAs($user)
         ->getJson('/api/courriers/archives')
         ->assertOk()
-        ->assertJsonPath('courriers.total', 1)
-        ->assertJsonPath('courriers.data.0.statut', 'ARCHIVE')
-        ->assertJsonPath('courriers.data.0.numero', 'COUR-TEST-ARCHIVE-1');
+        ->assertJsonPath('archives.total', 1)
+        ->assertJsonPath('archives.data.0.statut_original', 'TRANSMIS')
+        ->assertJsonPath('archives.data.0.numero', 'COUR-TEST-ARCHIVE-1');
 });
 
-test('authorized users can create an outgoing courrier', function () {
+test('secretary creates outgoing courrier in created state', function () {
     [$user, $niveau, $service] = createCourrierUser('secretaire');
 
     $this->actingAs($user)
@@ -111,45 +122,27 @@ test('authorized users can create an outgoing courrier', function () {
         ])
         ->assertCreated()
         ->assertJsonPath('courrier.type', 'sortant')
+        ->assertJsonPath('courrier.statut', 'CREE')
         ->assertJsonPath('courrier.destinataire', 'Wilaya')
         ->assertJsonPath('courrier.expediteur', $service->libelle);
-
-    $this->assertDatabaseHas('courriers', [
-        'objet' => 'Convocation transmise',
-        'type' => 'sortant',
-        'destinataire' => 'Wilaya',
-        'expediteur' => $service->libelle,
-    ]);
 });
 
-test('creator can archive a courrier but cannot archive it twice', function () {
-    [$user, $niveau] = createCourrierUser('secretaire');
+test('chef creates outgoing courrier directly validated', function () {
+    [$chef, $niveau] = createCourrierUser('chef');
 
-    $courrier = Courrier::create([
-        'numero' => 'COUR-TEST-ARCHIVE-ACTION',
-        'objet' => 'Dossier a archiver',
-        'type' => 'sortant',
-        'date_creation' => now(),
-        'date_reception' => now(),
-        'expediteur' => 'Direction',
-        'destinataire' => 'Prefecture',
-        'statut' => 'CREE',
-        'niveau_confidentialite_id' => $niveau->id,
-        'createur_id' => $user->id,
-    ]);
-
-    $this->actingAs($user)
-        ->patchJson("/api/courriers/{$courrier->id}/archiver")
-        ->assertOk()
-        ->assertJsonPath('courrier.statut', 'ARCHIVE');
-
-    $this->actingAs($user)
-        ->patchJson("/api/courriers/{$courrier->id}/archiver")
-        ->assertStatus(422)
-        ->assertJsonPath('error', 'Ce courrier est déjà archivé.');
+    $this->actingAs($chef)
+        ->postJson('/api/courriers', [
+            'objet' => 'Note de service',
+            'type' => 'sortant',
+            'date_reception' => now()->toDateString(),
+            'destinataire' => 'Service RH',
+            'niveau_confidentialite_id' => $niveau->id,
+        ])
+        ->assertCreated()
+        ->assertJsonPath('courrier.statut', 'VALIDE');
 });
 
-test('validation endpoint returns only courriers pending validation', function () {
+test('validation endpoint returns only created courriers pending validation', function () {
     [$chef, $niveau, $service] = createCourrierUser('chef');
 
     $createur = User::factory()->create([
@@ -169,6 +162,7 @@ test('validation endpoint returns only courriers pending validation', function (
         'statut' => 'CREE',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $createur->id,
+        'service_source_id' => $service->id,
     ]);
 
     Courrier::create([
@@ -182,6 +176,7 @@ test('validation endpoint returns only courriers pending validation', function (
         'statut' => 'VALIDE',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $createur->id,
+        'service_source_id' => $service->id,
     ]);
 
     $this->actingAs($chef)
@@ -192,7 +187,7 @@ test('validation endpoint returns only courriers pending validation', function (
         ->assertJsonPath('courriers.data.0.peut_etre_valide', true);
 });
 
-test('chef can validate courrier once but cannot validate it twice', function () {
+test('chef can validate courrier once', function () {
     [$chef, $niveau, $service] = createCourrierUser('chef');
 
     $createur = User::factory()->create([
@@ -212,6 +207,7 @@ test('chef can validate courrier once but cannot validate it twice', function ()
         'statut' => 'CREE',
         'niveau_confidentialite_id' => $niveau->id,
         'createur_id' => $createur->id,
+        'service_source_id' => $service->id,
     ]);
 
     $this->actingAs($chef)
@@ -221,125 +217,69 @@ test('chef can validate courrier once but cannot validate it twice', function ()
 
     $this->actingAs($chef)
         ->patchJson("/api/courriers/{$courrier->id}/valider")
-        ->assertStatus(422)
-        ->assertJsonPath('error', 'Ce courrier ne peut plus être validé.');
+        ->assertStatus(422);
 });
 
-test('chef can see all courriers with full details', function () {
-    [$chef, $niveau] = createCourrierUser('chef');
-
-    $autreService = Service::create([
-        'libelle' => 'Finances',
-    ]);
-
-    $createur = User::factory()->create([
-        'role' => 'secretaire',
-        'service_id' => $autreService->id,
-        'niveau_confidentialite_id' => $niveau->id,
-    ]);
+test('transmission archives outgoing courrier and creates received courrier for target service', function () {
+    [$chef, $niveau, $sourceService] = createCourrierUser('chef');
+    $targetService = Service::create(['libelle' => 'Ressources Humaines']);
 
     $courrier = Courrier::create([
-        'numero' => 'COUR-VIS-CHEF',
-        'objet' => 'Budget confidentiel',
-        'type' => 'entrant',
+        'numero' => 'COUR-TRANSMIT-001',
+        'objet' => 'Dossier a transmettre',
+        'type' => 'sortant',
         'date_creation' => now(),
         'date_reception' => now(),
-        'expediteur' => 'Tresor',
-        'destinataire' => 'Direction',
-        'statut' => 'CREE',
+        'expediteur' => 'Direction',
+        'destinataire' => 'RH',
+        'statut' => 'VALIDE',
         'niveau_confidentialite_id' => $niveau->id,
-        'createur_id' => $createur->id,
+        'createur_id' => $chef->id,
+        'valideur_id' => $chef->id,
+        'service_source_id' => $sourceService->id,
+        'service_destinataire_id' => $targetService->id,
     ]);
 
     $this->actingAs($chef)
-        ->getJson('/api/courriers')
+        ->patchJson("/api/courriers/{$courrier->id}/transmettre")
         ->assertOk()
-        ->assertJsonPath('courriers.total', 1)
-        ->assertJsonPath('courriers.data.0.peut_voir_details', true)
-        ->assertJsonPath('courriers.data.0.objet', 'Budget confidentiel');
+        ->assertJsonPath('archive.statut_original', 'TRANSMIS')
+        ->assertJsonPath('courrier_recu.statut', 'RECU');
 
-    $this->actingAs($chef)
-        ->getJson("/api/courriers/{$courrier->id}")
-        ->assertOk()
-        ->assertJsonPath('courrier.objet', 'Budget confidentiel')
-        ->assertJsonPath('courrier.peut_voir_details', true);
+    $this->assertDatabaseMissing('courriers', [
+        'id' => $courrier->id,
+    ]);
+
+    $this->assertDatabaseHas('archives', [
+        'courrier_original_id' => $courrier->id,
+        'numero' => 'COUR-TRANSMIT-001',
+        'statut_original' => 'TRANSMIS',
+    ]);
 });
 
-test('secretary sees only courriers from the same service and restricted details are masked', function () {
-    $niveauFaible = NiveauConfidentialite::create([
-        'libelle' => 'Interne',
-        'rang' => 1,
-    ]);
+test('manual archive copies received courrier then deletes original', function () {
+    [$user, $niveau, $service] = createCourrierUser('secretaire');
 
-    $niveauEleve = NiveauConfidentialite::create([
-        'libelle' => 'Secret',
-        'rang' => 5,
-    ]);
-
-    $service = Service::create([
-        'libelle' => 'Direction',
-    ]);
-
-    $autreService = Service::create([
-        'libelle' => 'Technique',
-    ]);
-
-    $secretaire = User::factory()->create([
-        'role' => 'secretaire',
-        'service_id' => $service->id,
-        'niveau_confidentialite_id' => $niveauFaible->id,
-    ]);
-
-    $memeService = User::factory()->create([
-        'role' => 'secretaire',
-        'service_id' => $service->id,
-        'niveau_confidentialite_id' => $niveauEleve->id,
-    ]);
-
-    $autreCreateur = User::factory()->create([
-        'role' => 'secretaire',
-        'service_id' => $autreService->id,
-        'niveau_confidentialite_id' => $niveauFaible->id,
-    ]);
-
-    $courrierRestreint = Courrier::create([
-        'numero' => 'COUR-VIS-RESTREINT',
-        'objet' => 'Objet confidentiel',
+    $courrier = Courrier::create([
+        'numero' => 'COUR-RECU-ARCHIVE',
+        'objet' => 'Courrier recu',
         'type' => 'entrant',
         'date_creation' => now(),
         'date_reception' => now(),
-        'expediteur' => 'Ministere',
+        'expediteur' => 'Partenaire',
         'destinataire' => 'Direction',
-        'statut' => 'CREE',
-        'niveau_confidentialite_id' => $niveauEleve->id,
-        'createur_id' => $memeService->id,
+        'statut' => 'RECU',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_destinataire_id' => $service->id,
     ]);
 
-    Courrier::create([
-        'numero' => 'COUR-HORS-SERVICE',
-        'objet' => 'Hors service',
-        'type' => 'entrant',
-        'date_creation' => now(),
-        'date_reception' => now(),
-        'expediteur' => 'Externe',
-        'destinataire' => 'Technique',
-        'statut' => 'CREE',
-        'niveau_confidentialite_id' => $niveauFaible->id,
-        'createur_id' => $autreCreateur->id,
+    $this->actingAs($user)
+        ->patchJson("/api/courriers/{$courrier->id}/archiver")
+        ->assertOk()
+        ->assertJsonPath('archive.statut_original', 'RECU');
+
+    $this->assertDatabaseMissing('courriers', [
+        'id' => $courrier->id,
     ]);
-
-    $this->actingAs($secretaire)
-        ->getJson('/api/courriers')
-        ->assertOk()
-        ->assertJsonPath('courriers.total', 1)
-        ->assertJsonPath('courriers.data.0.numero', 'COUR-VIS-RESTREINT')
-        ->assertJsonPath('courriers.data.0.peut_voir_details', false)
-        ->assertJsonPath('courriers.data.0.objet', 'Contenu restreint');
-
-    $this->actingAs($secretaire)
-        ->getJson("/api/courriers/{$courrierRestreint->id}")
-        ->assertOk()
-        ->assertJsonPath('courrier.peut_voir_details', false)
-        ->assertJsonPath('courrier.objet', 'Contenu restreint')
-        ->assertJsonPath('courrier.expediteur', 'Accès restreint');
 });

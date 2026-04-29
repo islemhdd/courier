@@ -33,7 +33,7 @@ class AuthServiceProvider extends ServiceProvider
 
         // Gate pour vérifier si un utilisateur peut créer un courrier
         Gate::define('courrier.create', function (User $user) {
-            return $user->estAdmin() || $user->estSecretaire();
+            return $user->peutCreerCourrier();
         });
 
         // Gate pour vérifier si un utilisateur peut voir les détails d'un courrier
@@ -43,26 +43,16 @@ class AuthServiceProvider extends ServiceProvider
 
         // Gate pour archiver un courrier
         Gate::define('courrier.archiver', function (User $user, Courrier $courrier) {
-            return $user->estAdmin() || $courrier->createur_id === $user->id;
+            return $courrier->peutEtreArchivePar($user);
+        });
+
+        Gate::define('courrier.transmettre', function (User $user, Courrier $courrier) {
+            return $courrier->peutEtreTransmisPar($user);
         });
 
         // Gate pour valider un courrier
         Gate::define('courrier.valider', function (User $user, Courrier $courrier) {
-            if (!$user->estChef() && !$user->estAdmin()) {
-                return false;
-            }
-
-            if (!$courrier->estValidable()) {
-                return false;
-            }
-
-            if ($user->estAdmin()) {
-                return true;
-            }
-
-            return $courrier->createur
-                && $courrier->createur_id !== $user->id
-                && $courrier->createur->service_id === $user->service_id;
+            return $courrier->peutEtreValidePar($user);
         });
     }
 }
