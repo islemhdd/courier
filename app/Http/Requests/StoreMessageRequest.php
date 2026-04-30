@@ -30,6 +30,7 @@ class StoreMessageRequest extends FormRequest
     {
         return [
             'destinataire_id' => ['required', 'integer', 'exists:users,id'],
+            'envoyer' => ['sometimes', 'boolean'],
             'contenu' => ['required', 'string'],
             'courrier_id' => ['nullable', 'integer', 'exists:courriers,id'],
         ];

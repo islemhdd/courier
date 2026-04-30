@@ -83,6 +83,13 @@ class StoreCourrierRequest extends FormRequest
                     'Veuillez choisir un service destinataire ou saisir un destinataire.'
                 );
             }
+
+            if ($this->input('type') === 'entrant' && !$this->filled('expediteur')) {
+                $validator->errors()->add(
+                    'expediteur',
+                    'Veuillez saisir un expediteur pour un courrier recu.'
+                );
+            }
         });
     }
 

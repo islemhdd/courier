@@ -133,17 +133,32 @@ class CourrierController extends Controller
         }
 
         $donnees = $request->validated();
+        $type = $donnees['type'] ?? null;
         $serviceDestinataire = $this->resolveServiceDestinataire($donnees);
 
+        if ($type === Courrier::TYPE_ENTRANT) {
+            // For received courriers, the recipient service is the current user's service
+            // (admin can optionally choose another service).
+            if (!$user->estAdmin()) {
+                $serviceDestinataire = $user->service_id ? Service::find($user->service_id) : null;
+            }
+        }
+
         $donnees['numero'] = 'COUR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -8));
-        $donnees['statut'] = ($user->estChef() || $user->estAdmin())
-            ? Courrier::STATUT_VALIDE
-            : Courrier::STATUT_CREE;
+        if ($user->estSecretaire()) {
+            $donnees['statut'] = Courrier::STATUT_CREE;
+        } elseif ($type === Courrier::TYPE_ENTRANT) {
+            $donnees['statut'] = Courrier::STATUT_RECU;
+        } else {
+            $donnees['statut'] = Courrier::STATUT_VALIDE;
+        }
         $donnees['date_creation'] = now();
         $donnees['createur_id'] = $user->id;
-        $donnees['service_source_id'] = $user->service_id;
+        $donnees['service_source_id'] = $type === Courrier::TYPE_SORTANT ? $user->service_id : null;
         $donnees['service_destinataire_id'] = $serviceDestinataire?->id;
-        $donnees['transmission_demandee'] = (bool) ($donnees['transmission_directe'] ?? false);
+        $donnees['transmission_demandee'] = $type === Courrier::TYPE_SORTANT
+            ? (bool) ($donnees['transmission_directe'] ?? false)
+            : false;
         unset($donnees['transmission_directe']);
 
         if (($donnees['type'] ?? null) === Courrier::TYPE_SORTANT) {
@@ -157,6 +172,7 @@ class CourrierController extends Controller
 
         if (($donnees['type'] ?? null) === Courrier::TYPE_ENTRANT) {
             $donnees['destinataire'] = $donnees['destinataire']
+                ?? $serviceDestinataire?->libelle
                 ?? $user->service?->libelle
                 ?? $user->nom_complet
                 ?? $user->name
@@ -402,13 +418,17 @@ class CourrierController extends Controller
         $resultatTransmission = null;
 
         DB::transaction(function () use ($courrier, $user, &$resultatTransmission) {
+            $nouveauStatut = $courrier->type === Courrier::TYPE_ENTRANT
+                ? Courrier::STATUT_RECU
+                : Courrier::STATUT_VALIDE;
+
             $courrier->update([
-                'statut' => Courrier::STATUT_VALIDE,
+                'statut' => $nouveauStatut,
                 'valideur_id' => $user->id,
             ]);
             $courrier->refresh()->load($this->courrierRelations());
 
-            if ($courrier->transmission_demandee) {
+            if ($courrier->type === Courrier::TYPE_SORTANT && $courrier->transmission_demandee) {
                 $resultatTransmission = $this->transmettreEtArchiver(
                     $courrier,
                     $user,

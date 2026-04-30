@@ -77,6 +77,20 @@ test('received messages endpoint returns only recipient messages', function () {
         ->assertJsonPath('messages.data.0.contenu', 'Message recu');
 });
 
+test('destinataires endpoint returns suggestions when query is empty', function () {
+    [$sender, $receiver, $thirdUser] = createMessageFixtures();
+
+    $response = $this->actingAs($sender)
+        ->getJson('/api/messages/destinataires?q=')
+        ->assertOk();
+
+    $ids = collect($response->json('utilisateurs'))->pluck('id')->all();
+
+    expect($ids)->not->toContain($sender->id);
+    expect($ids)->toContain($receiver->id);
+    expect($ids)->toContain($thirdUser->id);
+});
+
 test('user can send and update an unread message', function () {
     [$sender, $receiver, , $courrier] = createMessageFixtures();
 
@@ -85,6 +99,7 @@ test('user can send and update an unread message', function () {
             'destinataire_id' => $receiver->id,
             'contenu' => 'Premier contenu',
             'courrier_id' => $courrier->id,
+            'envoyer' => false,
         ])
         ->assertCreated()
         ->assertJsonPath('data.contenu', 'Premier contenu');
@@ -98,6 +113,24 @@ test('user can send and update an unread message', function () {
         ])
         ->assertOk()
         ->assertJsonPath('data.contenu', 'Contenu mis a jour');
+
+    // Send the draft, then it becomes immutable.
+    $this->actingAs($sender)
+        ->patchJson("/api/messages/{$messageId}/send")
+        ->assertOk()
+        ->assertJsonPath('data.statut', 'ENVOYE');
+
+    $this->actingAs($sender)
+        ->patchJson("/api/messages/{$messageId}", [
+            'contenu' => 'Tentative après envoi',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('error', 'Impossible de modifier un message déjà envoyé.');
+
+    $this->actingAs($sender)
+        ->deleteJson("/api/messages/{$messageId}")
+        ->assertStatus(422)
+        ->assertJsonPath('error', 'Impossible de supprimer un message déjà envoyé.');
 });
 
 test('recipient can mark a message as read and sender can no longer edit it', function () {
@@ -107,6 +140,7 @@ test('recipient can mark a message as read and sender can no longer edit it', fu
         'contenu' => 'Lecture requise',
         'date_envoi' => now(),
         'lu' => false,
+        'statut' => 'ENVOYE',
         'emetteur_id' => $sender->id,
         'destinataire_id' => $receiver->id,
     ]);
@@ -121,7 +155,7 @@ test('recipient can mark a message as read and sender can no longer edit it', fu
             'contenu' => 'Tentative après lecture',
         ])
         ->assertStatus(422)
-        ->assertJsonPath('error', 'Impossible de modifier un message déjà lu.');
+        ->assertJsonPath('error', 'Impossible de modifier un message déjà envoyé.');
 });
 
 test('sender or recipient can delete a message', function () {
@@ -131,11 +165,12 @@ test('sender or recipient can delete a message', function () {
         'contenu' => 'Suppression',
         'date_envoi' => now(),
         'lu' => false,
+        'statut' => 'CREE',
         'emetteur_id' => $sender->id,
         'destinataire_id' => $receiver->id,
     ]);
 
-    $this->actingAs($receiver)
+    $this->actingAs($sender)
         ->deleteJson("/api/messages/{$message->id}")
         ->assertOk();
 

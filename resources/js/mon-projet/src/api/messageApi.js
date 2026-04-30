@@ -27,6 +27,10 @@ export const messageApi = {
     return api.patch(`/messages/${id}/read`)
   },
 
+  sendDraft(id) {
+    return api.patch(`/messages/${id}/send`)
+  },
+
   searchUsers(q) {
     return api.get('/messages/destinataires', {
       params: { q },

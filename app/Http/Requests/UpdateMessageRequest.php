@@ -21,6 +21,7 @@ class UpdateMessageRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'destinataire_id' => ['sometimes', 'integer', 'exists:users,id'],
             'contenu' => ['required', 'string'],
             'courrier_id' => ['nullable', 'integer', 'exists:courriers,id'],
         ];
@@ -29,6 +30,8 @@ class UpdateMessageRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'destinataire_id.integer' => 'L\'identifiant du destinataire doit être un entier.',
+            'destinataire_id.exists' => 'Le destinataire sélectionné n\'existe pas.',
             'contenu.required' => 'Le contenu du message est obligatoire.',
             'courrier_id.integer' => 'L\'identifiant du courrier doit être un entier.',
             'courrier_id.exists' => 'Le courrier sélectionné n\'existe pas.',

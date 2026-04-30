@@ -107,10 +107,6 @@ export default function Messages() {
       ])
     }
 
-    if (hasInitialized.current && mailbox === 'recu') {
-      return
-    }
-
     hasInitialized.current = true
     void initializeMailbox()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,6 +199,8 @@ export default function Messages() {
     setUsers([])
     setFormError('')
     setComposerOpen(true)
+    // Load default recipient suggestions (API returns active users excluding self).
+    void handleUserSearch('')
   }
 
   function openEditor(message) {
@@ -224,6 +222,25 @@ export default function Messages() {
 
     if (editingMessage) return
 
+    // If the user edits the search text after having selected a recipient,
+    // clear the selection to avoid sending a stale destinataire_id.
+    setForm((current) => {
+      if (!current.destinataire_id) return current
+      if (query.trim() === current.destinataire_label.trim()) return current
+      return { ...current, destinataire_id: '', destinataire_label: '' }
+    })
+
+    if (query.trim().length === 0) {
+      try {
+        const response = await messageApi.searchUsers('')
+        setUsers(response.data.utilisateurs || [])
+      } catch (err) {
+        console.error(err)
+        setUsers([])
+      }
+      return
+    }
+
     if (query.trim().length < 2) {
       setUsers([])
       return
@@ -244,21 +261,46 @@ export default function Messages() {
       setSubmitting(true)
       setFormError('')
 
+      const submitAction =
+        event?.nativeEvent?.submitter?.dataset?.action === 'save'
+          ? 'save'
+          : 'send'
+
+      if (!editingMessage) {
+        const destinataireId = Number.parseInt(form.destinataire_id, 10)
+        if (!Number.isFinite(destinataireId)) {
+          setFormError('Veuillez sélectionner un destinataire dans la liste.')
+          return
+        }
+      }
+
       const payload = {
         contenu: form.contenu,
         courrier_id: form.courrier_id || null,
       }
 
-      if (!editingMessage) {
-        payload.destinataire_id = Number(form.destinataire_id)
-      }
+      let response
 
-      const response = editingMessage
-        ? await messageApi.update(editingMessage.id, payload)
-        : await messageApi.send({
-            ...payload,
-            destinataire_id: Number(form.destinataire_id),
-          })
+      if (editingMessage) {
+        // Draft editing only.
+        response = await messageApi.update(editingMessage.id, payload)
+
+        if (submitAction === 'send') {
+          response = await messageApi.sendDraft(editingMessage.id)
+        }
+      } else if (submitAction === 'save') {
+        response = await messageApi.send({
+          ...payload,
+          destinataire_id: Number.parseInt(form.destinataire_id, 10),
+          envoyer: false,
+        })
+      } else {
+        response = await messageApi.send({
+          ...payload,
+          destinataire_id: Number.parseInt(form.destinataire_id, 10),
+          envoyer: true,
+        })
+      }
 
       const savedMessage = response.data.data
 
@@ -267,10 +309,13 @@ export default function Messages() {
       setForm(initialForm)
       setSelectedMessage(savedMessage)
 
-      if (mailbox !== 'envoye') {
-        setMailbox('envoye')
+      const targetMailbox =
+        savedMessage?.statut === 'CREE' ? 'brouillon' : 'envoye'
+
+      if (mailbox !== targetMailbox) {
+        setMailbox(targetMailbox)
       } else {
-        await loadMessages({ type: 'envoye' })
+        await loadMessages({ type: targetMailbox })
       }
     } catch (err) {
       console.error(err)
@@ -356,6 +401,18 @@ export default function Messages() {
                 }`}
               >
                 Envoyés
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMailbox('brouillon')}
+                className={`h-12 rounded-2xl px-4 text-sm font-semibold ${
+                  mailbox === 'brouillon'
+                    ? 'bg-slate-950 text-white'
+                    : 'border border-slate-200 bg-white text-slate-700'
+                }`}
+              >
+                Brouillons
               </button>
 
               <label className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
@@ -494,7 +551,8 @@ export default function Messages() {
               destinataire_label: getUserLabel(user),
             }))
             setUserSearch(getUserLabel(user))
-            setUsers([user])
+            // Close the dropdown after selection; user can type again to re-search.
+            setUsers([])
           }}
           onChange={(field, value) =>
             setForm((current) => ({
@@ -558,9 +616,13 @@ function MessagesTable({
                 }`}
               >
                 <td className="px-5 py-4">
-                  <InlineBadge tone={message.lu ? 'slate' : 'emerald'}>
-                    {message.lu ? 'Lu' : 'Non lu'}
-                  </InlineBadge>
+                  {mailbox === 'brouillon' || message.statut === 'CREE' ? (
+                    <InlineBadge tone="slate">Brouillon</InlineBadge>
+                  ) : (
+                    <InlineBadge tone={message.lu ? 'slate' : 'emerald'}>
+                      {message.lu ? 'Lu' : 'Non lu'}
+                    </InlineBadge>
+                  )}
                 </td>
 
                 <td className="px-5 py-4 font-medium text-slate-800">
@@ -605,7 +667,9 @@ function MessageDetails({
     )
   }
 
-  const canEdit = mailbox === 'envoye' && !message.lu
+  const isDraft = message.statut === 'CREE' || mailbox === 'brouillon'
+  const canEdit = mailbox === 'brouillon' && isDraft
+  const canDelete = mailbox === 'brouillon' && isDraft
 
   return (
     <aside className="card-lift rounded-[28px] border p-6">
@@ -616,7 +680,11 @@ function MessageDetails({
           </div>
 
           <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
-            {mailbox === 'recu' ? 'Message reçu' : 'Message envoyé'}
+            {mailbox === 'recu'
+              ? 'Message reçu'
+              : mailbox === 'brouillon'
+                ? 'Brouillon'
+                : 'Message envoyé'}
           </h3>
 
           <p className="mt-2 text-sm text-slate-500">
@@ -624,9 +692,11 @@ function MessageDetails({
           </p>
         </div>
 
-        <InlineBadge tone={message.lu ? 'slate' : 'emerald'}>
-          {message.lu ? 'Lu' : 'Non lu'}
-        </InlineBadge>
+        {mailbox !== 'brouillon' && (
+          <InlineBadge tone={message.lu ? 'slate' : 'emerald'}>
+            {message.lu ? 'Lu' : 'Non lu'}
+          </InlineBadge>
+        )}
       </div>
 
       <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
@@ -676,15 +746,17 @@ function MessageDetails({
           </button>
         )}
 
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={actionLoading}
-          className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <Trash2 size={16} />
-          Supprimer
-        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={actionLoading}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Trash2 size={16} />
+            Supprimer
+          </button>
+        )}
       </div>
     </aside>
   )
@@ -704,6 +776,12 @@ function ComposerModal({
   onChange,
   onSubmit,
 }) {
+  const trimmedSearch = userSearch.trim()
+  const showSearchTooShort =
+    !editingMessage && !form.destinataire_id && trimmedSearch.length > 0 && trimmedSearch.length < 2
+  const showNoResults =
+    !editingMessage && !form.destinataire_id && trimmedSearch.length >= 2 && users.length === 0
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
       <form
@@ -753,7 +831,19 @@ function ComposerModal({
               required
             />
 
-            {!editingMessage && users.length > 0 && (
+            {showSearchTooShort && (
+              <p className="mt-2 text-xs font-medium text-slate-500">
+                Tapez au moins 2 caractères pour rechercher, ou choisissez dans les suggestions.
+              </p>
+            )}
+
+            {showNoResults && (
+              <p className="mt-2 text-xs font-medium text-slate-500">
+                Aucun utilisateur trouvé pour cette recherche.
+              </p>
+            )}
+
+            {!editingMessage && !form.destinataire_id && users.length > 0 && (
               <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200">
                 {users.map((user) => (
                   <button
@@ -831,10 +921,20 @@ function ComposerModal({
           <button
             type="submit"
             disabled={submitting}
+            data-action="save"
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {editingMessage ? 'Enregistrer' : 'Enregistrer'}
+          </button>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            data-action="send"
             className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <Send size={16} />
-            {editingMessage ? 'Mettre à jour' : 'Envoyer'}
+            {editingMessage ? 'Envoyer' : 'Envoyer'}
           </button>
         </div>
       </form>

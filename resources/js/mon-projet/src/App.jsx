@@ -18,6 +18,7 @@ import {
 import Dashboard from './pages/Dashboard'
 import Messages from './pages/Messages'
 import Archives from './pages/Archives'
+import ReceivedCourriers from './pages/ReceivedCourriers'
 import SentCourriers from './pages/SentCourriers'
 import Validation from './pages/Validation'
 import UsersPage from './pages/Users'
@@ -124,6 +125,7 @@ function AuthenticatedApp() {
 
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/recus" element={<ReceivedCourriers />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/archives" element={<Archives />} />
               <Route path="/validation" element={<Validation />} />
@@ -159,6 +161,10 @@ function SidebarContent({ user, onLogout, onNavigate }) {
 
       <nav className="space-y-1">
         <MenuLink to="/" icon={<Inbox size={18} />} onNavigate={onNavigate}>
+          Tableau de bord
+        </MenuLink>
+
+        <MenuLink to="/recus" icon={<FileText size={18} />} onNavigate={onNavigate}>
           Courriers recus
         </MenuLink>
 

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
  * @property string $contenu
  * @property \Carbon\Carbon $date_envoi
  * @property bool $lu
+ * @property string $statut
  * @property int $emetteur_id
  * @property int $destinataire_id
  * @property int|null $courrier_id
@@ -21,6 +22,9 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class Message extends Model
 {
+    public const STATUT_CREE = 'CREE';
+    public const STATUT_ENVOYE = 'ENVOYE';
+
     /**
      * Les attributs pouvant être assignés en masse.
      *
@@ -30,6 +34,7 @@ class Message extends Model
         'contenu',
         'date_envoi',
         'lu',
+        'statut',
         'emetteur_id',
         'destinataire_id',
         'courrier_id',
@@ -104,14 +109,6 @@ class Message extends Model
     }
 
     /**
-     * Mutateur : définit la date d'envoi par défaut.
-     */
-    public function setDateEnvoiAttribute(?string $value): void
-    {
-        $this->attributes['date_envoi'] = $value ?? now();
-    }
-
-    /**
      * Mutateur : définit le statut lu par défaut.
      */
     public function setLuAttribute(?bool $value): void
@@ -133,6 +130,16 @@ class Message extends Model
     public function estLu(): bool
     {
         return $this->lu;
+    }
+
+    public function estBrouillon(): bool
+    {
+        return $this->statut === self::STATUT_CREE;
+    }
+
+    public function estEnvoye(): bool
+    {
+        return $this->statut === self::STATUT_ENVOYE;
     }
 
     /**

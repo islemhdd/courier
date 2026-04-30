@@ -39,6 +39,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/{message}', [MessageController::class, 'show']);
         Route::patch('/{message}', [MessageController::class, 'update']);
         Route::delete('/{message}', [MessageController::class, 'destroy']);
+        Route::patch('/{message}/send', [MessageController::class, 'sendDraft']);
         Route::patch('/{message}/read', [MessageController::class, 'markRead']);
     });
 
