@@ -5,9 +5,7 @@ use App\Models\Courrier;
 use App\Models\NiveauConfidentialite;
 use App\Models\Service;
 use App\Models\User;
-use Illuminate\Foundation\Testing\RefreshDatabase;
-
-uses(Tests\TestCase::class, RefreshDatabase::class);
+use Illuminate\Support\Facades\Artisan;
 
 function createCourrierUser(string $role = 'admin'): array
 {
@@ -281,5 +279,316 @@ test('manual archive copies received courrier then deletes original', function (
 
     $this->assertDatabaseMissing('courriers', [
         'id' => $courrier->id,
+    ]);
+});
+
+test('restricted courrier keeps metadata visible but hides detailed access markers', function () {
+    $niveauBas = NiveauConfidentialite::create([
+        'libelle' => 'Interne',
+        'rang' => 1,
+    ]);
+
+    $niveauHaut = NiveauConfidentialite::create([
+        'libelle' => 'Secret',
+        'rang' => 5,
+    ]);
+
+    $service = Service::create([
+        'libelle' => 'Finances',
+    ]);
+
+    $createur = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveauHaut->id,
+    ]);
+
+    $lecteur = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveauBas->id,
+    ]);
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-RESTREINT-001',
+        'objet' => 'Rapport budgetaire detaille',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction Financiere',
+        'destinataire' => 'Tresor',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveauHaut->id,
+        'createur_id' => $createur->id,
+        'service_source_id' => $service->id,
+        'chemin_fichier' => 'courriers/rapport.pdf',
+    ]);
+
+    $this->actingAs($lecteur)
+        ->getJson("/api/courriers/{$courrier->id}")
+        ->assertOk()
+        ->assertJsonPath('courrier.peut_voir_details', false)
+        ->assertJsonPath('courrier.contenu_restreint', true)
+        ->assertJsonPath('courrier.numero', 'COUR-RESTREINT-001')
+        ->assertJsonPath('courrier.objet', 'Rapport budgetaire detaille')
+        ->assertJsonPath('courrier.chemin_fichier', null);
+});
+
+test('secretary can delete only own courrier in created or non validated state', function () {
+    [$user, $niveau, $service] = createCourrierUser('secretaire');
+
+    $autre = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrierNonValide = Courrier::create([
+        'numero' => 'COUR-NON-VALID-DEL',
+        'objet' => 'Retour pour correction',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Wilaya',
+        'statut' => 'NON_VALIDE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $service->id,
+    ]);
+
+    $courrierValide = Courrier::create([
+        'numero' => 'COUR-VALID-DEL',
+        'objet' => 'Deja valide',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Wilaya',
+        'statut' => 'VALIDE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $service->id,
+    ]);
+
+    $courrierAutre = Courrier::create([
+        'numero' => 'COUR-AUTRE-DEL',
+        'objet' => 'Courrier autre createur',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Wilaya',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $autre->id,
+        'service_source_id' => $service->id,
+    ]);
+
+    $this->actingAs($user)
+        ->deleteJson("/api/courriers/{$courrierNonValide->id}")
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->deleteJson("/api/courriers/{$courrierValide->id}")
+        ->assertStatus(403);
+
+    $this->actingAs($user)
+        ->deleteJson("/api/courriers/{$courrierAutre->id}")
+        ->assertStatus(403);
+});
+
+test('validated courrier can be updated by chef but not by secretary', function () {
+    [$chef, $niveau, $service] = createCourrierUser('chef');
+
+    $secretaire = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-VALID-UPD',
+        'objet' => 'Objet initial',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Wilaya',
+        'statut' => 'VALIDE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $secretaire->id,
+        'service_source_id' => $service->id,
+        'valideur_id' => $chef->id,
+    ]);
+
+    $this->actingAs($secretaire)
+        ->patchJson("/api/courriers/{$courrier->id}", [
+            'objet' => 'Objet modifie secretaire',
+        ])
+        ->assertStatus(403);
+
+    $this->actingAs($chef)
+        ->patchJson("/api/courriers/{$courrier->id}", [
+            'objet' => 'Objet modifie chef',
+        ])
+        ->assertOk()
+        ->assertJsonPath('courrier.objet', 'Objet modifie chef');
+});
+
+test('chef can mark courrier as non validated', function () {
+    [$chef, $niveau, $service] = createCourrierUser('chef');
+
+    $secretaire = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $service->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-NON-VALIDATE',
+        'objet' => 'Dossier a corriger',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $secretaire->id,
+        'service_source_id' => $service->id,
+    ]);
+
+    $this->actingAs($chef)
+        ->patchJson("/api/courriers/{$courrier->id}/non-valider")
+        ->assertOk()
+        ->assertJsonPath('courrier.statut', 'NON_VALIDE');
+});
+
+test('chef of destination service can see and validate courrier in validation queue', function () {
+    [$chefDestination, $niveau, $serviceDestination] = createCourrierUser('chef');
+    $serviceSource = Service::create(['libelle' => 'Service Source']);
+
+    $secretaireSource = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $serviceSource->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-DEST-VALID',
+        'objet' => 'Courrier pour le service destinataire',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Service Source',
+        'destinataire' => $serviceDestination->libelle,
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $secretaireSource->id,
+        'service_source_id' => $serviceSource->id,
+        'service_destinataire_id' => $serviceDestination->id,
+    ]);
+
+    $this->actingAs($chefDestination)
+        ->getJson('/api/courriers/validation')
+        ->assertOk()
+        ->assertJsonPath('courriers.total', 1)
+        ->assertJsonPath('courriers.data.0.numero', 'COUR-DEST-VALID')
+        ->assertJsonPath('courriers.data.0.peut_etre_valide', true);
+
+    $this->actingAs($chefDestination)
+        ->patchJson("/api/courriers/{$courrier->id}/valider")
+        ->assertOk()
+        ->assertJsonPath('courrier.statut', 'VALIDE');
+});
+
+test('chef sees only courriers of his own service', function () {
+    [$chef, $niveau, $serviceChef] = createCourrierUser('chef');
+    $autreService = Service::create(['libelle' => 'Autre Service']);
+
+    $createurChef = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $serviceChef->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $createurAutre = User::factory()->create([
+        'role' => 'secretaire',
+        'service_id' => $autreService->id,
+        'niveau_confidentialite_id' => $niveau->id,
+    ]);
+
+    $courrierVisible = Courrier::create([
+        'numero' => 'COUR-CHEF-VISIBLE',
+        'objet' => 'Courrier du service du chef',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $createurChef->id,
+        'service_source_id' => $serviceChef->id,
+    ]);
+
+    $courrierCache = Courrier::create([
+        'numero' => 'COUR-CHEF-CACHE',
+        'objet' => 'Courrier hors service',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Autre Direction',
+        'destinataire' => 'Prefecture',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $createurAutre->id,
+        'service_source_id' => $autreService->id,
+    ]);
+
+    $this->actingAs($chef)
+        ->getJson('/api/courriers')
+        ->assertOk()
+        ->assertJsonPath('courriers.total', 1)
+        ->assertJsonPath('courriers.data.0.numero', 'COUR-CHEF-VISIBLE');
+
+    $this->actingAs($chef)
+        ->getJson("/api/courriers/{$courrierVisible->id}")
+        ->assertOk();
+
+    $this->actingAs($chef)
+        ->getJson("/api/courriers/{$courrierCache->id}")
+        ->assertStatus(403);
+});
+
+test('monthly command archives validated courriers automatically', function () {
+    [$chef, $niveau, $service] = createCourrierUser('chef');
+
+    $courrier = Courrier::create([
+        'numero' => 'COUR-MONTHLY-VALID',
+        'objet' => 'Courrier valide a archiver',
+        'type' => 'sortant',
+        'date_creation' => now()->subDays(10),
+        'date_reception' => now()->subDays(10),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut' => 'VALIDE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $chef->id,
+        'valideur_id' => $chef->id,
+        'service_source_id' => $service->id,
+    ]);
+
+    Artisan::call('courriers:archiver-valides');
+
+    $this->assertDatabaseMissing('courriers', [
+        'id' => $courrier->id,
+    ]);
+
+    $this->assertDatabaseHas('archives', [
+        'courrier_original_id' => $courrier->id,
+        'numero' => 'COUR-MONTHLY-VALID',
+        'statut_original' => 'VALIDE',
     ]);
 });

@@ -8,8 +8,8 @@ import {
   Menu,
   MessageSquare,
   Send,
-  ShieldCheck,
   ShieldAlert,
+  ShieldCheck,
   UserRound,
   Users,
   X,
@@ -20,6 +20,7 @@ import Messages from './pages/Messages'
 import Archives from './pages/Archives'
 import SentCourriers from './pages/SentCourriers'
 import Validation from './pages/Validation'
+import UsersPage from './pages/Users'
 import Login from './pages/Login'
 import { AuthProvider } from './context/AuthProvider'
 import { useAuth } from './context/auth-context'
@@ -126,18 +127,8 @@ function AuthenticatedApp() {
               <Route path="/messages" element={<Messages />} />
               <Route path="/archives" element={<Archives />} />
               <Route path="/validation" element={<Validation />} />
-
-              <Route
-                path="/envoyes"
-                element={<SentCourriers />}
-              />
-
-              <Route
-                path="/utilisateurs"
-                element={
-                  <Page title="Utilisateurs" text="Liste des utilisateurs." />
-                }
-              />
+              <Route path="/envoyes" element={<SentCourriers />} />
+              <Route path="/utilisateurs" element={<UsersPage />} />
             </Routes>
           </main>
         </div>
@@ -147,6 +138,10 @@ function AuthenticatedApp() {
 }
 
 function SidebarContent({ user, onLogout, onNavigate }) {
+  const canValidateCourriers =
+    user?.permissions?.peut_valider_courriers === true ||
+    ['chef', 'admin'].includes(String(user?.role || '').trim().toLowerCase())
+
   return (
     <>
       <div className="mb-8 flex items-center gap-3 px-2">
@@ -183,7 +178,7 @@ function SidebarContent({ user, onLogout, onNavigate }) {
           Archives
         </MenuLink>
 
-        {(user?.role === 'chef' || user?.role === 'admin') && (
+        {canValidateCourriers && (
           <MenuLink
             to="/validation"
             icon={<ShieldAlert size={18} />}
@@ -193,13 +188,15 @@ function SidebarContent({ user, onLogout, onNavigate }) {
           </MenuLink>
         )}
 
-        <MenuLink
-          to="/utilisateurs"
-          icon={<Users size={18} />}
-          onNavigate={onNavigate}
-        >
-          Utilisateurs
-        </MenuLink>
+        {user?.permissions?.peut_gerer_utilisateurs && (
+          <MenuLink
+            to="/utilisateurs"
+            icon={<Users size={18} />}
+            onNavigate={onNavigate}
+          >
+            Utilisateurs
+          </MenuLink>
+        )}
       </nav>
 
       <div className="mt-auto pt-6">
@@ -278,16 +275,6 @@ function LoadingScreen() {
         <div className="h-3 w-3 animate-pulse rounded-full bg-emerald-500" />
         Verification de la session...
       </div>
-    </div>
-  )
-}
-
-function Page({ title, text }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="text-2xl font-semibold text-slate-950">{title}</h1>
-
-      <p className="mt-2 text-sm text-slate-500">{text}</p>
     </div>
   )
 }

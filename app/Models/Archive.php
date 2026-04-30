@@ -42,11 +42,7 @@ class Archive extends Model
     ];
 
     protected $appends = [
-        'est_accessible',
         'url_fichier',
-        'peut_voir_details',
-        'peut_voir_existence',
-        'contenu_restreint',
     ];
 
     public function niveauConfidentialite(): BelongsTo
@@ -86,8 +82,18 @@ class Archive extends Model
 
     public function scopeVisiblePourUser(Builder $query, User $user): Builder
     {
-        if ($user->estAdmin() || $user->estChef()) {
+        if ($user->estAdmin()) {
             return $query;
+        }
+
+        if ($user->estChef()) {
+            return $query->where(function (Builder $subQuery) use ($user) {
+                $subQuery->where('service_source_id', $user->service_id)
+                    ->orWhere('service_destinataire_id', $user->service_id)
+                    ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
+                        $userQuery->where('service_id', $user->service_id);
+                    });
+            });
         }
 
         if ($user->estSecretaire()) {
@@ -133,8 +139,12 @@ class Archive extends Model
 
     public function peutVoirExistencePar(User $user): bool
     {
-        if ($user->estAdmin() || $user->estChef()) {
+        if ($user->estAdmin()) {
             return true;
+        }
+
+        if ($user->estChef()) {
+            return $this->appartientAuPerimetreDe($user);
         }
 
         return $user->estSecretaire() && $this->appartientAuPerimetreDe($user);
@@ -142,8 +152,12 @@ class Archive extends Model
 
     public function peutEtreVuEnDetailPar(User $user): bool
     {
-        if ($user->estAdmin() || $user->estChef()) {
+        if ($user->estAdmin()) {
             return true;
+        }
+
+        if ($user->estChef()) {
+            return $this->appartientAuPerimetreDe($user);
         }
 
         return $user->estSecretaire()
@@ -158,6 +172,10 @@ class Archive extends Model
 
     public function getEstAccessibleAttribute(): bool
     {
+        if (array_key_exists('est_accessible', $this->attributes)) {
+            return (bool) $this->attributes['est_accessible'];
+        }
+
         $user = Auth::user();
 
         return $user ? $this->peutEtreVuEnDetailPar($user) : false;
@@ -165,11 +183,19 @@ class Archive extends Model
 
     public function getPeutVoirDetailsAttribute(): bool
     {
+        if (array_key_exists('peut_voir_details', $this->attributes)) {
+            return (bool) $this->attributes['peut_voir_details'];
+        }
+
         return $this->est_accessible;
     }
 
     public function getPeutVoirExistenceAttribute(): bool
     {
+        if (array_key_exists('peut_voir_existence', $this->attributes)) {
+            return (bool) $this->attributes['peut_voir_existence'];
+        }
+
         $user = Auth::user();
 
         return $user ? $this->peutVoirExistencePar($user) : false;
@@ -177,6 +203,10 @@ class Archive extends Model
 
     public function getContenuRestreintAttribute(): bool
     {
+        if (array_key_exists('contenu_restreint', $this->attributes)) {
+            return (bool) $this->attributes['contenu_restreint'];
+        }
+
         return !$this->est_accessible;
     }
 

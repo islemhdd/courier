@@ -281,7 +281,7 @@ class CourrierController extends Controller
 
         if (!$courrier->peutEtreSupprimePar($user)) {
             return response()->json([
-                'error' => 'Seul un courrier a l\'etat CREE peut etre supprime par un utilisateur autorise.',
+                'error' => 'Seul le secretaire createur peut supprimer un courrier a l\'etat CREE ou NON_VALIDE. Un courrier VALIDE, TRANSMIS, RECU ou ARCHIVE ne peut pas etre supprime.',
             ], 403);
         }
 
@@ -435,6 +435,36 @@ class CourrierController extends Controller
         ]);
     }
 
+    public function nonValider(Courrier $courrier, Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $courrier->load($this->courrierRelations());
+
+        if (!$courrier->estValidable()) {
+            return response()->json([
+                'error' => 'Ce courrier ne peut plus etre marque comme non valide.',
+            ], 422);
+        }
+
+        if (!$courrier->peutEtreNonValidePar($user)) {
+            return response()->json([
+                'error' => 'Vous n\'avez pas le droit de marquer ce courrier comme non valide.',
+            ], 403);
+        }
+
+        $courrier->update([
+            'statut' => Courrier::STATUT_NON_VALIDE,
+            'valideur_id' => $user->id,
+        ]);
+
+        $courrier->refresh()->load($this->courrierRelations());
+
+        return response()->json([
+            'message' => 'Courrier marque comme non valide.',
+            'courrier' => $this->enrichCourrier($courrier, $user),
+        ]);
+    }
+
     private function respondWithCourriers(
         Request $request,
         bool $onlyValidation = false,
@@ -455,7 +485,7 @@ class CourrierController extends Controller
 
         $query = Courrier::with($this->courrierRelations())
             ->visiblePourUser($user)
-            ->when($onlyValidation, fn($q) => $q->enValidation())
+            ->when($onlyValidation, fn($q) => $q->validablesPourUser($user))
             ->when($filtres['q'] ?? null, function ($query, $value) {
                 $query->where(function ($subQuery) use ($value) {
                     $subQuery->where('numero', 'like', '%' . $value . '%')
@@ -477,7 +507,7 @@ class CourrierController extends Controller
             $query->statut($filtres['statut']);
         }
 
-        $courriers = $query->paginate(15);
+        $courriers = $query->paginate(5);
 
         $courriers->getCollection()->transform(function (Courrier $courrier) use ($user) {
             return $this->enrichCourrier($courrier, $user);
@@ -584,17 +614,16 @@ class CourrierController extends Controller
     {
         $courrier->peut_voir_details = $user ? $courrier->peutEtreVuEnDetailPar($user) : false;
         $courrier->peut_voir_existence = $user ? $courrier->peutVoirExistencePar($user) : false;
+        $courrier->est_accessible = $courrier->peut_voir_details;
         $courrier->peut_etre_valide = $user ? $courrier->peutEtreValidePar($user) : false;
         $courrier->peut_etre_modifie = $user ? $courrier->peutEtreModifiePar($user) : false;
         $courrier->peut_etre_supprime = $user ? $courrier->peutEtreSupprimePar($user) : false;
         $courrier->peut_etre_archive = $user ? $courrier->peutEtreArchivePar($user) : false;
         $courrier->peut_etre_transmis = $user ? $courrier->peutEtreTransmisPar($user) : false;
+        $courrier->peut_etre_non_valide = $user ? $courrier->peutEtreNonValidePar($user) : false;
         $courrier->contenu_restreint = !$courrier->peut_voir_details;
 
         if (!$courrier->peut_voir_details) {
-            $courrier->objet = 'Contenu restreint';
-            $courrier->expediteur = 'Acces restreint';
-            $courrier->destinataire = 'Acces restreint';
             $courrier->chemin_fichier = null;
         }
 
@@ -605,6 +634,7 @@ class CourrierController extends Controller
     {
         $archive->peut_voir_details = $user ? $archive->peutEtreVuEnDetailPar($user) : false;
         $archive->peut_voir_existence = $user ? $archive->peutVoirExistencePar($user) : false;
+        $archive->est_accessible = $archive->peut_voir_details;
         $archive->peut_etre_supprime = $user ? $archive->peutEtreSupprimePar($user) : false;
         $archive->contenu_restreint = !$archive->peut_voir_details;
 

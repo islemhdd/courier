@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Courrier;
 use App\Models\NiveauConfidentialite;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -25,11 +26,11 @@ class UpdateCourrierRequest extends FormRequest
             'type' => ['sometimes', 'required', 'string', 'max:20', Rule::in(['entrant', 'sortant'])],
             'date_reception' => ['sometimes', 'required', 'date'],
             'expediteur' => ['sometimes', 'nullable', 'required_if:type,entrant', 'string', 'max:100'],
-            'destinataire' => ['sometimes', 'nullable', 'required_if:type,sortant', 'string', 'max:100'],
+            'destinataire' => ['sometimes', 'nullable', 'string', 'max:100'],
             'niveau_confidentialite_id' => ['sometimes', 'required', 'integer', 'exists:niveau_confidentialites,id'],
             'service_destinataire_id' => ['sometimes', 'nullable', 'integer', 'exists:services,id'],
             'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
-            'statut' => ['sometimes', 'string', Rule::in(['CREE', 'VALIDE', 'TRANSMIS', 'RECU'])],
+            'statut' => ['sometimes', 'string', Rule::in(Courrier::STATUTS)],
         ];
     }
 
@@ -44,12 +45,11 @@ class UpdateCourrierRequest extends FormRequest
             'date_reception.date' => 'La date de reception doit etre une date valide.',
             'expediteur.required_if' => 'L\'expediteur est obligatoire pour un courrier entrant.',
             'expediteur.max' => 'L\'expediteur ne peut pas depasser 100 caracteres.',
-            'destinataire.required_if' => 'Le destinataire est obligatoire pour un courrier sortant.',
             'destinataire.max' => 'Le destinataire ne peut pas depasser 100 caracteres.',
             'niveau_confidentialite_id.required' => 'Le niveau de confidentialite est obligatoire.',
             'niveau_confidentialite_id.exists' => 'Le niveau de confidentialite selectionne n\'existe pas.',
             'service_destinataire_id.exists' => 'Le service destinataire selectionne n\'existe pas.',
-            'statut.in' => 'Le statut doit etre CREE, VALIDE, TRANSMIS ou RECU.',
+            'statut.in' => 'Le statut doit etre CREE, NON_VALIDE, VALIDE, TRANSMIS ou RECU.',
             'fichier.file' => 'Le fichier doit etre un fichier valide.',
             'fichier.mimes' => 'Le fichier doit etre au format PDF, DOC, DOCX, JPG, JPEG ou PNG.',
             'fichier.max' => 'La taille du fichier ne peut pas depasser 10 Mo.',
@@ -60,6 +60,7 @@ class UpdateCourrierRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $user = $this->user();
+            $courrier = $this->route('courrier');
 
             if (!$user) {
                 return;
@@ -67,17 +68,32 @@ class UpdateCourrierRequest extends FormRequest
 
             $niveauId = $this->input('niveau_confidentialite_id');
 
-            if (!$niveauId) {
-                return;
+            if ($niveauId) {
+                $niveauChoisi = NiveauConfidentialite::find($niveauId);
+                $niveauUser = $user->niveauConfidentialite;
+
+                if ($niveauChoisi && $niveauUser && $niveauChoisi->rang > $niveauUser->rang) {
+                    $validator->errors()->add(
+                        'niveau_confidentialite_id',
+                        'Vous ne pouvez pas choisir un niveau de confidentialite superieur au votre.'
+                    );
+                }
             }
 
-            $niveauChoisi = NiveauConfidentialite::find($niveauId);
-            $niveauUser = $user->niveauConfidentialite;
+            $type = $this->input('type') ?? $courrier?->type;
+            $destinataire = $this->input('destinataire');
+            $serviceDestinataire = $this->input('service_destinataire_id');
 
-            if ($niveauChoisi && $niveauUser && $niveauChoisi->rang > $niveauUser->rang) {
+            if (
+                $type === 'sortant'
+                && empty($destinataire)
+                && empty($serviceDestinataire)
+                && empty($courrier?->destinataire)
+                && empty($courrier?->service_destinataire_id)
+            ) {
                 $validator->errors()->add(
-                    'niveau_confidentialite_id',
-                    'Vous ne pouvez pas choisir un niveau de confidentialite superieur au votre.'
+                    'destinataire',
+                    'Veuillez choisir un service destinataire ou saisir un destinataire.'
                 );
             }
         });

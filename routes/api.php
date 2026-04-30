@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthenticatedSessionController;
 use App\Http\Controllers\CourrierController;
 use App\Http\Controllers\MessageController;
+use App\Http\Controllers\ServiceController;
+use App\Http\Controllers\UserController;
 
 Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 
@@ -24,6 +26,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{courrier}/archiver', [CourrierController::class, 'archiver']);
         Route::patch('/{courrier}/transmettre', [CourrierController::class, 'transmettre']);
         Route::patch('/{courrier}/valider', [CourrierController::class, 'valider']);
+        Route::patch('/{courrier}/non-valider', [CourrierController::class, 'nonValider']);
     });
 
     Route::delete('/archives/{archive}', [CourrierController::class, 'destroyArchive']);
@@ -37,5 +40,19 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{message}', [MessageController::class, 'update']);
         Route::delete('/{message}', [MessageController::class, 'destroy']);
         Route::patch('/{message}/read', [MessageController::class, 'markRead']);
+    });
+
+    Route::prefix('/utilisateurs')->group(function () {
+        Route::get('/', [UserController::class, 'index']);
+        Route::post('/', [UserController::class, 'store']);
+        Route::patch('/{user}', [UserController::class, 'update']);
+        Route::delete('/{user}', [UserController::class, 'destroy']);
+    });
+
+    Route::prefix('/services')->group(function () {
+        Route::get('/', [ServiceController::class, 'index']);
+        Route::post('/', [ServiceController::class, 'store']);
+        Route::patch('/{service}', [ServiceController::class, 'update']);
+        Route::delete('/{service}', [ServiceController::class, 'destroy']);
     });
 });

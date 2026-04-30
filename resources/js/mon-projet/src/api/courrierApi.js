@@ -64,4 +64,8 @@ export const courrierApi = {
   validate(id) {
     return api.patch(`/courriers/${id}/valider`)
   },
+
+  markAsNotValidated(id) {
+    return api.patch(`/courriers/${id}/non-valider`)
+  },
 }

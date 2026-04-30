@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   CalendarDays,
@@ -11,6 +11,12 @@ import {
   Trash2,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
+import Pagination from '../components/Pagination'
+import {
+  formatDate,
+  getConfidentialityLabel,
+  isRestrictedContent,
+} from '../lib/courrier'
 
 export default function Archives() {
   const [archives, setArchives] = useState([])
@@ -22,6 +28,7 @@ export default function Archives() {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
+  const hasInitialized = useRef(false)
 
   async function loadArchives(params = {}) {
     try {
@@ -54,11 +61,9 @@ export default function Archives() {
   }
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      void loadArchives()
-    }, 0)
-
-    return () => clearTimeout(timeoutId)
+    if (hasInitialized.current) return
+    hasInitialized.current = true
+    void loadArchives()
   }, [])
 
   function handleSearch(event) {
@@ -114,8 +119,8 @@ export default function Archives() {
   }, [archives, pagination])
 
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+    <div className="space-y-6 page-enter">
+      <section className="card-lift page-enter overflow-hidden rounded-[28px] border">
         <div className="relative isolate px-6 py-7">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(251,191,36,0.18),_transparent_34%),linear-gradient(135deg,_#f8fafc,_#ffffff)]" />
 
@@ -199,7 +204,7 @@ export default function Archives() {
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="page-enter-delay-1 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Archives visibles" value={stats.total} icon={<Archive size={20} />} />
         <StatCard title="Courriers entrants" value={stats.entrants} icon={<FolderOpen size={20} />} />
         <StatCard title="Courriers sortants" value={stats.sortants} icon={<FileText size={20} />} />
@@ -207,7 +212,7 @@ export default function Archives() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="card-lift page-enter-delay-2 overflow-hidden rounded-[28px] border">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">
@@ -228,6 +233,19 @@ export default function Archives() {
             loading={loading}
             selectedCourrier={selectedCourrier}
             onSelect={setSelectedCourrier}
+          />
+
+          <Pagination
+            pagination={pagination}
+            loading={loading}
+            onPageChange={(page) =>
+              void loadArchives({
+                q: search || undefined,
+                type: type || undefined,
+                date_reception: dateReception || undefined,
+                page,
+              })
+            }
           />
         </div>
 
@@ -280,7 +298,7 @@ function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
               <tr
                 key={courrier.id}
                 onClick={() => onSelect(courrier)}
-                className={`cursor-pointer border-t border-slate-100 transition ${
+                className={`table-row-motion cursor-pointer border-t border-slate-100 transition ${
                   active ? 'bg-amber-50/70' : 'hover:bg-slate-50'
                 }`}
               >
@@ -325,14 +343,16 @@ function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
 function ArchiveDetails({ courrier, actionLoading, onDelete }) {
   if (!courrier) {
     return (
-      <aside className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+      <aside className="card-lift rounded-[28px] border p-6 text-sm text-slate-500">
         Sélectionnez une archive pour consulter son détail.
       </aside>
     )
   }
 
+  const restricted = isRestrictedContent(courrier)
+
   return (
-    <aside className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+    <aside className="card-lift rounded-[28px] border p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
@@ -352,23 +372,25 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
       </div>
 
       <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
-        {!courrier.peut_voir_details && (
+        {restricted && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Cette archive existe dans votre service, mais son contenu est masque par la confidentialite.
+            Vous n’avez pas l’autorisation de consulter ce contenu.
           </div>
         )}
 
-        <DetailRow label="Type" value={courrier.type === 'sortant' ? 'Sortant' : 'Entrant'} />
-        <DetailRow label="Expéditeur" value={courrier.expediteur || '-'} />
-        <DetailRow label="Destinataire" value={courrier.destinataire || '-'} />
-        <DetailRow
-          label="Date d'enregistrement"
-          value={formatDate(courrier.date_creation)}
-        />
-        <DetailRow
-          label="Date de réception"
-          value={formatDate(courrier.date_reception)}
-        />
+        <div className={restricted ? 'pointer-events-none select-none blur-sm' : ''}>
+          <DetailRow label="Type" value={courrier.type === 'sortant' ? 'Sortant' : 'Entrant'} />
+          <DetailRow label="Expéditeur" value={courrier.expediteur || '-'} />
+          <DetailRow label="Destinataire" value={courrier.destinataire || '-'} />
+          <DetailRow
+            label="Date d'enregistrement"
+            value={formatDate(courrier.date_creation)}
+          />
+          <DetailRow
+            label="Date de réception"
+            value={formatDate(courrier.date_reception)}
+          />
+        </div>
         <DetailRow label="Confidentialité" value={getConfidentialityLabel(courrier)} />
         <DetailRow
           label="Créateur"
@@ -412,22 +434,24 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onDelete}
-        disabled={actionLoading || !courrier.peut_etre_supprime}
-        className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-      >
-        <Trash2 size={17} />
-        Supprimer l&apos;archive
-      </button>
+      {courrier.peut_etre_supprime && (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={actionLoading}
+          className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <Trash2 size={17} />
+          Supprimer l&apos;archive
+        </button>
+      )}
     </aside>
   )
 }
 
 function StatCard({ title, value, icon }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="card-lift rounded-[24px] border p-5">
       <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
         {icon}
       </div>
@@ -480,21 +504,5 @@ function TimelineItem({ icon, title, text }) {
         <p className="text-xs text-slate-500">{text || '-'}</p>
       </div>
     </div>
-  )
-}
-
-function formatDate(date) {
-  if (!date) return '-'
-
-  return new Date(date).toLocaleDateString('fr-FR')
-}
-
-function getConfidentialityLabel(courrier) {
-  return (
-    courrier.niveau_confidentialite?.libelle ||
-    courrier.niveau_confidentialite?.nom ||
-    courrier.niveauConfidentialite?.libelle ||
-    courrier.niveauConfidentialite?.nom ||
-    '-'
   )
 }

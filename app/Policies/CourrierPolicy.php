@@ -46,4 +46,9 @@ class CourrierPolicy
     {
         return $courrier->peutEtreValidePar($user);
     }
+
+    public function nonValider(User $user, Courrier $courrier): bool
+    {
+        return $courrier->peutEtreNonValidePar($user);
+    }
 }

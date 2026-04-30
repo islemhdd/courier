@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   CheckCircle,
@@ -8,14 +8,22 @@ import {
   MessageSquare,
   Plus,
   Search,
+  ShieldAlert,
   Star,
   Trash2,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
-import { useAuth } from '../context/auth-context'
+import Pagination from '../components/Pagination'
+import {
+  formatDate,
+  getConfidentialityLabel,
+  getStatusLabel,
+  getStatusTone,
+  isRestrictedContent,
+  normalizeStatus,
+} from '../lib/courrier'
 
 export default function Dashboard() {
-  const { user } = useAuth()
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -23,6 +31,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const hasInitialized = useRef(false)
 
   async function loadCourriers(params = {}) {
     try {
@@ -30,32 +39,25 @@ export default function Dashboard() {
       setError('')
 
       const response = await courrierApi.getAll(params)
-
       const paginatedCourriers = response.data.courriers
       const list = paginatedCourriers.data || []
 
       setCourriers(list)
       setPagination(paginatedCourriers)
+      setSelectedCourrier((current) => {
+        if (current && list.some((item) => item.id === current.id)) {
+          return list.find((item) => item.id === current.id)
+        }
 
-      if (list.length > 0) {
-        setSelectedCourrier(list[0])
-      } else {
-        setSelectedCourrier(null)
-      }
+        return list[0] || null
+      })
     } catch (err) {
       console.error(err)
-
-      if (err.response?.status === 401) {
-        setError("Vous n'êtes pas connecté.")
-      } else if (err.response?.status === 403) {
-        setError("Vous n'avez pas le droit d'accéder aux courriers.")
-      } else {
-        setError(
-          err.response?.data?.message ||
-            err.response?.data?.error ||
-            'Impossible de charger les courriers depuis Laravel.',
-        )
-      }
+      setError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          'Impossible de charger les courriers depuis Laravel.',
+      )
     } finally {
       setLoading(false)
     }
@@ -71,13 +73,13 @@ export default function Dashboard() {
       setError(
         err.response?.data?.message ||
           err.response?.data?.error ||
-          'Impossible d’afficher le détail du courrier.',
+          'Impossible d’afficher le detail du courrier.',
       )
     }
   }
 
   async function handleDelete() {
-    if (!selectedCourrier) return
+    if (!selectedCourrier?.peut_etre_supprime) return
 
     const confirmed = window.confirm(
       `Voulez-vous vraiment supprimer le courrier ${selectedCourrier.numero} ?`,
@@ -88,9 +90,8 @@ export default function Dashboard() {
     try {
       setActionLoading(true)
       setError('')
-
       await courrierApi.delete(selectedCourrier.id)
-      await loadCourriers()
+      await loadCourriers({ q: search || undefined })
     } catch (err) {
       console.error(err)
       setError(
@@ -104,14 +105,13 @@ export default function Dashboard() {
   }
 
   async function handleValidate() {
-    if (!selectedCourrier) return
+    if (!selectedCourrier?.peut_etre_valide) return
 
     try {
       setActionLoading(true)
       setError('')
-
       await courrierApi.validate(selectedCourrier.id)
-      await loadCourriers()
+      await loadCourriers({ q: search || undefined })
     } catch (err) {
       console.error(err)
       setError(
@@ -125,14 +125,13 @@ export default function Dashboard() {
   }
 
   async function handleArchive() {
-    if (!selectedCourrier) return
+    if (!selectedCourrier?.peut_etre_archive) return
 
     try {
       setActionLoading(true)
       setError('')
-
       await courrierApi.archive(selectedCourrier.id)
-      await loadCourriers()
+      await loadCourriers({ q: search || undefined })
     } catch (err) {
       console.error(err)
       setError(
@@ -146,17 +145,14 @@ export default function Dashboard() {
   }
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      void loadCourriers()
-    }, 0)
-
-    return () => clearTimeout(timeoutId)
+    if (hasInitialized.current) return
+    hasInitialized.current = true
+    void loadCourriers()
   }, [])
 
-  function handleSearch(e) {
-    e.preventDefault()
-
-    loadCourriers({
+  function handleSearch(event) {
+    event.preventDefault()
+    void loadCourriers({
       objet: search || undefined,
       numero: search || undefined,
       expediteur: search || undefined,
@@ -164,25 +160,25 @@ export default function Dashboard() {
     })
   }
 
-  const stats = useMemo(() => {
-    return {
+  const stats = useMemo(
+    () => ({
       total: pagination?.total || courriers.length,
-      validation: courriers.filter((c) => normalizeStatus(c.statut) === 'CREE')
-        .length,
+      validation: courriers.filter((item) =>
+        ['CREE', 'NON_VALIDE'].includes(normalizeStatus(item.statut)),
+      ).length,
       messages: 0,
-      archives: courriers.filter((c) => c.peut_etre_archive).length,
-    }
-  }, [courriers, pagination])
+      archives: courriers.filter((item) => item.peut_etre_archive).length,
+    }),
+    [courriers, pagination],
+  )
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 rounded-3xl bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
+    <div className="space-y-6 page-enter">
+      <header className="card-lift page-enter flex flex-col gap-4 rounded-3xl border p-6 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Tableau de bord
-          </h1>
+          <h1 className="text-3xl font-bold text-slate-900">Tableau de bord</h1>
           <p className="mt-1 text-slate-500">
-            Données chargées depuis la base de données Laravel.
+            Donnees chargees depuis la base Laravel, avec restrictions appliquees cote API.
           </p>
         </div>
 
@@ -191,7 +187,7 @@ export default function Dashboard() {
             <Search size={18} className="text-slate-400" />
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               className="bg-transparent text-sm outline-none"
               placeholder="Rechercher..."
             />
@@ -220,46 +216,25 @@ export default function Dashboard() {
         </div>
       )}
 
-      <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Courriers reçus"
-          value={stats.total}
-          icon={<Inbox size={22} />}
-        />
-
-        <StatCard
-          title="En validation"
-          value={stats.validation}
-          icon={<CheckCircle size={22} />}
-        />
-
-        <StatCard
-          title="Messages"
-          value={stats.messages}
-          icon={<MessageSquare size={22} />}
-        />
-
-        <StatCard
-          title="Archives"
-          value={stats.archives}
-          icon={<Archive size={22} />}
-        />
+      <section className="page-enter-delay-1 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard title="Courriers recus" value={stats.total} icon={<Inbox size={22} />} />
+        <StatCard title="En validation" value={stats.validation} icon={<CheckCircle size={22} />} />
+        <StatCard title="Messages" value={stats.messages} icon={<MessageSquare size={22} />} />
+        <StatCard title="Archives" value={stats.archives} icon={<Archive size={22} />} />
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_420px]">
-        <div className="rounded-3xl bg-white p-6 shadow-sm">
+        <div className="card-lift page-enter-delay-2 rounded-3xl border p-6">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">
-                Courriers récents
-              </h2>
+              <h2 className="text-xl font-bold text-slate-900">Courriers recents</h2>
               <p className="text-sm text-slate-400">
-                {pagination?.total || 0} courrier(s) trouvé(s).
+                {pagination?.total || 0} courrier(s) trouve(s).
               </p>
             </div>
 
             <button
-              onClick={() => loadCourriers()}
+              onClick={() => void loadCourriers()}
               className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
             >
               Actualiser
@@ -272,7 +247,7 @@ export default function Dashboard() {
             </div>
           ) : courriers.length === 0 ? (
             <div className="rounded-2xl bg-slate-50 p-8 text-center text-sm text-slate-500">
-              Aucun courrier trouvé dans la base de données.
+              Aucun courrier trouve dans la base de donnees.
             </div>
           ) : (
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -281,9 +256,9 @@ export default function Dashboard() {
                   <tr>
                     <th className="px-4 py-3">N°</th>
                     <th className="px-4 py-3">Objet</th>
-                    <th className="px-4 py-3">Expéditeur</th>
+                    <th className="px-4 py-3">Expediteur</th>
                     <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Confidentialité</th>
+                    <th className="px-4 py-3">Confidentialite</th>
                     <th className="px-4 py-3">Statut</th>
                   </tr>
                 </thead>
@@ -292,51 +267,53 @@ export default function Dashboard() {
                   {courriers.map((courrier) => (
                     <tr
                       key={courrier.id}
-                      onClick={() => handleShowCourrier(courrier.id)}
-                      className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 ${
+                      onClick={() => void handleShowCourrier(courrier.id)}
+                      className={`table-row-motion cursor-pointer border-t border-slate-100 hover:bg-slate-50 ${
                         selectedCourrier?.id === courrier.id ? 'bg-blue-50' : ''
                       }`}
                     >
                       <td className="px-4 py-4 font-semibold text-slate-800">
                         {courrier.numero}
                       </td>
-
-                      <td className="px-4 py-4 text-slate-700">
-                        {courrier.objet}
-                      </td>
-
+                      <td className="px-4 py-4 text-slate-700">{courrier.objet}</td>
                       <td className="px-4 py-4 text-slate-500">
                         {courrier.expediteur || '-'}
                       </td>
-
                       <td className="px-4 py-4 text-slate-500">
-                        {formatDate(
-                          courrier.date_reception || courrier.date_creation,
-                        )}
+                        {formatDate(courrier.date_reception || courrier.date_creation)}
                       </td>
-
                       <td className="px-4 py-4">
-                        <Badge color="gray">
-                          {getConfidentialityLabel(courrier)}
-                        </Badge>
+                        <Badge color="gray">{getConfidentialityLabel(courrier)}</Badge>
                       </td>
-
                       <td className="px-4 py-4">
-                        <Badge color={getStatusColor(courrier.statut)}>
-                          {courrier.statut}
+                        <Badge color={getStatusTone(courrier.statut)}>
+                          {getStatusLabel(courrier.statut)}
                         </Badge>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              <Pagination
+                pagination={pagination}
+                loading={loading}
+                onPageChange={(page) =>
+                  void loadCourriers({
+                    objet: search || undefined,
+                    numero: search || undefined,
+                    expediteur: search || undefined,
+                    q: search || undefined,
+                    page,
+                  })
+                }
+              />
             </div>
           )}
         </div>
 
         <CourrierDetails
           courrier={selectedCourrier}
-          user={user}
           actionLoading={actionLoading}
           onValidate={handleValidate}
           onArchive={handleArchive}
@@ -347,42 +324,28 @@ export default function Dashboard() {
   )
 }
 
-function CourrierDetails({
-  courrier,
-  user,
-  actionLoading,
-  onValidate,
-  onArchive,
-  onDelete,
-}) {
+function CourrierDetails({ courrier, actionLoading, onValidate, onArchive, onDelete }) {
   if (!courrier) {
     return (
-      <aside className="rounded-3xl bg-white p-6 shadow-sm">
+      <aside className="card-lift rounded-3xl border p-6">
         <p className="text-sm text-slate-400">
-          Sélectionne un courrier pour afficher les détails.
+          Selectionnez un courrier pour afficher les details.
         </p>
       </aside>
     )
   }
 
-  const isValidated = normalizeStatus(courrier.statut) === 'VALIDE'
-  const canArchive = Boolean(courrier.peut_etre_archive)
-  const canValidate =
-    (user?.role === 'chef' || user?.role === 'admin') &&
-    Boolean(courrier.peut_etre_valide)
+  const restricted = isRestrictedContent(courrier)
 
   return (
-    <aside className="rounded-3xl bg-white p-6 shadow-sm">
+    <aside className="card-lift rounded-3xl border p-6">
       <div className="mb-6 flex items-start justify-between">
         <div>
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white">
             <FileText size={26} />
           </div>
 
-          <h2 className="text-2xl font-bold text-slate-900">
-            {courrier.numero}
-          </h2>
-
+          <h2 className="text-2xl font-bold text-slate-900">{courrier.numero}</h2>
           <p className="text-sm text-slate-400">{courrier.objet}</p>
         </div>
 
@@ -392,84 +355,79 @@ function CourrierDetails({
       </div>
 
       <div className="space-y-3 border-y border-slate-100 py-5 text-sm">
-        {!courrier.peut_voir_details && (
+        {restricted && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Ce courrier existe dans votre service, mais son contenu est masque par la confidentialite.
+            Vous n’avez pas l’autorisation de consulter ce contenu.
           </div>
         )}
-        <Detail label="Expéditeur" value={courrier.expediteur || '-'} />
-        <Detail label="Destinataire" value={courrier.destinataire || '-'} />
-        <Detail label="Date création" value={formatDate(courrier.date_creation)} />
+
+        <div className={restricted ? 'rounded-2xl bg-slate-50 p-4' : ''}>
+          <div className={restricted ? 'pointer-events-none select-none blur-sm' : ''}>
+            <Detail label="Expediteur" value={courrier.expediteur || '-'} />
+            <Detail label="Destinataire" value={courrier.destinataire || '-'} />
+            <Detail label="Date creation" value={formatDate(courrier.date_creation)} />
+            <Detail label="Date reception" value={formatDate(courrier.date_reception)} />
+          </div>
+        </div>
+
+        <Detail label="Confidentialite" value={getConfidentialityLabel(courrier)} />
+        <Detail label="Statut" value={getStatusLabel(courrier.statut)} />
         <Detail
-          label="Date réception"
-          value={formatDate(courrier.date_reception)}
-        />
-        <Detail
-          label="Confidentialité"
-          value={getConfidentialityLabel(courrier)}
-        />
-        <Detail label="Statut" value={courrier.statut || '-'} />
-        <Detail
-          label="Créateur"
+          label="Createur"
           value={
             courrier.createur
-              ? `${courrier.createur.prenom || ''} ${
-                  courrier.createur.nom || ''
-                }`
+              ? `${courrier.createur.prenom || ''} ${courrier.createur.nom || ''}`.trim()
               : '-'
           }
         />
       </div>
 
       <div className="mt-6">
-        <h3 className="mb-4 text-sm font-semibold text-slate-700">
-          Historique
-        </h3>
-
+        <h3 className="mb-4 text-sm font-semibold text-slate-700">Historique</h3>
         <div className="space-y-4">
-          <TimelineItem
-            title="Courrier créé"
-            text={formatDate(courrier.date_creation)}
-          />
-
-          <TimelineItem title="Statut actuel" text={courrier.statut || '-'} />
-
-          {courrier.valideur && (
+          <TimelineItem title="Courrier cree" text={formatDate(courrier.date_creation)} />
+          <TimelineItem title="Statut actuel" text={getStatusLabel(courrier.statut)} />
+          {normalizeStatus(courrier.statut) === 'NON_VALIDE' && (
             <TimelineItem
-              title="Validé par"
-              text={`${courrier.valideur.prenom || ''} ${
-                courrier.valideur.nom || ''
-              }`}
+              title="Correction requise"
+              text="Le chef a marque ce courrier comme non valide."
+              icon={<ShieldAlert size={15} />}
             />
           )}
         </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3">
-        <button
-          onClick={onValidate}
-          disabled={actionLoading || isValidated || !canValidate}
-          className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Valider
-        </button>
+        {courrier.peut_etre_valide && (
+          <button
+            onClick={onValidate}
+            disabled={actionLoading}
+            className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Valider
+          </button>
+        )}
 
-        <button
-          onClick={onArchive}
-          disabled={actionLoading || !canArchive}
-          className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Archiver
-        </button>
+        {courrier.peut_etre_archive && (
+          <button
+            onClick={onArchive}
+            disabled={actionLoading}
+            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Archiver
+          </button>
+        )}
 
-        <button
-          onClick={onDelete}
-          disabled={actionLoading}
-          className="col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Trash2 size={17} />
-          Supprimer
-        </button>
+        {courrier.peut_etre_supprime && (
+          <button
+            onClick={onDelete}
+            disabled={actionLoading}
+            className="col-span-2 flex items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Trash2 size={17} />
+            Supprimer
+          </button>
+        )}
       </div>
     </aside>
   )
@@ -477,7 +435,7 @@ function CourrierDetails({
 
 function StatCard({ title, value, icon }) {
   return (
-    <div className="rounded-3xl bg-white p-5 shadow-sm">
+    <div className="card-lift rounded-3xl border p-5">
       <div className="mb-5 flex items-center justify-between">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
           {icon}
@@ -485,7 +443,6 @@ function StatCard({ title, value, icon }) {
       </div>
 
       <p className="text-sm text-slate-400">{title}</p>
-
       <h3 className="mt-1 text-3xl font-bold text-slate-900">{value}</h3>
     </div>
   )
@@ -494,10 +451,12 @@ function StatCard({ title, value, icon }) {
 function Badge({ children, color = 'blue' }) {
   const colors = {
     blue: 'bg-blue-50 text-blue-600',
-    orange: 'bg-orange-50 text-orange-600',
-    green: 'bg-emerald-50 text-emerald-600',
-    red: 'bg-red-50 text-red-600',
+    amber: 'bg-amber-100 text-amber-700',
+    emerald: 'bg-emerald-100 text-emerald-700',
+    red: 'bg-red-100 text-red-700',
+    sky: 'bg-sky-100 text-sky-700',
     gray: 'bg-slate-100 text-slate-500',
+    slate: 'bg-slate-100 text-slate-500',
   }
 
   return (
@@ -520,11 +479,11 @@ function Detail({ label, value }) {
   )
 }
 
-function TimelineItem({ title, text }) {
+function TimelineItem({ title, text, icon }) {
   return (
     <div className="flex gap-3">
       <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-        <Clock size={15} />
+        {icon || <Clock size={15} />}
       </div>
 
       <div>
@@ -532,39 +491,5 @@ function TimelineItem({ title, text }) {
         <p className="text-xs text-slate-400">{text || '-'}</p>
       </div>
     </div>
-  )
-}
-
-function formatDate(date) {
-  if (!date) return '-'
-
-  return new Date(date).toLocaleDateString('fr-FR')
-}
-
-function getStatusColor(statut) {
-  if (!statut) return 'gray'
-
-  const normalized = normalizeStatus(statut)
-
-  if (normalized.includes('VALIDE')) return 'green'
-  if (normalized.includes('CREE') || normalized.includes('TRANSMIS')) {
-    return 'orange'
-  }
-  if (normalized.includes('REFUSE')) return 'red'
-
-  return 'blue'
-}
-
-function normalizeStatus(statut) {
-  return String(statut || '').trim().toUpperCase()
-}
-
-function getConfidentialityLabel(courrier) {
-  return (
-    courrier.niveau_confidentialite?.libelle ||
-    courrier.niveau_confidentialite?.nom ||
-    courrier.niveauConfidentialite?.libelle ||
-    courrier.niveauConfidentialite?.nom ||
-    '-'
   )
 }

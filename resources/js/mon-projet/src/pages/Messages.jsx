@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Mail,
   MailOpen,
@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
+import Pagination from '../components/Pagination'
 import { messageApi } from '../api/messageApi'
 
 const initialForm = {
@@ -41,6 +42,7 @@ export default function Messages() {
   const [userSearch, setUserSearch] = useState('')
   const [courriers, setCourriers] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const hasInitialized = useRef(false)
 
   async function loadMessages(params = {}) {
     try {
@@ -98,20 +100,27 @@ export default function Messages() {
 
   useEffect(() => {
     async function initializeMailbox() {
-      await loadMessages()
-      await loadUnreadCount()
-      await loadCourriersOptions()
+      await Promise.all([
+        loadMessages(),
+        loadUnreadCount(),
+        loadCourriersOptions(),
+      ])
     }
 
-    const timeoutId = setTimeout(() => {
-      void initializeMailbox()
-    }, 0)
+    if (hasInitialized.current && mailbox === 'recu') {
+      return
+    }
 
-    return () => clearTimeout(timeoutId)
+    hasInitialized.current = true
+    void initializeMailbox()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mailbox])
 
   async function handleOpenMessage(message) {
+    if (selectedMessage?.id === message.id && selectedMessage?.contenu) {
+      return
+    }
+
     try {
       setError('')
 
@@ -301,7 +310,7 @@ export default function Messages() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <section className="card-lift page-enter overflow-hidden rounded-[28px] border">
         <div className="relative isolate px-6 py-7">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.14),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.14),_transparent_36%),linear-gradient(135deg,_#ffffff,_#f8fafc)]" />
 
@@ -396,7 +405,7 @@ export default function Messages() {
         </div>
       )}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="page-enter-delay-1 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard title="Messages visibles" value={stats.total} icon={<Mail size={20} />} />
         <StatCard title="Non lus" value={unreadCount} icon={<MailOpen size={20} />} />
         <StatCard title="Liés à un courrier" value={stats.linked} icon={<Shield size={20} />} />
@@ -408,7 +417,7 @@ export default function Messages() {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+        <div className="card-lift page-enter-delay-2 overflow-hidden rounded-[28px] border">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">
@@ -438,6 +447,19 @@ export default function Messages() {
             mailbox={mailbox}
             selectedMessage={selectedMessage}
             onSelect={handleOpenMessage}
+          />
+
+          <Pagination
+            pagination={pagination}
+            loading={loading}
+            onPageChange={(page) =>
+              void loadMessages({
+                type: mailbox,
+                q: search || undefined,
+                lu: readFilter || undefined,
+                page,
+              })
+            }
           />
         </div>
 
@@ -531,7 +553,7 @@ function MessagesTable({
               <tr
                 key={message.id}
                 onClick={() => onSelect(message)}
-                className={`cursor-pointer border-t border-slate-100 transition ${
+                className={`table-row-motion cursor-pointer border-t border-slate-100 transition ${
                   active ? 'bg-emerald-50/70' : 'hover:bg-slate-50'
                 }`}
               >
@@ -577,7 +599,7 @@ function MessageDetails({
 }) {
   if (!message) {
     return (
-      <aside className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+      <aside className="card-lift rounded-[28px] border p-6 text-sm text-slate-500">
         Sélectionnez un message pour afficher le détail.
       </aside>
     )
@@ -586,7 +608,7 @@ function MessageDetails({
   const canEdit = mailbox === 'envoye' && !message.lu
 
   return (
-    <aside className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+    <aside className="card-lift rounded-[28px] border p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
@@ -686,7 +708,7 @@ function ComposerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl"
+        className="page-enter w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-slate-100 p-5">
           <div>
@@ -822,7 +844,7 @@ function ComposerModal({
 
 function StatCard({ title, value, icon }) {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="card-lift rounded-[24px] border p-5">
       <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
         {icon}
       </div>

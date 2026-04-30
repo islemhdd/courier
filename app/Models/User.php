@@ -21,6 +21,11 @@ class User extends Authenticatable
     public const ROLE_ADMIN = 'admin';
     public const ROLE_CHEF = 'chef';
     public const ROLE_SECRETAIRE = 'secretaire';
+    public const ROLES = [
+        self::ROLE_ADMIN,
+        self::ROLE_CHEF,
+        self::ROLE_SECRETAIRE,
+    ];
 
     /**
      * Les attributs pouvant être assignés en masse.
@@ -178,5 +183,37 @@ class User extends Authenticatable
     public function getRangNiveauConfidentialite(): int
     {
         return $this->niveauConfidentialite?->rang ?? 0;
+    }
+
+    public function peutGererTousLesUtilisateurs(): bool
+    {
+        return $this->estAdmin();
+    }
+
+    public function peutConsulterUtilisateurs(): bool
+    {
+        return $this->estAdmin() || $this->estChef();
+    }
+
+    public function peutGererUtilisateursDuService(): bool
+    {
+        return $this->estChef() && $this->service_id !== null;
+    }
+
+    public function peutGererUtilisateur(User $autre): bool
+    {
+        if ($this->estAdmin()) {
+            return true;
+        }
+
+        if (!$this->peutGererUtilisateursDuService()) {
+            return false;
+        }
+
+        if ($autre->estAdmin()) {
+            return false;
+        }
+
+        return $autre->service_id !== null && $autre->service_id === $this->service_id;
     }
 }

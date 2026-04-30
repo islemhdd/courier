@@ -11,9 +11,17 @@ use Illuminate\Support\Facades\Auth;
 class Courrier extends Model
 {
     public const STATUT_CREE = 'CREE';
+    public const STATUT_NON_VALIDE = 'NON_VALIDE';
     public const STATUT_VALIDE = 'VALIDE';
     public const STATUT_TRANSMIS = 'TRANSMIS';
     public const STATUT_RECU = 'RECU';
+    public const STATUTS = [
+        self::STATUT_CREE,
+        self::STATUT_NON_VALIDE,
+        self::STATUT_VALIDE,
+        self::STATUT_TRANSMIS,
+        self::STATUT_RECU,
+    ];
 
     public const TYPE_ENTRANT = 'entrant';
     public const TYPE_SORTANT = 'sortant';
@@ -48,7 +56,6 @@ class Courrier extends Model
     ];
 
     protected $appends = [
-        'est_accessible',
         'url_fichier',
         'est_validable',
     ];
@@ -90,21 +97,36 @@ class Courrier extends Model
 
     public function scopeVisiblePourUser(Builder $query, User $user): Builder
     {
-        if ($user->estAdmin() || $user->estChef()) {
+        if ($user->estAdmin()) {
             return $query;
         }
 
-        if ($user->estSecretaire()) {
-            return $query->where(function (Builder $subQuery) use ($user) {
+        return $query->where(function (Builder $subQuery) use ($user) {
+            if ($user->estChef()) {
                 $subQuery->where('service_source_id', $user->service_id)
                     ->orWhere('service_destinataire_id', $user->service_id)
                     ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
                         $userQuery->where('service_id', $user->service_id);
                     });
-            });
-        }
 
-        return $query->whereRaw('1 = 0');
+                return;
+            }
+
+            if ($user->estSecretaire()) {
+                $subQuery->where('service_source_id', $user->service_id)
+                    ->orWhere('service_destinataire_id', $user->service_id)
+                    ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
+                        $userQuery->where('service_id', $user->service_id);
+                    });
+            }
+
+            $subQuery->orWhere('createur_id', $user->id)
+                ->orWhere('valideur_id', $user->id)
+                ->orWhere('transmis_par_id', $user->id)
+                ->orWhereHas('niveauConfidentialite', function (Builder $niveauQuery) use ($user) {
+                    $niveauQuery->where('rang', '<=', $user->getRangNiveauConfidentialite());
+                });
+        });
     }
 
     public function scopeNumero(Builder $query, ?string $numero): Builder
@@ -139,7 +161,31 @@ class Courrier extends Model
 
     public function scopeEnValidation(Builder $query): Builder
     {
-        return $query->where('statut', self::STATUT_CREE);
+        return $query->whereIn('statut', [
+            self::STATUT_CREE,
+            self::STATUT_NON_VALIDE,
+        ]);
+    }
+
+    public function scopeValidablesPourUser(Builder $query, User $user): Builder
+    {
+        if ($user->estAdmin()) {
+            return $query->enValidation();
+        }
+
+        if (!$user->estChef()) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->enValidation()
+            ->where('createur_id', '!=', $user->id)
+            ->where(function (Builder $subQuery) use ($user) {
+                $subQuery->where('service_source_id', $user->service_id)
+                    ->orWhere('service_destinataire_id', $user->service_id)
+                    ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
+                        $userQuery->where('service_id', $user->service_id);
+                    });
+            });
     }
 
     public function scopeNiveauConfidentialite(Builder $query, ?int $niveauId): Builder
@@ -177,6 +223,10 @@ class Courrier extends Model
 
     public function getEstAccessibleAttribute(): bool
     {
+        if (array_key_exists('est_accessible', $this->attributes)) {
+            return (bool) $this->attributes['est_accessible'];
+        }
+
         $user = Auth::user();
 
         return $user ? $this->peutEtreVuEnDetailPar($user) : false;
@@ -212,7 +262,10 @@ class Courrier extends Model
 
     public function estValidable(): bool
     {
-        return $this->statut === self::STATUT_CREE;
+        return in_array($this->statut, [
+            self::STATUT_CREE,
+            self::STATUT_NON_VALIDE,
+        ], true);
     }
 
     public function getEstValidableAttribute(): bool
@@ -237,6 +290,15 @@ class Courrier extends Model
         return (bool) $this->createur && $this->createur->service_id === $user->service_id;
     }
 
+    public function estDirectementConcernePar(User $user): bool
+    {
+        return in_array($user->id, array_filter([
+            $this->createur_id,
+            $this->valideur_id,
+            $this->transmis_par_id,
+        ]), true);
+    }
+
     public function niveauEstAutorisePour(User $user): bool
     {
         if (!$this->relationLoaded('niveauConfidentialite')) {
@@ -248,32 +310,53 @@ class Courrier extends Model
 
     public function peutVoirExistencePar(User $user): bool
     {
-        if ($user->estAdmin() || $user->estChef()) {
+        if ($user->estAdmin()) {
             return true;
         }
 
-        return $user->estSecretaire() && $this->appartientAuServiceDe($user);
+        if ($user->estChef()) {
+            return $this->appartientAuServiceDe($user);
+        }
+
+        if ($this->estDirectementConcernePar($user)) {
+            return true;
+        }
+
+        if ($this->appartientAuServiceDe($user)) {
+            return true;
+        }
+
+        return $this->niveauEstAutorisePour($user);
     }
 
     public function peutEtreVuEnDetailPar(User $user): bool
     {
-        if ($user->estAdmin() || $user->estChef()) {
+        if ($user->estAdmin()) {
             return true;
         }
 
-        return $user->estSecretaire()
-            && $this->appartientAuServiceDe($user)
-            && $this->niveauEstAutorisePour($user);
+        if ($user->estChef()) {
+            return $this->appartientAuServiceDe($user);
+        }
+
+        if ($this->niveauEstAutorisePour($user)) {
+            return true;
+        }
+
+        return $this->estDirectementConcernePar($user);
     }
 
     public function peutEtreArchivePar(User $user): bool
     {
+        if ($user->estAdmin()) {
+            return true;
+        }
+
         if (!$this->estArchivable()) {
             return false;
         }
 
-        return $user->estAdmin()
-            || $this->createur_id === $user->id
+        return $this->createur_id === $user->id
             || $this->appartientAuServiceDe($user);
     }
 
@@ -291,24 +374,29 @@ class Courrier extends Model
             return true;
         }
 
-        if (!$this->relationLoaded('createur')) {
-            $this->load('createur');
-        }
-
-        if (!$this->createur || $this->createur_id === $user->id) {
+        if ($this->createur_id === $user->id) {
             return false;
         }
 
-        return $this->createur->service_id === $user->service_id;
+        return $this->appartientAuServiceDe($user);
+    }
+
+    public function peutEtreNonValidePar(User $user): bool
+    {
+        return $this->peutEtreValidePar($user);
     }
 
     public function peutEtreTransmisPar(User $user): bool
     {
+        if ($user->estAdmin()) {
+            return true;
+        }
+
         if ($this->statut !== self::STATUT_VALIDE) {
             return false;
         }
 
-        if ($user->estAdmin() || $this->createur_id === $user->id) {
+        if ($this->createur_id === $user->id) {
             return true;
         }
 
@@ -318,6 +406,11 @@ class Courrier extends Model
     public function estCree(): bool
     {
         return $this->statut === self::STATUT_CREE;
+    }
+
+    public function estNonValide(): bool
+    {
+        return $this->statut === self::STATUT_NON_VALIDE;
     }
 
     public function estValide(): bool
@@ -342,28 +435,38 @@ class Courrier extends Model
 
     public function peutEtreSupprimePar(User $user): bool
     {
-        if (!$this->estCree()) {
-            return false;
-        }
-
         if ($user->estAdmin()) {
             return true;
         }
 
-        return $user->estSecretaire() && $this->appartientAuServiceDe($user);
+        if (!in_array($this->statut, [
+            self::STATUT_CREE,
+            self::STATUT_NON_VALIDE,
+        ], true)) {
+            return false;
+        }
+
+        return $user->estSecretaire() && $this->createur_id === $user->id;
     }
 
     public function peutEtreModifiePar(User $user): bool
     {
-        if (!$this->estCree()) {
-            return false;
-        }
-
         if ($user->estAdmin()) {
             return true;
         }
 
-        return $user->estSecretaire() && $this->appartientAuServiceDe($user);
+        if (in_array($this->statut, [
+            self::STATUT_CREE,
+            self::STATUT_NON_VALIDE,
+        ], true)) {
+            return $user->estSecretaire() && $this->createur_id === $user->id;
+        }
+
+        if ($this->statut !== self::STATUT_VALIDE) {
+            return false;
+        }
+
+        return $user->estChef() && $this->appartientAuServiceDe($user);
     }
 
     public function getUrlFichierAttribute(): ?string

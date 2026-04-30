@@ -4,9 +4,12 @@ namespace App\Providers;
 
 use App\Models\Courrier;
 use App\Models\Message;
+use App\Models\Service;
 use App\Models\User;
 use App\Policies\CourrierPolicy;
 use App\Policies\MessagePolicy;
+use App\Policies\ServicePolicy;
+use App\Policies\UserPolicy;
 use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
 use Illuminate\Support\Facades\Gate;
 
@@ -20,6 +23,8 @@ class AuthServiceProvider extends ServiceProvider
     protected $policies = [
         Courrier::class => CourrierPolicy::class,
         Message::class => MessagePolicy::class,
+        Service::class => ServicePolicy::class,
+        User::class => UserPolicy::class,
     ];
 
     /**

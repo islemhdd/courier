@@ -8,12 +8,19 @@ import {
   Search,
   ShieldCheck,
   UserRoundCheck,
+  XCircle,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
-import { useAuth } from '../context/auth-context'
+import Pagination from '../components/Pagination'
+import {
+  formatDate,
+  getConfidentialityLabel,
+  getStatusLabel,
+  getStatusTone,
+  isRestrictedContent,
+} from '../lib/courrier'
 
 export default function Validation() {
-  const { user } = useAuth()
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -23,13 +30,10 @@ export default function Validation() {
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const canManageValidation = user?.role === 'admin' || user?.role === 'chef'
-
   async function loadValidationQueue(params = {}) {
     try {
       setLoading(true)
       setError('')
-
       const response = await courrierApi.getValidationQueue({
         q: search || undefined,
         type: type || undefined,
@@ -70,7 +74,7 @@ export default function Validation() {
   }, [])
 
   async function handleValidate() {
-    if (!selectedCourrier) return
+    if (!selectedCourrier?.peut_etre_valide) return
 
     try {
       setActionLoading(true)
@@ -89,8 +93,28 @@ export default function Validation() {
     }
   }
 
+  async function handleReject() {
+    if (!selectedCourrier?.peut_etre_non_valide) return
+
+    try {
+      setActionLoading(true)
+      setError('')
+      await courrierApi.markAsNotValidated(selectedCourrier.id)
+      await loadValidationQueue()
+    } catch (err) {
+      console.error(err)
+      setError(
+        err.response?.data?.error ||
+          err.response?.data?.message ||
+          'Impossible de marquer ce courrier comme non valide.',
+      )
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   async function handleArchive() {
-    if (!selectedCourrier) return
+    if (!selectedCourrier?.peut_etre_archive) return
 
     try {
       setActionLoading(true)
@@ -124,14 +148,6 @@ export default function Validation() {
     [courriers, pagination],
   )
 
-  if (!canManageValidation) {
-    return (
-      <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 shadow-sm">
-        Cette zone de validation est réservée aux chefs de service et aux administrateurs.
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
@@ -149,8 +165,7 @@ export default function Validation() {
               </h1>
 
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                File dédiée aux courriers en attente de décision, avec contrôle
-                de rôle et garde-fous métier côté API.
+                Les courriers non valides restent modifiables et supprimables par leur secretaire createur.
               </p>
             </div>
 
@@ -164,7 +179,7 @@ export default function Validation() {
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none"
-                  placeholder="Numéro, objet, expéditeur, destinataire"
+                  placeholder="Numero, objet, expediteur, destinataire"
                 />
               </label>
 
@@ -209,23 +224,21 @@ export default function Validation() {
         <StatCard title="Dossiers en attente" value={stats.total} icon={<CalendarClock size={20} />} />
         <StatCard title="Entrants" value={stats.entrants} icon={<ShieldCheck size={20} />} />
         <StatCard title="Sortants" value={stats.sortants} icon={<UserRoundCheck size={20} />} />
-        <StatCard title="Validables par vous" value={stats.validables} icon={<CheckCircle2 size={20} />} />
+        <StatCard title="Validables" value={stats.validables} icon={<CheckCircle2 size={20} />} />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_410px]">
         <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950">
-                File de validation
-              </h2>
+              <h2 className="text-lg font-semibold text-slate-950">File de validation</h2>
               <p className="text-sm text-slate-500">
                 {pagination?.total || 0} courrier(s) en attente.
               </p>
             </div>
 
             <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
-              En attente
+              Validation
             </div>
           </div>
 
@@ -235,12 +248,25 @@ export default function Validation() {
             selectedCourrier={selectedCourrier}
             onSelect={setSelectedCourrier}
           />
+
+          <Pagination
+            pagination={pagination}
+            loading={loading}
+            onPageChange={(page) =>
+              void loadValidationQueue({
+                q: search || undefined,
+                type: type || undefined,
+                page,
+              })
+            }
+          />
         </div>
 
         <ValidationDetails
           courrier={selectedCourrier}
           actionLoading={actionLoading}
           onValidate={handleValidate}
+          onReject={handleReject}
           onArchive={handleArchive}
         />
       </section>
@@ -250,19 +276,11 @@ export default function Validation() {
 
 function ValidationTable({ courriers, loading, selectedCourrier, onSelect }) {
   if (loading) {
-    return (
-      <div className="p-8 text-center text-sm text-slate-500">
-        Chargement de la file de validation...
-      </div>
-    )
+    return <div className="p-8 text-center text-sm text-slate-500">Chargement de la file de validation...</div>
   }
 
   if (courriers.length === 0) {
-    return (
-      <div className="p-8 text-center text-sm text-slate-500">
-        Aucun courrier en attente de validation.
-      </div>
-    )
+    return <div className="p-8 text-center text-sm text-slate-500">Aucun courrier en attente de validation.</div>
   }
 
   return (
@@ -270,10 +288,10 @@ function ValidationTable({ courriers, loading, selectedCourrier, onSelect }) {
       <table className="w-full min-w-[820px] text-left text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
-            <th className="px-5 py-3">Numéro</th>
+            <th className="px-5 py-3">Numero</th>
             <th className="px-5 py-3">Objet</th>
             <th className="px-5 py-3">Type</th>
-            <th className="px-5 py-3">Créateur</th>
+            <th className="px-5 py-3">Createur</th>
             <th className="px-5 py-3">Statut</th>
             <th className="px-5 py-3">Action</th>
           </tr>
@@ -291,9 +309,7 @@ function ValidationTable({ courriers, loading, selectedCourrier, onSelect }) {
                   active ? 'bg-emerald-50/70' : 'hover:bg-slate-50'
                 }`}
               >
-                <td className="px-5 py-4 font-semibold text-slate-900">
-                  {courrier.numero}
-                </td>
+                <td className="px-5 py-4 font-semibold text-slate-900">{courrier.numero}</td>
                 <td className="px-5 py-4 text-slate-700">{courrier.objet}</td>
                 <td className="px-5 py-4 text-slate-600">
                   {courrier.type === 'sortant' ? 'Sortant' : 'Entrant'}
@@ -304,11 +320,13 @@ function ValidationTable({ courriers, loading, selectedCourrier, onSelect }) {
                     : '-'}
                 </td>
                 <td className="px-5 py-4">
-                  <InlineBadge tone="amber">{courrier.statut}</InlineBadge>
+                  <InlineBadge tone={getStatusTone(courrier.statut)}>
+                    {getStatusLabel(courrier.statut)}
+                  </InlineBadge>
                 </td>
                 <td className="px-5 py-4">
                   <InlineBadge tone={courrier.peut_etre_valide ? 'emerald' : 'slate'}>
-                    {courrier.peut_etre_valide ? 'Validable' : 'Bloqué'}
+                    {courrier.peut_etre_valide ? 'Validable' : 'Bloque'}
                   </InlineBadge>
                 </td>
               </tr>
@@ -320,14 +338,16 @@ function ValidationTable({ courriers, loading, selectedCourrier, onSelect }) {
   )
 }
 
-function ValidationDetails({ courrier, actionLoading, onValidate, onArchive }) {
+function ValidationDetails({ courrier, actionLoading, onValidate, onReject, onArchive }) {
   if (!courrier) {
     return (
       <aside className="rounded-[28px] border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
-        Sélectionnez un courrier en attente pour afficher le détail.
+        Selectionnez un courrier en attente pour afficher le detail.
       </aside>
     )
   }
+
+  const restricted = isRestrictedContent(courrier)
 
   return (
     <aside className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
@@ -337,63 +357,76 @@ function ValidationDetails({ courrier, actionLoading, onValidate, onArchive }) {
             <CheckCircle2 size={24} />
           </div>
 
-          <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
-            {courrier.numero}
-          </h3>
-
-          <p className="mt-2 text-sm leading-6 text-slate-500">
-            {courrier.objet}
-          </p>
+          <h3 className="text-2xl font-semibold tracking-tight text-slate-950">{courrier.numero}</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{courrier.objet}</p>
         </div>
 
-        <InlineBadge tone={courrier.peut_etre_valide ? 'emerald' : 'slate'}>
-          {courrier.peut_etre_valide ? 'Validable' : 'Non validable'}
+        <InlineBadge tone={getStatusTone(courrier.statut)}>
+          {getStatusLabel(courrier.statut)}
         </InlineBadge>
       </div>
 
-      <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
-        {!courrier.peut_voir_details && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Ce dossier est visible dans votre perimetre, mais son contenu est masque par la confidentialite.
-          </div>
-        )}
+      {restricted && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          Vous n’avez pas l’autorisation de consulter ce contenu.
+        </div>
+      )}
 
-        <DetailRow label="Type" value={courrier.type === 'sortant' ? 'Sortant' : 'Entrant'} />
-        <DetailRow label="Statut" value={courrier.statut || '-'} />
-        <DetailRow label="Expéditeur" value={courrier.expediteur || '-'} />
-        <DetailRow label="Destinataire" value={courrier.destinataire || '-'} />
+      <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
+        <div className={restricted ? 'pointer-events-none select-none blur-sm' : ''}>
+          <DetailRow label="Type" value={courrier.type === 'sortant' ? 'Sortant' : 'Entrant'} />
+          <DetailRow label="Expediteur" value={courrier.expediteur || '-'} />
+          <DetailRow label="Destinataire" value={courrier.destinataire || '-'} />
+          <DetailRow label="Date" value={formatDate(courrier.date_reception || courrier.date_creation)} />
+        </div>
+        <DetailRow label="Statut" value={getStatusLabel(courrier.statut)} />
+        <DetailRow label="Confidentialite" value={getConfidentialityLabel(courrier)} />
         <DetailRow
-          label="Créateur"
+          label="Createur"
           value={
             courrier.createur
               ? `${courrier.createur.prenom || ''} ${courrier.createur.nom || ''}`.trim()
               : '-'
           }
         />
-        <DetailRow label="Confidentialité" value={getConfidentialityLabel(courrier)} />
-        <DetailRow label="Date" value={formatDate(courrier.date_reception || courrier.date_creation)} />
       </div>
 
       <div className="mt-6 grid gap-3">
-        <button
-          type="button"
-          onClick={onValidate}
-          disabled={actionLoading || !courrier.peut_etre_valide}
-          className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <CheckCircle2 size={16} />
-          Valider ce courrier
-        </button>
+        {courrier.peut_etre_valide && (
+          <button
+            type="button"
+            onClick={onValidate}
+            disabled={actionLoading}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <CheckCircle2 size={16} />
+            Valider ce courrier
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={onArchive}
-          disabled={actionLoading || !courrier.peut_etre_archive}
-          className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <Archive size={16} />
-          Archiver
-        </button>
+        {courrier.peut_etre_non_valide && (
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={actionLoading}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <XCircle size={16} />
+            Marquer non valide
+          </button>
+        )}
+
+        {courrier.peut_etre_archive && (
+          <button
+            type="button"
+            onClick={onArchive}
+            disabled={actionLoading}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Archive size={16} />
+            Archiver
+          </button>
+        )}
       </div>
     </aside>
   )
@@ -406,9 +439,7 @@ function StatCard({ title, value, icon }) {
         {icon}
       </div>
       <p className="text-sm text-slate-500">{title}</p>
-      <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-        {value}
-      </p>
+      <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
     </div>
   )
 }
@@ -417,6 +448,9 @@ function InlineBadge({ children, tone = 'slate' }) {
   const tones = {
     amber: 'bg-amber-100 text-amber-800',
     emerald: 'bg-emerald-100 text-emerald-700',
+    red: 'bg-red-100 text-red-700',
+    sky: 'bg-sky-100 text-sky-700',
+    blue: 'bg-blue-100 text-blue-700',
     slate: 'bg-slate-100 text-slate-600',
   }
 
@@ -437,20 +471,5 @@ function DetailRow({ label, value }) {
       <span className="text-slate-500">{label}</span>
       <span className="text-right font-medium text-slate-800">{value}</span>
     </div>
-  )
-}
-
-function formatDate(date) {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('fr-FR')
-}
-
-function getConfidentialityLabel(courrier) {
-  return (
-    courrier.niveau_confidentialite?.libelle ||
-    courrier.niveau_confidentialite?.nom ||
-    courrier.niveauConfidentialite?.libelle ||
-    courrier.niveauConfidentialite?.nom ||
-    '-'
   )
 }

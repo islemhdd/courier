@@ -62,6 +62,12 @@ class AuthenticatedSessionController extends Controller
                 'libelle' => $user->niveauConfidentialite->libelle,
                 'rang' => $user->niveauConfidentialite->rang,
             ] : null,
+            'permissions' => [
+                'peut_valider_courriers' => $user->estChef() || $user->estAdmin(),
+                'peut_gerer_utilisateurs' => $user->peutConsulterUtilisateurs(),
+                'peut_gerer_tous_les_utilisateurs' => $user->peutGererTousLesUtilisateurs(),
+                'peut_gerer_services' => $user->estAdmin(),
+            ],
         ];
     }
 }
