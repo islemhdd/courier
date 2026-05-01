@@ -35,8 +35,7 @@ const initialForm = {
 
 export default function SentCourriers() {
   const { user } = useAuth()
-  const canCreate =
-    user?.role === 'admin' || user?.role === 'secretaire' || user?.role === 'chef'
+  const canCreate = Boolean(user?.permissions?.peut_creer_courrier)
 
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)

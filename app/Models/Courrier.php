@@ -392,6 +392,10 @@ class Courrier extends Model
             return true;
         }
 
+        if ($this->type !== self::TYPE_SORTANT) {
+            return false;
+        }
+
         if ($this->statut !== self::STATUT_VALIDE) {
             return false;
         }

@@ -5,6 +5,7 @@ use App\Models\Courrier;
 use App\Models\NiveauConfidentialite;
 use App\Models\Service;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 
 function createCourrierUser(string $role = 'admin'): array
@@ -65,6 +66,47 @@ test('sent courriers endpoint returns only outgoing courriers', function () {
         ->assertJsonPath('courriers.data.0.destinataire', 'Ministere');
 });
 
+test('courriers stats endpoint returns counts', function () {
+    [$user, $niveau, $service] = createCourrierUser();
+
+    Courrier::create([
+        'numero' => 'COUR-STATS-RECU',
+        'objet' => 'Recu',
+        'type' => 'entrant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Partenaire',
+        'destinataire' => $service->libelle,
+        'statut' => 'RECU',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_destinataire_id' => $service->id,
+    ]);
+
+    Courrier::create([
+        'numero' => 'COUR-STATS-SENT',
+        'objet' => 'Envoye',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => $service->libelle,
+        'destinataire' => 'Ministere',
+        'statut' => 'CREE',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $service->id,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/stats')
+        ->assertOk()
+        ->assertJsonStructure([
+            'courriers' => ['recus', 'envoyes', 'validation', 'archives'],
+        ])
+        ->assertJsonPath('courriers.recus', 1)
+        ->assertJsonPath('courriers.envoyes', 1);
+});
+
 test('archives endpoint reads from archive table only', function () {
     [$user, $niveau] = createCourrierUser();
 
@@ -123,6 +165,67 @@ test('secretary creates outgoing courrier in created state', function () {
         ->assertJsonPath('courrier.statut', 'CREE')
         ->assertJsonPath('courrier.destinataire', 'Wilaya')
         ->assertJsonPath('courrier.expediteur', $service->libelle);
+});
+
+test('received courrier creation requires a file', function () {
+    [$user, $niveau] = createCourrierUser('secretaire');
+
+    $this->actingAs($user)
+        ->postJson('/api/courriers', [
+            'objet' => 'Courrier recu sans fichier',
+            'type' => 'entrant',
+            'date_reception' => now()->toDateString(),
+            'expediteur' => 'Partenaire',
+            'niveau_confidentialite_id' => $niveau->id,
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath('errors.fichier.0', 'Le fichier est obligatoire pour un courrier recu.');
+});
+
+test('received courrier can use a source service instead of a free expediteur', function () {
+    [$user, $niveau, $serviceDestination] = createCourrierUser('secretaire');
+    $serviceSource = Service::create(['libelle' => 'Service Juridique']);
+
+    $this->actingAs($user)
+        ->post('/api/courriers', [
+            'objet' => 'Courrier recu interne',
+            'type' => 'entrant',
+            'date_reception' => now()->toDateString(),
+            'service_source_id' => $serviceSource->id,
+            'niveau_confidentialite_id' => $niveau->id,
+            'fichier' => UploadedFile::fake()->create('courrier.pdf', 10, 'application/pdf'),
+        ], [
+            'Accept' => 'application/json',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('courrier.type', 'entrant')
+        ->assertJsonPath('courrier.service_source_id', $serviceSource->id)
+        ->assertJsonPath('courrier.expediteur', $serviceSource->libelle)
+        ->assertJsonPath('courrier.service_source.id', $serviceSource->id)
+        ->assertJsonPath('courrier.service_destinataire_id', $serviceDestination->id);
+});
+
+test('received courrier creation rejects expediteur and source service together', function () {
+    [$user, $niveau] = createCourrierUser('secretaire');
+    $serviceSource = Service::create(['libelle' => 'Service Juridique']);
+
+    $this->actingAs($user)
+        ->post('/api/courriers', [
+            'objet' => 'Courrier recu ambigu',
+            'type' => 'entrant',
+            'date_reception' => now()->toDateString(),
+            'expediteur' => 'Ministere',
+            'service_source_id' => $serviceSource->id,
+            'niveau_confidentialite_id' => $niveau->id,
+            'fichier' => UploadedFile::fake()->create('courrier.pdf', 10, 'application/pdf'),
+        ], [
+            'Accept' => 'application/json',
+        ])
+        ->assertStatus(422)
+        ->assertJsonPath(
+            'errors.expediteur.0',
+            'Choisissez soit un expediteur, soit un service expediteur, pas les deux.'
+        );
 });
 
 test('chef creates outgoing courrier directly validated', function () {

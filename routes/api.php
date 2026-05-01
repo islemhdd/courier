@@ -18,6 +18,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/envoyes', [CourrierController::class, 'envoyes']);
         Route::get('/archives', [CourrierController::class, 'archives']);
         Route::get('/validation', [CourrierController::class, 'validation']);
+        Route::get('/stats', [CourrierController::class, 'stats']);
         Route::get('/create', [CourrierController::class, 'create']);
         Route::post('/', [CourrierController::class, 'store']);
         Route::get('/{courrier}', [CourrierController::class, 'show']);

@@ -21,6 +21,10 @@ export const courrierApi = {
     return api.get('/courriers/validation', { params })
   },
 
+  stats() {
+    return api.get('/courriers/stats')
+  },
+
   getCreateData() {
     return api.get('/courriers/create')
   },

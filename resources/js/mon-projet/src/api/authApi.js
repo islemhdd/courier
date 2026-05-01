@@ -1,5 +1,5 @@
 import axios from 'axios'
-import api, { API_ORIGIN } from './axios'
+import api, { API_ORIGIN } from './api'
 
 function csrfCookie() {
   return axios.get(`${API_ORIGIN}/sanctum/csrf-cookie`, {

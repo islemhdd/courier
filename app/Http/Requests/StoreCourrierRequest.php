@@ -17,6 +17,8 @@ class StoreCourrierRequest extends FormRequest
 
     public function rules(): array
     {
+        $isEntrant = $this->input('type') === 'entrant';
+
         return [
             'objet' => ['required', 'string', 'max:100'],
             'type' => ['required', 'in:entrant,sortant'],
@@ -26,8 +28,14 @@ class StoreCourrierRequest extends FormRequest
             'niveau_confidentialite_id' => ['required', 'integer', 'exists:niveau_confidentialites,id'],
             'statut' => ['sometimes', 'string', 'in:' . implode(',', Courrier::STATUTS)],
             'transmission_directe' => ['sometimes', 'boolean'],
+            'service_source_id' => ['nullable', 'integer', 'exists:services,id'],
             'service_destinataire_id' => ['nullable', 'integer', 'exists:services,id'],
-            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
+            'fichier' => [
+                $isEntrant ? 'required' : 'nullable',
+                'file',
+                'mimes:pdf,doc,docx,jpg,jpeg,png',
+                'max:10240',
+            ],
         ];
     }
 
@@ -40,7 +48,9 @@ class StoreCourrierRequest extends FormRequest
             'date_reception.required' => 'La date est obligatoire.',
             'niveau_confidentialite_id.required' => 'Le niveau de confidentialite est obligatoire.',
             'niveau_confidentialite_id.exists' => 'Le niveau de confidentialite selectionne est invalide.',
+            'service_source_id.exists' => 'Le service expediteur selectionne est invalide.',
             'service_destinataire_id.exists' => 'Le service destinataire selectionne est invalide.',
+            'fichier.required' => 'Le fichier est obligatoire pour un courrier recu.',
             'fichier.mimes' => 'Le fichier doit etre PDF, Word ou image.',
             'fichier.max' => 'Le fichier ne doit pas depasser 10 Mo.',
         ];
@@ -84,11 +94,23 @@ class StoreCourrierRequest extends FormRequest
                 );
             }
 
-            if ($this->input('type') === 'entrant' && !$this->filled('expediteur')) {
-                $validator->errors()->add(
-                    'expediteur',
-                    'Veuillez saisir un expediteur pour un courrier recu.'
-                );
+            if ($this->input('type') === 'entrant') {
+                $hasExpediteur = $this->filled('expediteur');
+                $hasServiceSource = $this->filled('service_source_id');
+
+                if ($hasExpediteur && $hasServiceSource) {
+                    $validator->errors()->add(
+                        'expediteur',
+                        'Choisissez soit un expediteur, soit un service expediteur, pas les deux.'
+                    );
+                }
+
+                if (!$hasExpediteur && !$hasServiceSource) {
+                    $validator->errors()->add(
+                        'expediteur',
+                        'Veuillez saisir un expediteur ou choisir un service expediteur pour un courrier recu.'
+                    );
+                }
             }
         });
     }

@@ -24,6 +24,7 @@ import {
 const initialForm = {
   objet: '',
   expediteur: '',
+  service_source_id: '',
   destinataire: '',
   service_destinataire_id: '',
   date_reception: new Date().toISOString().slice(0, 10),
@@ -33,8 +34,7 @@ const initialForm = {
 
 export default function ReceivedCourriers() {
   const { user } = useAuth()
-  const canCreate =
-    user?.role === 'admin' || user?.role === 'secretaire' || user?.role === 'chef'
+  const canCreate = Boolean(user?.permissions?.peut_creer_courrier)
   const canPickService = String(user?.role || '').toLowerCase() === 'admin'
 
   const [courriers, setCourriers] = useState([])
@@ -124,10 +124,28 @@ export default function ReceivedCourriers() {
   }, [formOpen, canCreate, niveaux.length])
 
   function updateForm(field, value) {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }))
+    setForm((current) => {
+      if (field === 'expediteur') {
+        return {
+          ...current,
+          expediteur: value,
+          service_source_id: value ? '' : current.service_source_id,
+        }
+      }
+
+      if (field === 'service_source_id') {
+        return {
+          ...current,
+          service_source_id: value,
+          expediteur: value ? '' : current.expediteur,
+        }
+      }
+
+      return {
+        ...current,
+        [field]: value,
+      }
+    })
   }
 
   function openForm() {
@@ -154,9 +172,16 @@ export default function ReceivedCourriers() {
       const formData = new FormData()
       formData.append('objet', form.objet)
       formData.append('type', 'entrant')
-      formData.append('expediteur', form.expediteur)
       formData.append('date_reception', form.date_reception)
       formData.append('niveau_confidentialite_id', form.niveau_confidentialite_id)
+
+      if (form.expediteur) {
+        formData.append('expediteur', form.expediteur)
+      }
+
+      if (form.service_source_id) {
+        formData.append('service_source_id', form.service_source_id)
+      }
 
       if (form.destinataire) {
         formData.append('destinataire', form.destinataire)
@@ -379,6 +404,9 @@ export default function ReceivedCourriers() {
                 <p className="text-sm text-slate-500">
                   Renseignez les informations de reception (entrant).
                 </p>
+                <p className="mt-1 text-xs text-slate-400">
+                  Source du courrier: expediteur externe ou service interne, mais pas les deux.
+                </p>
               </div>
 
               <button
@@ -418,10 +446,31 @@ export default function ReceivedCourriers() {
                 <input
                   value={form.expediteur}
                   onChange={(event) => updateForm('expediteur', event.target.value)}
-                  className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900"
+                  disabled={Boolean(form.service_source_id)}
+                  className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
                   placeholder="Ex: Ministere, Partenaire..."
-                  required
+                  required={!form.service_source_id}
                 />
+              </label>
+
+              <label>
+                <span className="mb-2 block text-sm font-medium text-slate-700">
+                  Service expediteur
+                </span>
+                <select
+                  value={form.service_source_id}
+                  onChange={(event) => updateForm('service_source_id', event.target.value)}
+                  disabled={Boolean(form.expediteur)}
+                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  required={!form.expediteur}
+                >
+                  <option value="">Choisir un service interne</option>
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.libelle}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label>
@@ -487,7 +536,7 @@ export default function ReceivedCourriers() {
 
               <label className="sm:col-span-2">
                 <span className="mb-2 block text-sm font-medium text-slate-700">
-                  Fichier (optionnel)
+                  Fichier (obligatoire)
                 </span>
                 <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <Upload size={18} className="text-slate-400" />
@@ -498,6 +547,7 @@ export default function ReceivedCourriers() {
                       updateForm('fichier', event.target.files?.[0] || null)
                     }
                     className="min-w-0 flex-1 text-sm text-slate-700"
+                    required
                   />
                 </div>
               </label>
@@ -576,7 +626,7 @@ function CourriersTable({ courriers, loading, selectedCourrier, onSelect }) {
                   </InlineBadge>
                 </td>
                 <td className="px-5 py-4 font-medium text-slate-800">
-                  {courrier.expediteur || '-'}
+                  {getSourceLabel(courrier)}
                 </td>
                 <td className="px-5 py-4 text-slate-600">{courrier.objet}</td>
                 <td className="px-5 py-4 text-slate-500">
@@ -626,7 +676,7 @@ function CourrierDetails({ courrier, actionLoading, onArchive, onDelete }) {
 
       <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
         <DetailRow label="Type" value={courrier.type || '-'} />
-        <DetailRow label="Expediteur" value={courrier.expediteur || '-'} />
+        <DetailRow label="Expediteur" value={getSourceLabel(courrier)} />
         <DetailRow label="Destinataire" value={courrier.destinataire || '-'} />
         <DetailRow
           label="Confidentialite"
@@ -685,6 +735,15 @@ function CourrierDetails({ courrier, actionLoading, onArchive, onDelete }) {
   )
 }
 
+function getSourceLabel(courrier) {
+  return (
+    courrier?.expediteur ||
+    courrier?.service_source?.libelle ||
+    courrier?.serviceSource?.libelle ||
+    '-'
+  )
+}
+
 function StatCard({ title, value, icon }) {
   return (
     <div className="card-lift rounded-[24px] border p-5">
@@ -729,4 +788,3 @@ function DetailRow({ label, value }) {
     </div>
   )
 }
-

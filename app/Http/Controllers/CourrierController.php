@@ -16,6 +16,40 @@ use Illuminate\Support\Facades\Storage;
 
 class CourrierController extends Controller
 {
+    public function stats(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // Use the same visibility rules as the list endpoints.
+        $visible = Courrier::query()->visiblePourUser($user);
+
+        $recus = (clone $visible)
+            ->where('type', Courrier::TYPE_ENTRANT)
+            ->where('statut', Courrier::STATUT_RECU)
+            ->count();
+
+        $envoyes = (clone $visible)
+            ->where('type', Courrier::TYPE_SORTANT)
+            ->count();
+
+        $validation = (clone $visible)
+            ->validablesPourUser($user)
+            ->count();
+
+        $archives = Archive::query()
+            ->visiblePourUser($user)
+            ->count();
+
+        return response()->json([
+            'courriers' => [
+                'recus' => $recus,
+                'envoyes' => $envoyes,
+                'validation' => $validation,
+                'archives' => $archives,
+            ],
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         return $this->respondWithCourriers($request);
@@ -25,6 +59,7 @@ class CourrierController extends Controller
     {
         return $this->respondWithCourriers($request, false, [
             'statut' => Courrier::STATUT_RECU,
+            'type' => Courrier::TYPE_ENTRANT,
         ]);
     }
 
@@ -134,6 +169,7 @@ class CourrierController extends Controller
 
         $donnees = $request->validated();
         $type = $donnees['type'] ?? null;
+        $serviceSource = $this->resolveServiceSource($donnees);
         $serviceDestinataire = $this->resolveServiceDestinataire($donnees);
 
         if ($type === Courrier::TYPE_ENTRANT) {
@@ -154,7 +190,9 @@ class CourrierController extends Controller
         }
         $donnees['date_creation'] = now();
         $donnees['createur_id'] = $user->id;
-        $donnees['service_source_id'] = $type === Courrier::TYPE_SORTANT ? $user->service_id : null;
+        $donnees['service_source_id'] = $type === Courrier::TYPE_SORTANT
+            ? $user->service_id
+            : $serviceSource?->id;
         $donnees['service_destinataire_id'] = $serviceDestinataire?->id;
         $donnees['transmission_demandee'] = $type === Courrier::TYPE_SORTANT
             ? (bool) ($donnees['transmission_directe'] ?? false)
@@ -171,6 +209,10 @@ class CourrierController extends Controller
         }
 
         if (($donnees['type'] ?? null) === Courrier::TYPE_ENTRANT) {
+            if ($serviceSource) {
+                $donnees['expediteur'] = $serviceSource->libelle;
+            }
+
             $donnees['destinataire'] = $donnees['destinataire']
                 ?? $serviceDestinataire?->libelle
                 ?? $user->service?->libelle
@@ -367,6 +409,12 @@ class CourrierController extends Controller
             'destinataire' => ['nullable', 'string', 'max:100'],
         ]);
 
+        if ($courrier->type !== Courrier::TYPE_SORTANT) {
+            return response()->json([
+                'error' => 'Seuls les courriers sortants peuvent etre transmis.',
+            ], 422);
+        }
+
         if (!$courrier->peutEtreTransmisPar($user)) {
             return response()->json([
                 'error' => 'Le courrier doit etre VALIDE avant transmission, et vous devez etre createur, chef du service ou admin.',
@@ -527,7 +575,7 @@ class CourrierController extends Controller
             $query->statut($filtres['statut']);
         }
 
-        $courriers = $query->paginate(5);
+        $courriers = $query->paginate(15);
 
         $courriers->getCollection()->transform(function (Courrier $courrier) use ($user) {
             return $this->enrichCourrier($courrier, $user);
@@ -675,6 +723,15 @@ class CourrierController extends Controller
         }
 
         return Service::find($donnees['service_destinataire_id']);
+    }
+
+    private function resolveServiceSource(array $donnees): ?Service
+    {
+        if (empty($donnees['service_source_id'])) {
+            return null;
+        }
+
+        return Service::find($donnees['service_source_id']);
     }
 
     private function genererNumeroCourrier(): string

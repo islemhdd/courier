@@ -63,6 +63,7 @@ class AuthenticatedSessionController extends Controller
                 'rang' => $user->niveauConfidentialite->rang,
             ] : null,
             'permissions' => [
+                'peut_creer_courrier' => $user->peutCreerCourrier(),
                 'peut_valider_courriers' => $user->estChef() || $user->estAdmin(),
                 'peut_gerer_utilisateurs' => $user->peutConsulterUtilisateurs(),
                 'peut_gerer_tous_les_utilisateurs' => $user->peutGererTousLesUtilisateurs(),

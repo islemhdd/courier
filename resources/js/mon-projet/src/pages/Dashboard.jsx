@@ -8,12 +8,16 @@ import {
   MessageSquare,
   Plus,
   Search,
+  Send,
   ShieldAlert,
   Star,
   Trash2,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
+import { messageApi } from '../api/messageApi'
 import Pagination from '../components/Pagination'
+import { useAuth } from '../context/auth-context'
+import { useNavigate } from 'react-router-dom'
 import {
   formatDate,
   getConfidentialityLabel,
@@ -24,6 +28,8 @@ import {
 } from '../lib/courrier'
 
 export default function Dashboard() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -31,14 +37,31 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [statsRemote, setStatsRemote] = useState(null)
+  const [unreadMessages, setUnreadMessages] = useState(0)
   const hasInitialized = useRef(false)
+
+  async function loadStats() {
+    try {
+      const [courrierStatsResponse, unreadResponse] = await Promise.all([
+        courrierApi.stats(),
+        messageApi.unreadCount(),
+      ])
+
+      setStatsRemote(courrierStatsResponse.data.courriers || null)
+      setUnreadMessages(unreadResponse.data.non_lus || 0)
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   async function loadCourriers(params = {}) {
     try {
       setLoading(true)
       setError('')
 
-      const response = await courrierApi.getAll(params)
+      // Dashboard focuses on incoming mail.
+      const response = await courrierApi.getReceived(params)
       const paginatedCourriers = response.data.courriers
       const list = paginatedCourriers.data || []
 
@@ -147,30 +170,29 @@ export default function Dashboard() {
   useEffect(() => {
     if (hasInitialized.current) return
     hasInitialized.current = true
-    void loadCourriers()
+    void Promise.all([loadCourriers(), loadStats()])
   }, [])
 
   function handleSearch(event) {
     event.preventDefault()
     void loadCourriers({
-      objet: search || undefined,
-      numero: search || undefined,
-      expediteur: search || undefined,
       q: search || undefined,
     })
   }
 
-  const stats = useMemo(
-    () => ({
-      total: pagination?.total || courriers.length,
-      validation: courriers.filter((item) =>
-        ['CREE', 'NON_VALIDE'].includes(normalizeStatus(item.statut)),
-      ).length,
-      messages: 0,
-      archives: courriers.filter((item) => item.peut_etre_archive).length,
-    }),
-    [courriers, pagination],
-  )
+  const canValidateCourriers =
+    user?.permissions?.peut_valider_courriers === true ||
+    ['chef', 'admin'].includes(String(user?.role || '').trim().toLowerCase())
+
+  const stats = useMemo(() => {
+    return {
+      recus: statsRemote?.recus ?? (pagination?.total || courriers.length),
+      envoyes: statsRemote?.envoyes ?? 0,
+      validation: statsRemote?.validation ?? 0,
+      archives: statsRemote?.archives ?? 0,
+      messages: unreadMessages,
+    }
+  }, [statsRemote, pagination, courriers.length, unreadMessages])
 
   return (
     <div className="space-y-6 page-enter">
@@ -202,6 +224,7 @@ export default function Dashboard() {
 
           <button
             type="button"
+            onClick={() => navigate('/recus')}
             className="flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
           >
             <Plus size={18} />
@@ -216,10 +239,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      <section className="page-enter-delay-1 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Courriers recus" value={stats.total} icon={<Inbox size={22} />} />
-        <StatCard title="En validation" value={stats.validation} icon={<CheckCircle size={22} />} />
-        <StatCard title="Messages" value={stats.messages} icon={<MessageSquare size={22} />} />
+      <section className="page-enter-delay-1 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard title="Courriers recus" value={stats.recus} icon={<Inbox size={22} />} />
+        <StatCard title="Courriers envoyes" value={stats.envoyes} icon={<Send size={22} />} />
+        {canValidateCourriers && (
+          <StatCard title="A valider" value={stats.validation} icon={<ShieldAlert size={22} />} />
+        )}
+        <StatCard title="Messages non lus" value={stats.messages} icon={<MessageSquare size={22} />} />
         <StatCard title="Archives" value={stats.archives} icon={<Archive size={22} />} />
       </section>
 
@@ -295,19 +321,16 @@ export default function Dashboard() {
                 </tbody>
               </table>
 
-              <Pagination
-                pagination={pagination}
-                loading={loading}
-                onPageChange={(page) =>
-                  void loadCourriers({
-                    objet: search || undefined,
-                    numero: search || undefined,
-                    expediteur: search || undefined,
-                    q: search || undefined,
-                    page,
-                  })
-                }
-              />
+               <Pagination
+                 pagination={pagination}
+                 loading={loading}
+                 onPageChange={(page) =>
+                   void loadCourriers({
+                     q: search || undefined,
+                     page,
+                   })
+                 }
+               />
             </div>
           )}
         </div>
