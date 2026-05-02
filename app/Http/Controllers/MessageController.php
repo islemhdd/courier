@@ -136,6 +136,10 @@ class MessageController extends Controller
         $message->load(['emetteur', 'destinataire', 'courrier']);
         $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
 
+        if ($envoyer || !$hasStatut) {
+            $message->destinataire->notify(new \App\Notifications\MessageSentNotification($message));
+        }
+
         return response()->json([
             'message' => $envoyer ? 'Message envoyé avec succès.' : 'Brouillon enregistré avec succès.',
             'data' => $message,
@@ -282,6 +286,8 @@ class MessageController extends Controller
 
         $message->load(['emetteur', 'destinataire', 'courrier']);
         $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+
+        $message->destinataire->notify(new \App\Notifications\MessageSentNotification($message));
 
         return response()->json([
             'message' => 'Message envoyé avec succès.',

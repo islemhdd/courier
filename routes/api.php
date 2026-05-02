@@ -1,6 +1,11 @@
 <?php
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Broadcast;
+
+Broadcast::routes(['middleware' => ['auth:sanctum']]);
+
 use App\Http\Controllers\Api\AuthenticatedSessionController;
 use App\Http\Controllers\CourrierController;
 use App\Http\Controllers\MessageController;
@@ -56,5 +61,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [ServiceController::class, 'store']);
         Route::patch('/{service}', [ServiceController::class, 'update']);
         Route::delete('/{service}', [ServiceController::class, 'destroy']);
+    });
+
+    Route::post('/test-notification', function (Request $request) {
+        $user = $request->user();
+        
+        $message = new \App\Models\Message();
+        $message->id = 999;
+        $message->contenu = 'Ceci est un test de notification';
+        
+        // Mock emetteur
+        $message->setRelation('emetteur', $user);
+        
+        $user->notifyNow(new \App\Notifications\MessageSentNotification($message));
+        
+        return response()->json(['success' => true, 'message' => 'Notification envoyée !']);
     });
 });

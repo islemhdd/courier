@@ -236,6 +236,15 @@ class CourrierController extends Controller
                 return null;
             }
 
+            if ($courrier->transmission_demandee && $courrier->estValidable()) {
+                $chefs = \App\Models\User::where('service_id', $courrier->service_source_id)
+                    ->where('role', \App\Models\User::ROLE_CHEF)
+                    ->get();
+                if ($chefs->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Notification::send($chefs, new \App\Notifications\ValidationRequestedNotification($courrier));
+                }
+            }
+
             return $courrier;
         });
 
@@ -630,6 +639,11 @@ class CourrierController extends Controller
                 'transmis_le' => $courrier->transmis_le,
             ]);
             $courrierRecu->load($this->courrierRelations());
+
+            $utilisateursDest = \App\Models\User::where('service_id', $courrierRecu->service_destinataire_id)->where('actif', true)->get();
+            if ($utilisateursDest->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send($utilisateursDest, new \App\Notifications\CourrierReceivedNotification($courrierRecu));
+            }
         }
 
         $archive = $this->archiverCourrier(

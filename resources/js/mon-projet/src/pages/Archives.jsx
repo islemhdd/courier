@@ -122,7 +122,7 @@ export default function Archives() {
     <div className="space-y-6 page-enter">
       <section className="card-lift page-enter overflow-hidden rounded-[28px] border">
         <div className="relative isolate px-6 py-7">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_36%),radial-gradient(circle_at_top_right,_rgba(251,191,36,0.18),_transparent_34%),linear-gradient(135deg,_#f8fafc,_#ffffff)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_36%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.18),transparent_34%),linear-gradient(135deg,#f8fafc,#ffffff)]" />
 
           <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-2xl">

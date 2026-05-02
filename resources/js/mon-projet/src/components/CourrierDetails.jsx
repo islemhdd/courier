@@ -44,6 +44,7 @@ export default function CourrierDetails({
   return (
     <aside className="rounded-3xl bg-white p-5 shadow-sm">
       <div className="mb-6 flex items-start justify-between">
+
         <div>
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
             <span aria-hidden="true">DOC</span>
@@ -149,13 +150,6 @@ export default function CourrierDetails({
 
         <button
           type="button"
-          className="flex items-center justify-center gap-2 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-medium text-white hover:bg-violet-700"
-        >
-          Transmettre
-        </button>
-
-        <button
-          type="button"
           className="flex items-center justify-center gap-2 rounded-2xl border border-blue-200 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50"
         >
           <MessageCircle size={16} />
@@ -184,6 +178,7 @@ export default function CourrierDetails({
           Supprimer
         </button>
       )}
+
     </aside>
   )
 }

@@ -347,7 +347,13 @@ export default function Dashboard() {
   )
 }
 
-function CourrierDetails({ courrier, actionLoading, onValidate, onArchive, onDelete }) {
+function CourrierDetails({
+  courrier,
+  actionLoading,
+  onValidate,
+  onArchive,
+  onDelete,
+}) {
   if (!courrier) {
     return (
       <aside className="card-lift rounded-3xl border p-6">

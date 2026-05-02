@@ -274,7 +274,7 @@ export default function ReceivedCourriers() {
     <div className="space-y-6">
       <section className="card-lift page-enter overflow-hidden rounded-[28px] border">
         <div className="relative isolate px-6 py-7">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.14),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(16,185,129,0.12),_transparent_38%),linear-gradient(135deg,_#ffffff,_#f8fafc)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.14),transparent_34%),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_38%),linear-gradient(135deg,#ffffff,#f8fafc)]" />
 
           <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div className="max-w-2xl">
@@ -644,7 +644,12 @@ function CourriersTable({ courriers, loading, selectedCourrier, onSelect }) {
   )
 }
 
-function CourrierDetails({ courrier, actionLoading, onArchive, onDelete }) {
+function CourrierDetails({
+  courrier,
+  actionLoading,
+  onArchive,
+  onDelete,
+}) {
   if (!courrier) {
     return (
       <aside className="card-lift rounded-[28px] border p-6 text-sm text-slate-500">

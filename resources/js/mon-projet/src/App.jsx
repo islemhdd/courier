@@ -25,6 +25,9 @@ import UsersPage from './pages/Users'
 import Login from './pages/Login'
 import { AuthProvider } from './context/AuthProvider'
 import { useAuth } from './context/auth-context'
+import { Toaster, toast } from 'react-hot-toast'
+import echo from './lib/echo'
+import { useEffect } from 'react'
 
 function App() {
   return (
@@ -38,6 +41,28 @@ function AuthenticatedApp() {
   const { user, loading, logout } = useAuth()
   const navigate = useNavigate()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  useEffect(() => {
+    if (user) {
+      const channel = echo.private(`App.Models.User.${user.id}`)
+      channel.notification((notification) => {
+        toast(notification.message, {
+          icon: '🔔',
+          style: {
+            borderRadius: '10px',
+            background: '#333',
+            color: '#fff',
+          },
+          duration: 5000,
+        });
+      });
+
+      return () => {
+        channel.stopListening('.Illuminate\\Notifications\\Events\\BroadcastNotificationCreated');
+        echo.leave(`App.Models.User.${user.id}`);
+      };
+    }
+  }, [user]);
 
   if (loading) {
     return <LoadingScreen />
@@ -54,6 +79,7 @@ function AuthenticatedApp() {
 
   return (
     <div className="min-h-screen bg-[#f4f6f8] text-slate-900">
+      <Toaster position="top-right" />
       <div className="flex min-h-screen">
         <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white px-4 py-5 lg:flex lg:flex-col">
           <SidebarContent
@@ -120,7 +146,21 @@ function AuthenticatedApp() {
                 </h1>
               </div>
 
-              <UserSummary user={user} />
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => {
+                    import('./api/api').then(({ default: api }) => {
+                      api.post('/test-notification')
+                        .then(() => console.log('Test notification sent!'))
+                        .catch(err => console.error('Test notification failed:', err));
+                    });
+                  }}
+                  className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500"
+                >
+                  Test Notification
+                </button>
+                <UserSummary user={user} />
+              </div>
             </div>
 
             <Routes>
@@ -243,10 +283,9 @@ function MenuLink({ to, icon, children, onNavigate }) {
       to={to}
       onClick={onNavigate}
       className={({ isActive }) =>
-        `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-          isActive
-            ? 'bg-slate-950 text-white'
-            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+        `flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive
+          ? 'bg-slate-950 text-white'
+          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
         }`
       }
     >

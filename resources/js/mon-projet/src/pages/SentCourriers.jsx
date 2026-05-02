@@ -580,6 +580,7 @@ function SentDetails({ courrier, onArchive, onTransmit, onEdit, onDelete }) {
           Supprimer
         </button>
       )}
+
     </aside>
   )
 }
