@@ -236,12 +236,28 @@ class CourrierController extends Controller
                 return null;
             }
 
-            if ($courrier->transmission_demandee && $courrier->estValidable()) {
-                $chefs = \App\Models\User::where('service_id', $courrier->service_source_id)
+            // Notify chefs automatically whenever a CREE courrier is created
+            // (status CREE = needs validation, typically created by a secretaire)
+            if ($courrier->statut === Courrier::STATUT_CREE) {
+                $serviceId = $courrier->service_source_id ?? $user->service_id;
+
+                $chefs = \App\Models\User::where('service_id', $serviceId)
                     ->where('role', \App\Models\User::ROLE_CHEF)
+                    ->where('actif', true)
                     ->get();
+
+                // Fallback: notify admins if no chef in the service
+                if ($chefs->isEmpty()) {
+                    $chefs = \App\Models\User::where('role', \App\Models\User::ROLE_ADMIN)
+                        ->where('actif', true)
+                        ->get();
+                }
+
                 if ($chefs->isNotEmpty()) {
-                    \Illuminate\Support\Facades\Notification::send($chefs, new \App\Notifications\ValidationRequestedNotification($courrier));
+                    \Illuminate\Support\Facades\Notification::send(
+                        $chefs,
+                        new \App\Notifications\ValidationRequestedNotification($courrier)
+                    );
                 }
             }
 
@@ -539,6 +555,56 @@ class CourrierController extends Controller
         return response()->json([
             'message' => 'Courrier marque comme non valide.',
             'courrier' => $this->enrichCourrier($courrier, $user),
+        ]);
+    }
+
+    public function demanderValidation(Courrier $courrier, Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $courrier->load($this->courrierRelations());
+
+        // Only CREE or NON_VALIDE courriers can be submitted for validation
+        if (!in_array($courrier->statut, [Courrier::STATUT_CREE, Courrier::STATUT_NON_VALIDE])) {
+            return response()->json([
+                'error' => 'Ce courrier ne peut pas être soumis à validation (statut incompatible).',
+            ], 422);
+        }
+
+        // The requester must be the creator or an admin
+        if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
+            return response()->json([
+                'error' => 'Seul le créateur du courrier ou un administrateur peut demander la validation.',
+            ], 403);
+        }
+
+        // Find all chefs in the same service as the courrier's source service
+        $serviceId = $courrier->service_source_id ?? $user->service_id;
+
+        $chefs = \App\Models\User::where('service_id', $serviceId)
+            ->where('role', \App\Models\User::ROLE_CHEF)
+            ->where('actif', true)
+            ->get();
+
+        if ($chefs->isEmpty()) {
+            // Also try admin users if no chef is found in the service
+            $chefs = \App\Models\User::where('role', \App\Models\User::ROLE_ADMIN)
+                ->where('actif', true)
+                ->get();
+        }
+
+        if ($chefs->isEmpty()) {
+            return response()->json([
+                'error' => 'Aucun chef ou administrateur disponible pour valider ce courrier.',
+            ], 422);
+        }
+
+        \Illuminate\Support\Facades\Notification::send(
+            $chefs,
+            new \App\Notifications\ValidationRequestedNotification($courrier)
+        );
+
+        return response()->json([
+            'message' => 'Demande de validation envoyée à ' . $chefs->count() . ' chef(s).',
         ]);
     }
 

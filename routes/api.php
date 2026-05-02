@@ -33,6 +33,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::patch('/{courrier}/transmettre', [CourrierController::class, 'transmettre']);
         Route::patch('/{courrier}/valider', [CourrierController::class, 'valider']);
         Route::patch('/{courrier}/non-valider', [CourrierController::class, 'nonValider']);
+        Route::patch('/{courrier}/demander-validation', [CourrierController::class, 'demanderValidation']);
     });
 
     Route::delete('/archives/{archive}', [CourrierController::class, 'destroyArchive']);

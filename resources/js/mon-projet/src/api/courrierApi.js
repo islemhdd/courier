@@ -72,4 +72,8 @@ export const courrierApi = {
   markAsNotValidated(id) {
     return api.patch(`/courriers/${id}/non-valider`)
   },
+
+  requestValidation(id) {
+    return api.patch(`/courriers/${id}/demander-validation`)
+  },
 }

@@ -282,6 +282,8 @@ export default function SentCourriers() {
     }
   }
 
+
+
   const stats = useMemo(
     () => ({
       total: pagination?.total || courriers.length,
@@ -538,11 +540,13 @@ function SentDetails({ courrier, onArchive, onTransmit, onEdit, onDelete }) {
         />
       </div>
 
+
+
       {courrier.peut_etre_modifie && (
         <button
           type="button"
           onClick={() => onEdit(courrier)}
-          className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
+          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700"
         >
           <Pencil size={16} />
           Modifier

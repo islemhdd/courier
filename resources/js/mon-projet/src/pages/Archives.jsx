@@ -2,13 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Archive,
   CalendarDays,
+  CheckCircle2,
   FileArchive,
   FileText,
   FolderOpen,
+  Loader2,
   RefreshCw,
   Search,
+  Send,
   Shield,
   Trash2,
+  X,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
 import Pagination from '../components/Pagination'
@@ -259,6 +263,8 @@ export default function Archives() {
   )
 }
 
+// ─── Table ────────────────────────────────────────────────────────────────────
+
 function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
   if (loading) {
     return (
@@ -340,7 +346,16 @@ function ArchivesTable({ archives, loading, selectedCourrier, onSelect }) {
   )
 }
 
+// ─── Detail panel ─────────────────────────────────────────────────────────────
+
 function ArchiveDetails({ courrier, actionLoading, onDelete }) {
+  const [sendOpen, setSendOpen] = useState(false)
+
+  // Reset the send form when the selected archive changes
+  useEffect(() => {
+    setSendOpen(false)
+  }, [courrier?.id])
+
   if (!courrier) {
     return (
       <aside className="card-lift rounded-[28px] border p-6 text-sm text-slate-500">
@@ -353,6 +368,7 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
 
   return (
     <aside className="card-lift rounded-[28px] border p-6">
+      {/* Header */}
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
@@ -371,10 +387,11 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
         <InlineBadge tone="emerald">ARCHIVE</InlineBadge>
       </div>
 
+      {/* Detail rows */}
       <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
         {restricted && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-            Vous n’avez pas l’autorisation de consulter ce contenu.
+            Vous n'avez pas l'autorisation de consulter ce contenu.
           </div>
         )}
 
@@ -402,6 +419,7 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
         />
       </div>
 
+      {/* Timeline */}
       <div className="mt-6 rounded-3xl border border-slate-100 p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
           Historique
@@ -434,20 +452,218 @@ function ArchiveDetails({ courrier, actionLoading, onDelete }) {
         </div>
       </div>
 
-      {courrier.peut_etre_supprime && (
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={actionLoading}
-          className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-        >
-          <Trash2 size={17} />
-          Supprimer l&apos;archive
-        </button>
-      )}
+      {/* Action buttons */}
+      <div className="mt-6 grid gap-3">
+        {/* ── Envoyer button / inline form ── */}
+        {!sendOpen ? (
+          <button
+            type="button"
+            onClick={() => setSendOpen(true)}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <Send size={16} />
+            Envoyer ce courrier
+          </button>
+        ) : (
+          <SendCourrierForm
+            archive={courrier}
+            onClose={() => setSendOpen(false)}
+          />
+        )}
+
+        {courrier.peut_etre_supprime && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={actionLoading}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Trash2 size={17} />
+            Supprimer l&apos;archive
+          </button>
+        )}
+      </div>
     </aside>
   )
 }
+
+// ─── Send form (inline, inside the detail panel) ──────────────────────────────
+
+function SendCourrierForm({ archive, onClose }) {
+  const [destinataire, setDestinataire] = useState('')
+  const [serviceDestId, setServiceDestId] = useState('')
+  const [services, setServices] = useState([])
+  const [niveaux, setNiveaux] = useState([])
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
+  const [formError, setFormError] = useState('')
+
+  // Which mode the user is in — 'libre' (free text) or 'service' (dropdown)
+  const mode = destinataire ? 'libre' : serviceDestId ? 'service' : null
+
+  useEffect(() => {
+    courrierApi.getCreateData()
+      .then((res) => {
+        setServices(res.data.services || [])
+        setNiveaux(res.data.niveaux_confidentialite || [])
+      })
+      .catch(() => {
+        setFormError("Impossible de charger les services disponibles.")
+      })
+  }, [])
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setFormError('')
+
+    if (!destinataire && !serviceDestId) {
+      setFormError('Veuillez saisir un destinataire ou choisir un service.')
+      return
+    }
+
+    try {
+      setSubmitting(true)
+
+      // Build form data pre-filled from the archive
+      const fd = new FormData()
+      fd.append('objet', archive.objet)
+      fd.append('type', 'sortant')
+      fd.append('date_reception', new Date().toISOString().slice(0, 10))
+      fd.append(
+        'niveau_confidentialite_id',
+        String(archive.niveau_confidentialite_id || niveaux[0]?.id || ''),
+      )
+      if (destinataire) fd.append('destinataire', destinataire)
+      if (serviceDestId) fd.append('service_destinataire_id', serviceDestId)
+
+      await courrierApi.create(fd)
+      setSuccess(true)
+    } catch (err) {
+      console.error(err)
+      const validationErrors = err.response?.data?.errors
+      if (validationErrors) {
+        setFormError(Object.values(validationErrors).flat()[0])
+      } else {
+        setFormError(
+          err.response?.data?.message ||
+            err.response?.data?.error ||
+            "Erreur lors de l'envoi du courrier.",
+        )
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (success) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex items-center gap-2 text-emerald-700">
+          <CheckCircle2 size={18} />
+          <span className="text-sm font-semibold">Courrier envoyé avec succès !</span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-3 text-xs font-medium text-emerald-600 hover:underline"
+        >
+          Fermer
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+    >
+      {/* Form header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Send size={15} className="text-slate-700" />
+          <span className="text-sm font-semibold text-slate-900">Envoyer le courrier</span>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+          aria-label="Annuler"
+        >
+          <X size={15} />
+        </button>
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Saisissez un destinataire <strong>ou</strong> choisissez un service interne — pas les deux.
+      </p>
+
+      {formError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+          {formError}
+        </div>
+      )}
+
+      {/* Destinataire libre */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">
+          Destinataire externe
+        </label>
+        <input
+          type="text"
+          value={destinataire}
+          onChange={(e) => {
+            setDestinataire(e.target.value)
+            if (e.target.value) setServiceDestId('')   // clear service when typing
+          }}
+          disabled={mode === 'service'}
+          className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          placeholder="Ex: Ministère, Partenaire..."
+        />
+      </div>
+
+      {/* Separator */}
+      <div className="flex items-center gap-2">
+        <div className="h-px flex-1 bg-slate-200" />
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">ou</span>
+        <div className="h-px flex-1 bg-slate-200" />
+      </div>
+
+      {/* Service interne */}
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-600">
+          Service destinataire interne
+        </label>
+        <select
+          value={serviceDestId}
+          onChange={(e) => {
+            setServiceDestId(e.target.value)
+            if (e.target.value) setDestinataire('')   // clear free text when picking service
+          }}
+          disabled={mode === 'libre'}
+          className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="">Choisir un service interne</option>
+          {services.map((s) => (
+            <option key={s.id} value={s.id}>{s.libelle}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Submit */}
+      <button
+        type="submit"
+        disabled={submitting || (!destinataire && !serviceDestId)}
+        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {submitting ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+        {submitting ? 'Envoi en cours...' : 'Confirmer l\'envoi'}
+      </button>
+    </form>
+  )
+}
+
+// ─── Shared small components ──────────────────────────────────────────────────
 
 function StatCard({ title, value, icon }) {
   return (
@@ -485,7 +701,7 @@ function InlineBadge({ children, tone = 'slate' }) {
 
 function DetailRow({ label, value }) {
   return (
-    <div className="flex justify-between gap-4">
+    <div className="flex justify-between gap-4 py-0.5">
       <span className="text-slate-500">{label}</span>
       <span className="text-right font-medium text-slate-800">{value}</span>
     </div>
