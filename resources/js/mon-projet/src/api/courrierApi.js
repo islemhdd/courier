@@ -76,4 +76,13 @@ export const courrierApi = {
   requestValidation(id) {
     return api.patch(`/courriers/${id}/demander-validation`)
   },
+
+  createReply(parentId, data) {
+    if (data instanceof FormData) {
+      data.append('parent_courrier_id', parentId)
+      return this.create(data)
+    }
+
+    return this.create({ ...data, parent_courrier_id: parentId })
+  },
 }
