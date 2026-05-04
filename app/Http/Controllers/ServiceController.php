@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreServiceRequest;
 use App\Http\Requests\UpdateServiceRequest;
 use App\Models\Service;
+use App\Models\Structure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,14 +16,21 @@ class ServiceController extends Controller
         $actor = $request->user();
 
         if (!$actor || !$actor->can('viewAny', Service::class)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de consulter les services.',
-            ], 403);
+            return response()->json(['error' => 'Vous n\'avez pas le droit de consulter les services.'], 403);
         }
 
         $search = trim((string) $request->get('q', ''));
 
         $services = Service::query()
+            ->with('structure')
+            ->when(!$actor->estAdmin() && !$actor->estChefGeneral(), function ($query) use ($actor) {
+                if ($actor->estChefStructure()) {
+                    $query->where('structure_id', $actor->structure_id);
+                    return;
+                }
+
+                $query->where('id', $actor->service_id);
+            })
             ->when($search !== '', fn ($query) => $query->where('libelle', 'like', '%' . $search . '%'))
             ->withCount('users')
             ->orderBy('libelle')
@@ -32,6 +40,7 @@ class ServiceController extends Controller
         return response()->json([
             'services' => $services,
             'meta' => [
+                'structures' => Structure::orderBy('libelle')->get(['id', 'libelle']),
                 'peut_creer' => $actor->can('create', Service::class),
             ],
         ]);
@@ -40,7 +49,7 @@ class ServiceController extends Controller
     public function store(StoreServiceRequest $request): JsonResponse
     {
         $service = Service::create($request->validated());
-        $service->loadCount('users');
+        $service->loadCount('users')->load('structure');
 
         return response()->json([
             'message' => 'Service cree avec succes.',
@@ -51,7 +60,7 @@ class ServiceController extends Controller
     public function update(UpdateServiceRequest $request, Service $service): JsonResponse
     {
         $service->update($request->validated());
-        $service->loadCount('users');
+        $service->loadCount('users')->load('structure');
 
         return response()->json([
             'message' => 'Service modifie avec succes.',
@@ -64,22 +73,16 @@ class ServiceController extends Controller
         $actor = $request->user();
 
         if (!$actor || !$actor->can('delete', $service)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de supprimer ce service.',
-            ], 403);
+            return response()->json(['error' => 'Vous n\'avez pas le droit de supprimer ce service.'], 403);
         }
 
         if ($service->users()->exists()) {
-            return response()->json([
-                'error' => 'Impossible de supprimer un service qui contient encore des utilisateurs.',
-            ], 422);
+            return response()->json(['error' => 'Impossible de supprimer un service qui contient encore des utilisateurs.'], 422);
         }
 
         $service->delete();
 
-        return response()->json([
-            'message' => 'Service supprime avec succes.',
-        ]);
+        return response()->json(['message' => 'Service supprime avec succes.']);
     }
 
     private function serializeService(Service $service, $actor): array
@@ -87,6 +90,11 @@ class ServiceController extends Controller
         return [
             'id' => $service->id,
             'libelle' => $service->libelle,
+            'structure_id' => $service->structure_id,
+            'structure' => $service->structure ? [
+                'id' => $service->structure->id,
+                'libelle' => $service->structure->libelle,
+            ] : null,
             'users_count' => $service->users_count ?? 0,
             'peut_modifier' => $actor->can('update', $service),
             'peut_supprimer' => $actor->can('delete', $service),

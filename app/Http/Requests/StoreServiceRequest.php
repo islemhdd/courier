@@ -18,6 +18,7 @@ class StoreServiceRequest extends FormRequest
     {
         return [
             'libelle' => ['required', 'string', 'max:255', 'unique:services,libelle'],
+            'structure_id' => ['nullable', 'integer', 'exists:structures,id'],
         ];
     }
 }

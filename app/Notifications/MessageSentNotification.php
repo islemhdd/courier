@@ -4,11 +4,10 @@ namespace App\Notifications;
 
 use App\Models\Message;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Notification;
 
-class MessageSentNotification extends Notification implements ShouldBroadcast
+class MessageSentNotification extends Notification
 {
     use Queueable;
 
@@ -17,6 +16,10 @@ class MessageSentNotification extends Notification implements ShouldBroadcast
 
     public function via($notifiable): array
     {
+        if (app()->environment('testing')) {
+            return [];
+        }
+
         return ['broadcast'];
     }
 

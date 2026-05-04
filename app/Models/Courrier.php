@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class Courrier extends Model
 {
@@ -27,14 +30,24 @@ class Courrier extends Model
     public const TYPE_SORTANT = 'sortant';
 
     protected $fillable = [
+        'sequence_number',
         'numero',
         'objet',
         'type',
+        'courrier_type_id',
+        'resume',
         'chemin_fichier',
         'date_creation',
         'date_reception',
         'expediteur',
         'destinataire',
+        'source_id',
+        'parent_courrier_id',
+        'requiert_reponse',
+        'delai_reponse_jours',
+        'date_limite_reponse',
+        'repondu_le',
+        'mode_diffusion',
         'statut',
         'transmission_demandee',
         'service_source_id',
@@ -44,11 +57,17 @@ class Courrier extends Model
         'valideur_id',
         'transmis_par_id',
         'transmis_le',
+        'validation_parent_id',
     ];
 
     protected $casts = [
+        'sequence_number' => 'integer',
         'date_creation' => 'datetime',
         'date_reception' => 'datetime',
+        'requiert_reponse' => 'boolean',
+        'delai_reponse_jours' => 'integer',
+        'date_limite_reponse' => 'datetime',
+        'repondu_le' => 'datetime',
         'transmission_demandee' => 'boolean',
         'transmis_le' => 'datetime',
         'created_at' => 'datetime',
@@ -58,7 +77,45 @@ class Courrier extends Model
     protected $appends = [
         'url_fichier',
         'est_validable',
+        'a_ete_repondu',
+        'est_en_retard',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $courrier) {
+            if (!$courrier->sequence_number) {
+                $courrier->sequence_number = ((int) static::query()->lockForUpdate()->max('sequence_number')) + 1;
+            }
+
+            if (!$courrier->numero) {
+                $courrier->numero = sprintf('COUR-%06d', $courrier->sequence_number);
+            }
+
+            if (!$courrier->date_creation) {
+                $courrier->date_creation = now();
+            }
+
+            if ($courrier->requiert_reponse && $courrier->delai_reponse_jours && !$courrier->date_limite_reponse) {
+                $courrier->date_limite_reponse = Carbon::parse($courrier->date_reception ?? now())
+                    ->addDays($courrier->delai_reponse_jours);
+            }
+        });
+
+        static::saved(function (self $courrier) {
+            if ($courrier->parent_courrier_id) {
+                static::query()
+                    ->whereKey($courrier->parent_courrier_id)
+                    ->whereNull('repondu_le')
+                    ->update(['repondu_le' => now()]);
+            }
+        });
+    }
+
+    public function courrierType(): BelongsTo
+    {
+        return $this->belongsTo(CourrierType::class);
+    }
 
     public function niveauConfidentialite(): BelongsTo
     {
@@ -90,9 +147,49 @@ class Courrier extends Model
         return $this->belongsTo(User::class, 'transmis_par_id');
     }
 
+    public function source(): BelongsTo
+    {
+        return $this->belongsTo(Source::class);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_courrier_id');
+    }
+
+    public function validationParent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'validation_parent_id');
+    }
+
+    public function reponses(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_courrier_id');
+    }
+
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CourrierAttachment::class);
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(CourrierComment::class);
+    }
+
+    public function recipients(): HasMany
+    {
+        return $this->hasMany(CourrierRecipient::class);
+    }
+
+    public function concernedPeople(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'courrier_people')->withTimestamps();
     }
 
     public function scopeVisiblePourUser(Builder $query, User $user): Builder
@@ -102,30 +199,29 @@ class Courrier extends Model
         }
 
         return $query->where(function (Builder $subQuery) use ($user) {
-            if ($user->estChef()) {
-                $subQuery->where('service_source_id', $user->service_id)
-                    ->orWhere('service_destinataire_id', $user->service_id)
-                    ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
-                        $userQuery->where('service_id', $user->service_id);
-                    });
-
-                return;
-            }
-
-            if ($user->estSecretaire()) {
-                $subQuery->where('service_source_id', $user->service_id)
-                    ->orWhere('service_destinataire_id', $user->service_id)
-                    ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
-                        $userQuery->where('service_id', $user->service_id);
-                    });
-            }
-
-            $subQuery->orWhere('createur_id', $user->id)
+            $subQuery->where('createur_id', $user->id)
                 ->orWhere('valideur_id', $user->id)
                 ->orWhere('transmis_par_id', $user->id)
-                ->orWhereHas('niveauConfidentialite', function (Builder $niveauQuery) use ($user) {
-                    $niveauQuery->where('rang', '<=', $user->getRangNiveauConfidentialite());
+                ->orWhereHas('concernedPeople', fn (Builder $q) => $q->where('users.id', $user->id))
+                ->orWhereHas('recipients', function (Builder $q) use ($user) {
+                    $q->where('recipient_type', 'all')
+                        ->orWhere(function (Builder $sub) use ($user) {
+                            $sub->where('recipient_type', 'user')->where('user_id', $user->id);
+                        })
+                        ->orWhere(function (Builder $sub) use ($user) {
+                            $sub->where('recipient_type', 'service')->where('service_id', $user->service_id);
+                        })
+                        ->orWhere(function (Builder $sub) use ($user) {
+                            $sub->where('recipient_type', 'structure')->where('structure_id', $user->structure_id);
+                        });
                 });
+
+            if ($user->service_id) {
+                $subQuery->orWhere('service_source_id', $user->service_id)
+                    ->orWhere('service_destinataire_id', $user->service_id)
+                    ->orWhereHas('createur', fn (Builder $q) => $q->where('service_id', $user->service_id));
+            }
+
         });
     }
 
@@ -136,7 +232,10 @@ class Courrier extends Model
 
     public function scopeObjet(Builder $query, ?string $objet): Builder
     {
-        return $objet ? $query->where('objet', 'like', '%' . $objet . '%') : $query;
+        return $objet ? $query->where(function (Builder $subQuery) use ($objet) {
+            $subQuery->where('objet', 'like', '%' . $objet . '%')
+                ->orWhere('resume', 'like', '%' . $objet . '%');
+        }) : $query;
     }
 
     public function scopeExpediteur(Builder $query, ?string $expediteur): Builder
@@ -161,15 +260,12 @@ class Courrier extends Model
 
     public function scopeEnValidation(Builder $query): Builder
     {
-        return $query->whereIn('statut', [
-            self::STATUT_CREE,
-            self::STATUT_NON_VALIDE,
-        ]);
+        return $query->whereIn('statut', [self::STATUT_CREE, self::STATUT_NON_VALIDE]);
     }
 
     public function scopeValidablesPourUser(Builder $query, User $user): Builder
     {
-        if ($user->estAdmin()) {
+        if ($user->estAdmin() || $user->estChefGeneral()) {
             return $query->enValidation();
         }
 
@@ -182,8 +278,12 @@ class Courrier extends Model
             ->where(function (Builder $subQuery) use ($user) {
                 $subQuery->where('service_source_id', $user->service_id)
                     ->orWhere('service_destinataire_id', $user->service_id)
-                    ->orWhereHas('createur', function (Builder $userQuery) use ($user) {
-                        $userQuery->where('service_id', $user->service_id);
+                    ->orWhereHas('recipients', function (Builder $q) use ($user) {
+                        $q->where(function (Builder $recipientQuery) use ($user) {
+                            $recipientQuery->where('recipient_type', 'service')->where('service_id', $user->service_id)
+                                ->orWhere('recipient_type', 'structure')->where('structure_id', $user->structure_id)
+                                ->orWhere('recipient_type', 'all');
+                        });
                     });
             });
     }
@@ -203,8 +303,8 @@ class Courrier extends Model
             $dates = explode('|', $dateReception);
             if (count($dates) === 2) {
                 return $query->whereBetween('date_reception', [
-                    \Carbon\Carbon::parse($dates[0])->startOfDay(),
-                    \Carbon\Carbon::parse($dates[1])->endOfDay(),
+                    Carbon::parse($dates[0])->startOfDay(),
+                    Carbon::parse($dates[1])->endOfDay(),
                 ]);
             }
         }
@@ -218,7 +318,36 @@ class Courrier extends Model
                 ->whereMonth('date_reception', substr($dateReception, 5, 2));
         }
 
-        return $query->whereDate('date_reception', \Carbon\Carbon::parse($dateReception));
+        return $query->whereDate('date_reception', Carbon::parse($dateReception));
+    }
+
+    public function scopeSearchAnyField(Builder $query, ?string $term): Builder
+    {
+        if (!$term) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $subQuery) use ($term) {
+            $subQuery->where('numero', 'like', '%' . $term . '%')
+                ->orWhere('objet', 'like', '%' . $term . '%')
+                ->orWhere('resume', 'like', '%' . $term . '%')
+                ->orWhere('expediteur', 'like', '%' . $term . '%')
+                ->orWhere('destinataire', 'like', '%' . $term . '%')
+                ->orWhere('statut', 'like', '%' . $term . '%');
+        });
+    }
+
+    public function scopeResumeFullText(Builder $query, ?string $term): Builder
+    {
+        if (!$term) {
+            return $query;
+        }
+
+        if (DB::getDriverName() === 'mysql') {
+            return $query->whereFullText('resume', $term);
+        }
+
+        return $query->where('resume', 'like', '%' . $term . '%');
     }
 
     public function getEstAccessibleAttribute(): bool
@@ -239,15 +368,8 @@ class Courrier extends Model
             return;
         }
 
-        $annee = date('Y');
-        $caracteres = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-        $random = '';
-
-        for ($i = 0; $i < 8; $i++) {
-            $random .= $caracteres[rand(0, strlen($caracteres) - 1)];
-        }
-
-        $this->attributes['numero'] = 'COUR-' . $annee . '-' . $random;
+        $sequenceNumber = $this->attributes['sequence_number'] ?? (((int) static::max('sequence_number')) + 1);
+        $this->attributes['numero'] = sprintf('COUR-%06d', $sequenceNumber);
     }
 
     public function setStatutAttribute(?string $value): void
@@ -262,15 +384,25 @@ class Courrier extends Model
 
     public function estValidable(): bool
     {
-        return in_array($this->statut, [
-            self::STATUT_CREE,
-            self::STATUT_NON_VALIDE,
-        ], true);
+        return in_array($this->statut, [self::STATUT_CREE, self::STATUT_NON_VALIDE], true);
     }
 
     public function getEstValidableAttribute(): bool
     {
         return $this->estValidable();
+    }
+
+    public function getAEteReponduAttribute(): bool
+    {
+        return (bool) $this->repondu_le || $this->reponses()->exists();
+    }
+
+    public function getEstEnRetardAttribute(): bool
+    {
+        return $this->requiert_reponse
+            && !$this->a_ete_repondu
+            && $this->date_limite_reponse !== null
+            && $this->date_limite_reponse->isPast();
     }
 
     public function appartientAuServiceDe(User $user): bool
@@ -292,11 +424,12 @@ class Courrier extends Model
 
     public function estDirectementConcernePar(User $user): bool
     {
-        return in_array($user->id, array_filter([
-            $this->createur_id,
-            $this->valideur_id,
-            $this->transmis_par_id,
-        ]), true);
+        if (in_array($user->id, array_filter([$this->createur_id, $this->valideur_id, $this->transmis_par_id]), true)) {
+            return true;
+        }
+
+        return $this->concernedPeople()->where('users.id', $user->id)->exists()
+            || $this->recipients()->where('recipient_type', 'user')->where('user_id', $user->id)->exists();
     }
 
     public function niveauEstAutorisePour(User $user): bool
@@ -314,8 +447,32 @@ class Courrier extends Model
             return true;
         }
 
+        if ($this->estDirectementConcernePar($user) || $this->appartientAuServiceDe($user)) {
+            return true;
+        }
+
+        return $this->recipients()->where(function (Builder $q) use ($user) {
+            $q->where('recipient_type', 'all')
+                ->orWhere(function (Builder $sub) use ($user) {
+                    $sub->where('recipient_type', 'structure')->where('structure_id', $user->structure_id);
+                })
+                ->orWhere(function (Builder $sub) use ($user) {
+                    $sub->where('recipient_type', 'service')->where('service_id', $user->service_id);
+                })
+                ->orWhere(function (Builder $sub) use ($user) {
+                    $sub->where('recipient_type', 'user')->where('user_id', $user->id);
+                });
+        })->exists();
+    }
+
+    public function peutEtreVuEnDetailPar(User $user): bool
+    {
+        if ($user->estAdmin() || $user->estChefGeneral()) {
+            return true;
+        }
+
         if ($user->estChef()) {
-            return $this->appartientAuServiceDe($user);
+            return $this->estDirectementConcernePar($user) || $this->appartientAuServiceDe($user);
         }
 
         if ($this->estDirectementConcernePar($user)) {
@@ -323,27 +480,10 @@ class Courrier extends Model
         }
 
         if ($this->appartientAuServiceDe($user)) {
-            return true;
+            return $this->niveauEstAutorisePour($user);
         }
 
-        return $this->niveauEstAutorisePour($user);
-    }
-
-    public function peutEtreVuEnDetailPar(User $user): bool
-    {
-        if ($user->estAdmin()) {
-            return true;
-        }
-
-        if ($user->estChef()) {
-            return $this->appartientAuServiceDe($user);
-        }
-
-        if ($this->niveauEstAutorisePour($user)) {
-            return true;
-        }
-
-        return $this->estDirectementConcernePar($user);
+        return false;
     }
 
     public function peutEtreArchivePar(User $user): bool
@@ -356,8 +496,11 @@ class Courrier extends Model
             return false;
         }
 
-        return $this->createur_id === $user->id
-            || $this->appartientAuServiceDe($user);
+        if ($this->requiert_reponse && !$this->a_ete_repondu) {
+            return false;
+        }
+
+        return $this->createur_id === $user->id || $this->appartientAuServiceDe($user);
     }
 
     public function peutEtreValidePar(User $user): bool
@@ -370,7 +513,7 @@ class Courrier extends Model
             return false;
         }
 
-        if ($user->estAdmin()) {
+        if ($user->estAdmin() || $user->estChefGeneral()) {
             return true;
         }
 
@@ -378,7 +521,8 @@ class Courrier extends Model
             return false;
         }
 
-        return $this->appartientAuServiceDe($user);
+        return $this->appartientAuServiceDe($user)
+            || ($user->structure_id !== null && $this->recipients()->where('recipient_type', 'structure')->where('structure_id', $user->structure_id)->exists());
     }
 
     public function peutEtreNonValidePar(User $user): bool
@@ -388,23 +532,15 @@ class Courrier extends Model
 
     public function peutEtreTransmisPar(User $user): bool
     {
-        if ($user->estAdmin()) {
+        if ($user->estAdmin() || $user->estChefGeneral()) {
             return true;
-        }
-
-        if ($this->type !== self::TYPE_SORTANT) {
-            return false;
         }
 
         if ($this->statut !== self::STATUT_VALIDE) {
             return false;
         }
 
-        if ($this->createur_id === $user->id) {
-            return true;
-        }
-
-        return $user->estChef() && $this->appartientAuServiceDe($user);
+        return $user->estChef() || $user->estSecretaire();
     }
 
     public function estCree(): bool
@@ -434,7 +570,7 @@ class Courrier extends Model
 
     public function estArchivable(): bool
     {
-        return $this->estTransmis() || $this->estRecu();
+        return $this->estTransmis() || $this->estRecu() || $this->estValide();
     }
 
     public function peutEtreSupprimePar(User $user): bool
@@ -443,10 +579,7 @@ class Courrier extends Model
             return true;
         }
 
-        if (!in_array($this->statut, [
-            self::STATUT_CREE,
-            self::STATUT_NON_VALIDE,
-        ], true)) {
+        if (!in_array($this->statut, [self::STATUT_CREE, self::STATUT_NON_VALIDE], true)) {
             return false;
         }
 
@@ -459,18 +592,15 @@ class Courrier extends Model
             return true;
         }
 
-        if (in_array($this->statut, [
-            self::STATUT_CREE,
-            self::STATUT_NON_VALIDE,
-        ], true)) {
-            return $user->estSecretaire() && $this->createur_id === $user->id;
+        if (in_array($this->statut, [self::STATUT_CREE, self::STATUT_NON_VALIDE], true)) {
+            return $this->createur_id === $user->id;
         }
 
         if ($this->statut !== self::STATUT_VALIDE) {
             return false;
         }
 
-        return $user->estChef() && $this->appartientAuServiceDe($user);
+        return $user->estChef() && ($this->appartientAuServiceDe($user) || $this->createur_id === $user->id);
     }
 
     public function getUrlFichierAttribute(): ?string

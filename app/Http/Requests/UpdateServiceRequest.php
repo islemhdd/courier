@@ -12,9 +12,7 @@ class UpdateServiceRequest extends FormRequest
         $user = $this->user();
         $service = $this->route('service');
 
-        return $user !== null
-            && $service instanceof Service
-            && $user->can('update', $service);
+        return $user !== null && $service instanceof Service && $user->can('update', $service);
     }
 
     public function rules(): array
@@ -23,6 +21,7 @@ class UpdateServiceRequest extends FormRequest
 
         return [
             'libelle' => ['required', 'string', 'max:255', 'unique:services,libelle,' . $service?->id],
+            'structure_id' => ['nullable', 'integer', 'exists:structures,id'],
         ];
     }
 }

@@ -13,9 +13,7 @@ class UpdateUserRequest extends FormRequest
         $user = $this->user();
         $target = $this->route('user');
 
-        return $user !== null
-            && $target instanceof User
-            && $user->can('update', $target);
+        return $user !== null && $target instanceof User && $user->can('update', $target);
     }
 
     public function rules(): array
@@ -29,7 +27,9 @@ class UpdateUserRequest extends FormRequest
             'password' => ['nullable', 'confirmed', Password::defaults()],
             'actif' => ['sometimes', 'boolean'],
             'role' => ['sometimes', 'required', 'in:' . implode(',', User::ROLES)],
+            'role_scope' => ['sometimes', 'in:general,structure,service'],
             'service_id' => ['sometimes', 'nullable', 'integer', 'exists:services,id'],
+            'structure_id' => ['sometimes', 'nullable', 'integer', 'exists:structures,id'],
             'niveau_confidentialite_id' => ['sometimes', 'nullable', 'integer', 'exists:niveau_confidentialites,id'],
         ];
     }

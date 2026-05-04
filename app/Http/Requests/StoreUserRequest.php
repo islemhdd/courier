@@ -24,7 +24,9 @@ class StoreUserRequest extends FormRequest
             'password' => ['required', 'confirmed', Password::defaults()],
             'actif' => ['sometimes', 'boolean'],
             'role' => ['required', 'in:' . implode(',', User::ROLES)],
+            'role_scope' => ['sometimes', 'in:general,structure,service'],
             'service_id' => ['nullable', 'integer', 'exists:services,id'],
+            'structure_id' => ['nullable', 'integer', 'exists:structures,id'],
             'niveau_confidentialite_id' => ['nullable', 'integer', 'exists:niveau_confidentialites,id'],
         ];
     }

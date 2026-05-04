@@ -2,36 +2,30 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
-    /**
-     * Les rôles disponibles pour les utilisateurs.
-     */
     public const ROLE_ADMIN = 'admin';
     public const ROLE_CHEF = 'chef';
     public const ROLE_SECRETAIRE = 'secretaire';
+    public const SCOPE_GENERAL = 'general';
+    public const SCOPE_STRUCTURE = 'structure';
+    public const SCOPE_SERVICE = 'service';
     public const ROLES = [
         self::ROLE_ADMIN,
         self::ROLE_CHEF,
         self::ROLE_SECRETAIRE,
     ];
 
-    /**
-     * Les attributs pouvant être assignés en masse.
-     *
-     * @var array<string>
-     */
     protected $fillable = [
         'name',
         'nom',
@@ -40,25 +34,17 @@ class User extends Authenticatable
         'password',
         'actif',
         'role',
+        'role_scope',
         'service_id',
+        'structure_id',
         'niveau_confidentialite_id',
     ];
 
-    /**
-     * Les attributs qui doivent être cachés lors de la sérialisation.
-     *
-     * @var array<string>
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * Les attributs qui doivent être convertis.
-     *
-     * @return array<string, string>
-     */
     protected function casts(): array
     {
         return [
@@ -70,116 +56,113 @@ class User extends Authenticatable
         ];
     }
 
-    /**
-     * Relation : un utilisateur appartient à un service.
-     */
     public function service(): BelongsTo
     {
         return $this->belongsTo(Service::class);
     }
 
-    /**
-     * Relation : un utilisateur a un niveau de confidentialité.
-     */
+    public function structure(): BelongsTo
+    {
+        return $this->belongsTo(Structure::class);
+    }
+
     public function niveauConfidentialite(): BelongsTo
     {
         return $this->belongsTo(NiveauConfidentialite::class);
     }
 
-    /**
-     * Relation : un utilisateur peut avoir créé plusieurs courriers.
-     */
-    public function courriersCreés(): HasMany
+    public function courriersCrees(): HasMany
     {
         return $this->hasMany(Courrier::class, 'createur_id');
     }
 
-    /**
-     * Relation : un utilisateur peut avoir validé plusieurs courriers.
-     */
-    public function courriersValidés(): HasMany
+    public function courriersValides(): HasMany
     {
         return $this->hasMany(Courrier::class, 'valideur_id');
     }
 
-    /**
-     * Relation : un utilisateur peut être émetteur de plusieurs messages.
-     */
-    public function messagesEnvoyés(): HasMany
+    public function messagesEnvoyes(): HasMany
     {
         return $this->hasMany(Message::class, 'emetteur_id');
     }
 
-    /**
-     * Relation : un utilisateur peut être destinataire de plusieurs messages.
-     */
-    public function messagesReçus(): HasMany
+    public function messagesRecus(): HasMany
     {
         return $this->hasMany(Message::class, 'destinataire_id');
     }
 
-    /**
-     * Vérifie si l'utilisateur est un administrateur.
-     */
     public function estAdmin(): bool
     {
         return $this->role === self::ROLE_ADMIN;
     }
 
-    /**
-     * Vérifie si l'utilisateur est un chef de service.
-     */
     public function estChef(): bool
     {
         return $this->role === self::ROLE_CHEF;
     }
 
-    /**
-     * Vérifie si l'utilisateur est un secréstaire.
-     */
     public function estSecretaire(): bool
     {
         return $this->role === self::ROLE_SECRETAIRE;
     }
 
-    /**
-     * Vérifie si l'utilisateur peut créer des courriers (admin ou secretaire).
-     */
+    public function estChefGeneral(): bool
+    {
+        return ($this->estChef() || $this->estAdmin()) && $this->role_scope === self::SCOPE_GENERAL;
+    }
+
+    public function estSecretaireGeneral(): bool
+    {
+        return $this->estSecretaire() && $this->role_scope === self::SCOPE_GENERAL;
+    }
+
+    public function estChefStructure(): bool
+    {
+        return $this->estChef() && $this->role_scope === self::SCOPE_STRUCTURE;
+    }
+
+    public function estSecretaireStructure(): bool
+    {
+        return $this->estSecretaire() && $this->role_scope === self::SCOPE_STRUCTURE;
+    }
+
+    public function estChefService(): bool
+    {
+        return $this->estChef() && $this->role_scope === self::SCOPE_SERVICE;
+    }
+
+    public function estSecretaireService(): bool
+    {
+        return $this->estSecretaire() && $this->role_scope === self::SCOPE_SERVICE;
+    }
+
     public function peutCreerCourrier(): bool
     {
         return $this->estAdmin() || $this->estChef() || $this->estSecretaire();
     }
 
-    /**
-     * Retourne le nom complet de l'utilisateur.
-     */
-    public function getNomCompletAttribute(): string
+    public function peutAjouterSource(): bool
     {
-        return $this->prenom . ' ' . $this->nom;
+        return $this->estChefGeneral() || $this->estSecretaireGeneral();
     }
 
-    /**
-     * Compatibilite avec les formulaires Laravel Breeze qui utilisent "name".
-     */
-    public function getNameAttribute(): string
+    public function getNomCompletAttribute(): string
     {
         return trim($this->prenom . ' ' . $this->nom);
     }
 
-    /**
-     * Convertit le champ "name" en prenom/nom pour le schema metier.
-     */
+    public function getNameAttribute(): string
+    {
+        return $this->nom_complet;
+    }
+
     public function setNameAttribute(?string $value): void
     {
         $parts = preg_split('/\s+/', trim((string) $value), 2);
-
         $this->attributes['prenom'] = $parts[0] ?? '';
         $this->attributes['nom'] = $parts[1] ?? $parts[0] ?? '';
     }
 
-    /**
-     * Retourne le rang du niveau de confidentialité de l'utilisateur.
-     */
     public function getRangNiveauConfidentialite(): int
     {
         return $this->niveauConfidentialite?->rang ?? 0;
@@ -187,7 +170,7 @@ class User extends Authenticatable
 
     public function peutGererTousLesUtilisateurs(): bool
     {
-        return $this->estAdmin();
+        return $this->estAdmin() || $this->estChefGeneral();
     }
 
     public function peutConsulterUtilisateurs(): bool
@@ -197,23 +180,33 @@ class User extends Authenticatable
 
     public function peutGererUtilisateursDuService(): bool
     {
-        return $this->estChef() && $this->service_id !== null;
+        return $this->estChefService() && $this->service_id !== null;
     }
 
     public function peutGererUtilisateur(User $autre): bool
     {
-        if ($this->estAdmin()) {
+        if ($this->estAdmin() || $this->estChefGeneral()) {
             return true;
+        }
+
+        if ($this->estChefStructure() && $this->structure_id !== null) {
+            return $autre->structure_id === $this->structure_id && !$autre->estAdmin() && !$autre->estChefGeneral();
         }
 
         if (!$this->peutGererUtilisateursDuService()) {
             return false;
         }
 
-        if ($autre->estAdmin()) {
-            return false;
-        }
+        return $autre->service_id !== null && $autre->service_id === $this->service_id && !$autre->estAdmin();
+    }
 
-        return $autre->service_id !== null && $autre->service_id === $this->service_id;
+    public function scopeChefs(Builder $query): Builder
+    {
+        return $query->where('role', self::ROLE_CHEF);
+    }
+
+    public function scopeSecretaires(Builder $query): Builder
+    {
+        return $query->where('role', self::ROLE_SECRETAIRE);
     }
 }

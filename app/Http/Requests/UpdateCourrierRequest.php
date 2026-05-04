@@ -14,45 +14,41 @@ class UpdateCourrierRequest extends FormRequest
         $user = $this->user();
         $courrier = $this->route('courrier');
 
-        return $user !== null
-            && $courrier !== null
-            && $courrier->peutEtreModifiePar($user);
+        return $user !== null && $courrier !== null && $courrier->peutEtreModifiePar($user);
     }
 
     public function rules(): array
     {
         return [
             'objet' => ['sometimes', 'required', 'string', 'max:100'],
-            'type' => ['sometimes', 'required', 'string', 'max:20', Rule::in(['entrant', 'sortant'])],
+            'type' => ['sometimes', 'required', Rule::in([Courrier::TYPE_ENTRANT, Courrier::TYPE_SORTANT])],
+            'courrier_type_id' => ['sometimes', 'nullable', 'integer', 'exists:courrier_types,id'],
+            'resume' => ['sometimes', 'required', 'string'],
             'date_reception' => ['sometimes', 'required', 'date'],
-            'expediteur' => ['sometimes', 'nullable', 'required_if:type,entrant', 'string', 'max:100'],
+            'expediteur' => ['sometimes', 'nullable', 'string', 'max:100'],
             'destinataire' => ['sometimes', 'nullable', 'string', 'max:100'],
             'niveau_confidentialite_id' => ['sometimes', 'required', 'integer', 'exists:niveau_confidentialites,id'],
+            'source_id' => ['sometimes', 'nullable', 'integer', 'exists:sources,id'],
+            'parent_courrier_id' => ['sometimes', 'nullable', 'integer', 'exists:courriers,id'],
+            'requiert_reponse' => ['sometimes', 'boolean'],
+            'delai_reponse_jours' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'mode_diffusion' => ['sometimes', Rule::in(['unicast', 'multicast', 'broadcast'])],
+            'service_source_id' => ['sometimes', 'nullable', 'integer', 'exists:services,id'],
             'service_destinataire_id' => ['sometimes', 'nullable', 'integer', 'exists:services,id'],
+            'concerned_user_ids' => ['sometimes', 'array'],
+            'concerned_user_ids.*' => ['integer', 'exists:users,id'],
+            'recipients' => ['sometimes', 'array'],
+            'recipients.*.recipient_type' => ['required_with:recipients', Rule::in(['structure', 'service', 'user', 'all'])],
+            'recipients.*.structure_id' => ['nullable', 'integer', 'exists:structures,id'],
+            'recipients.*.service_id' => ['nullable', 'integer', 'exists:services,id'],
+            'recipients.*.user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'instructions' => ['sometimes', 'array'],
+            'instructions.*.instruction_id' => ['nullable', 'integer', 'exists:instructions,id'],
+            'instructions.*.commentaire' => ['nullable', 'string'],
+            'instructions.*.validation_requise' => ['sometimes', 'boolean'],
+            'documents' => ['sometimes', 'array'],
+            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
             'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
-            'statut' => ['sometimes', 'string', Rule::in(Courrier::STATUTS)],
-        ];
-    }
-
-    public function messages(): array
-    {
-        return [
-            'objet.required' => 'L\'objet du courrier est obligatoire.',
-            'objet.max' => 'L\'objet ne peut pas depasser 100 caracteres.',
-            'type.required' => 'Le type de courrier est obligatoire.',
-            'type.in' => 'Le type doit etre "entrant" ou "sortant".',
-            'date_reception.required' => 'La date de reception est obligatoire.',
-            'date_reception.date' => 'La date de reception doit etre une date valide.',
-            'expediteur.required_if' => 'L\'expediteur est obligatoire pour un courrier entrant.',
-            'expediteur.max' => 'L\'expediteur ne peut pas depasser 100 caracteres.',
-            'destinataire.max' => 'Le destinataire ne peut pas depasser 100 caracteres.',
-            'niveau_confidentialite_id.required' => 'Le niveau de confidentialite est obligatoire.',
-            'niveau_confidentialite_id.exists' => 'Le niveau de confidentialite selectionne n\'existe pas.',
-            'service_destinataire_id.exists' => 'Le service destinataire selectionne n\'existe pas.',
-            'statut.in' => 'Le statut doit etre CREE, NON_VALIDE, VALIDE, TRANSMIS ou RECU.',
-            'fichier.file' => 'Le fichier doit etre un fichier valide.',
-            'fichier.mimes' => 'Le fichier doit etre au format PDF, DOC, DOCX, JPG, JPEG ou PNG.',
-            'fichier.max' => 'La taille du fichier ne peut pas depasser 10 Mo.',
         ];
     }
 
@@ -60,41 +56,19 @@ class UpdateCourrierRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $user = $this->user();
-            $courrier = $this->route('courrier');
-
             if (!$user) {
                 return;
             }
 
             $niveauId = $this->input('niveau_confidentialite_id');
-
             if ($niveauId) {
                 $niveauChoisi = NiveauConfidentialite::find($niveauId);
-                $niveauUser = $user->niveauConfidentialite;
-
-                if ($niveauChoisi && $niveauUser && $niveauChoisi->rang > $niveauUser->rang) {
+                if ($niveauChoisi && $niveauChoisi->rang > $user->getRangNiveauConfidentialite()) {
                     $validator->errors()->add(
                         'niveau_confidentialite_id',
                         'Vous ne pouvez pas choisir un niveau de confidentialite superieur au votre.'
                     );
                 }
-            }
-
-            $type = $this->input('type') ?? $courrier?->type;
-            $destinataire = $this->input('destinataire');
-            $serviceDestinataire = $this->input('service_destinataire_id');
-
-            if (
-                $type === 'sortant'
-                && empty($destinataire)
-                && empty($serviceDestinataire)
-                && empty($courrier?->destinataire)
-                && empty($courrier?->service_destinataire_id)
-            ) {
-                $validator->errors()->add(
-                    'destinataire',
-                    'Veuillez choisir un service destinataire ou saisir un destinataire.'
-                );
             }
         });
     }

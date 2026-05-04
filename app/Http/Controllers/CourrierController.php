@@ -6,12 +6,18 @@ use App\Http\Requests\StoreCourrierRequest;
 use App\Http\Requests\UpdateCourrierRequest;
 use App\Models\Archive;
 use App\Models\Courrier;
+use App\Models\CourrierComment;
+use App\Models\CourrierType;
+use App\Models\Instruction;
 use App\Models\NiveauConfidentialite;
 use App\Models\Service;
+use App\Models\Source;
+use App\Models\Structure;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 class CourrierController extends Controller
@@ -19,33 +25,15 @@ class CourrierController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
-
-        // Use the same visibility rules as the list endpoints.
         $visible = Courrier::query()->visiblePourUser($user);
-
-        $recus = (clone $visible)
-            ->where('type', Courrier::TYPE_ENTRANT)
-            ->where('statut', Courrier::STATUT_RECU)
-            ->count();
-
-        $envoyes = (clone $visible)
-            ->where('type', Courrier::TYPE_SORTANT)
-            ->count();
-
-        $validation = (clone $visible)
-            ->validablesPourUser($user)
-            ->count();
-
-        $archives = Archive::query()
-            ->visiblePourUser($user)
-            ->count();
 
         return response()->json([
             'courriers' => [
-                'recus' => $recus,
-                'envoyes' => $envoyes,
-                'validation' => $validation,
-                'archives' => $archives,
+                'recus' => (clone $visible)->where('type', Courrier::TYPE_ENTRANT)->count(),
+                'envoyes' => (clone $visible)->where('type', Courrier::TYPE_SORTANT)->count(),
+                'validation' => (clone $visible)->validablesPourUser($user)->count(),
+                'archives' => Archive::query()->visiblePourUser($user)->count(),
+                'en_attente_reponse' => (clone $visible)->where('requiert_reponse', true)->whereNull('repondu_le')->count(),
             ],
         ]);
     }
@@ -57,74 +45,40 @@ class CourrierController extends Controller
 
     public function recus(Request $request): JsonResponse
     {
-        return $this->respondWithCourriers($request, false, [
-            'statut' => Courrier::STATUT_RECU,
-            'type' => Courrier::TYPE_ENTRANT,
-        ]);
+        return $this->respondWithCourriers($request, false, ['type' => Courrier::TYPE_ENTRANT]);
     }
 
     public function envoyes(Request $request): JsonResponse
     {
-        return $this->respondWithCourriers($request, false, [
-            'type' => Courrier::TYPE_SORTANT,
-        ]);
+        return $this->respondWithCourriers($request, false, ['type' => Courrier::TYPE_SORTANT]);
     }
 
     public function archives(Request $request): JsonResponse
     {
         $user = $request->user();
-        $filtres = $request->only([
-            'q',
-            'numero',
-            'objet',
-            'expediteur',
-            'destinataire',
-            'type',
-            'niveau_confidentialite_id',
-            'date_reception',
-            'statut_original',
-        ]);
+        $search = trim((string) $request->get('q', ''));
 
-        $query = Archive::with([
-            'niveauConfidentialite',
-            'createur',
-            'valideur',
-            'serviceSource',
-            'serviceDestinataire',
-            'transmisPar',
-            'archivePar',
-        ])
+        $archives = Archive::query()
+            ->with($this->archiveRelations())
             ->visiblePourUser($user)
-            ->when($filtres['q'] ?? null, function ($query, $value) {
-                $query->where(function ($subQuery) use ($value) {
-                    $subQuery->where('numero', 'like', '%' . $value . '%')
-                        ->orWhere('objet', 'like', '%' . $value . '%')
-                        ->orWhere('expediteur', 'like', '%' . $value . '%')
-                        ->orWhere('destinataire', 'like', '%' . $value . '%');
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($subQuery) use ($search) {
+                    $subQuery->where('numero', 'like', '%' . $search . '%')
+                        ->orWhere('objet', 'like', '%' . $search . '%')
+                        ->orWhere('expediteur', 'like', '%' . $search . '%')
+                        ->orWhere('destinataire', 'like', '%' . $search . '%');
                 });
             })
-            ->when($filtres['numero'] ?? null, fn($q, $v) => $q->where('numero', 'like', '%' . $v . '%'))
-            ->when($filtres['objet'] ?? null, fn($q, $v) => $q->where('objet', 'like', '%' . $v . '%'))
-            ->when($filtres['expediteur'] ?? null, fn($q, $v) => $q->where('expediteur', 'like', '%' . $v . '%'))
-            ->when($filtres['destinataire'] ?? null, fn($q, $v) => $q->where('destinataire', 'like', '%' . $v . '%'))
-            ->when($filtres['type'] ?? null, fn($q, $v) => $q->where('type', $v))
-            ->when($filtres['niveau_confidentialite_id'] ?? null, fn($q, $v) => $q->where('niveau_confidentialite_id', $v))
-            ->when($filtres['statut_original'] ?? null, fn($q, $v) => $q->where('statut_original', $v))
-            ->when($filtres['date_reception'] ?? null, function ($query, $value) {
-                $this->applyDateReceptionFilter($query, $value);
-            })
-            ->orderBy('archive_le', 'desc');
+            ->when($request->filled('date_reception'), fn ($query) => $this->applyDateReceptionFilter($query, (string) $request->date_reception))
+            ->when($request->filled('numero'), fn ($query) => $query->where('numero', 'like', '%' . $request->numero . '%'))
+            ->orderByDesc('archive_le')
+            ->paginate(15);
 
-        $archives = $query->paginate(15);
-
-        $archives->getCollection()->transform(function (Archive $archive) use ($user) {
-            return $this->enrichArchive($archive, $user);
-        });
+        $archives->getCollection()->transform(fn (Archive $archive) => $this->enrichArchive($archive, $user));
 
         return response()->json([
             'archives' => $archives,
             'courriers' => $archives,
-            'filtres' => $filtres,
         ]);
     }
 
@@ -137,149 +91,62 @@ class CourrierController extends Controller
     {
         $user = $request->user();
 
-        if (!$user->peutCreerCourrier()) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de creer des courriers.',
-            ], 403);
-        }
-
-        $niveaux = NiveauConfidentialite::where('rang', '<=', $user->getRangNiveauConfidentialite())
-            ->orderBy('rang')
-            ->get();
-
         return response()->json([
-            'niveaux_confidentialite' => $niveaux,
-            'services' => Service::orderBy('libelle')->get(),
-            'types' => [
-                ['value' => 'entrant', 'label' => 'Entrant'],
-                ['value' => 'sortant', 'label' => 'Sortant'],
-            ],
+            'niveaux_confidentialite' => NiveauConfidentialite::where('rang', '<=', $user->getRangNiveauConfidentialite())->orderBy('rang')->get(),
+            'structures' => Structure::with('services')->orderBy('libelle')->get(),
+            'services' => Service::with('structure')->orderBy('libelle')->get(),
+            'utilisateurs' => User::where('actif', true)->orderBy('prenom')->orderBy('nom')->get(['id', 'nom', 'prenom', 'service_id', 'structure_id', 'role', 'role_scope']),
+            'types' => CourrierType::orderBy('libelle')->get(),
+            'sources' => Source::orderBy('libelle')->get(),
+            'instructions' => Instruction::orderBy('libelle')->get(),
+            'modes_diffusion' => ['unicast', 'multicast', 'broadcast'],
         ]);
     }
 
     public function store(StoreCourrierRequest $request): JsonResponse
     {
         $user = $request->user();
+        $data = $request->validated();
 
-        if (!$user->peutCreerCourrier()) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de creer des courriers.',
-            ], 403);
-        }
+        $courrier = DB::transaction(function () use ($request, $user, $data) {
+            $source = $this->resolveOrCreateSource($user, $data);
+            $status = $user->estSecretaire() ? Courrier::STATUT_CREE : ($data['type'] === Courrier::TYPE_ENTRANT ? Courrier::STATUT_RECU : Courrier::STATUT_VALIDE);
 
-        $donnees = $request->validated();
-        $type = $donnees['type'] ?? null;
-        $serviceSource = $this->resolveServiceSource($donnees);
-        $serviceDestinataire = $this->resolveServiceDestinataire($donnees);
+            $courrier = Courrier::create([
+                'objet' => $data['objet'],
+                'type' => $data['type'],
+                'courrier_type_id' => $data['courrier_type_id'] ?? null,
+                'resume' => $data['resume'],
+                'date_creation' => now(),
+                'date_reception' => $data['date_reception'],
+                'expediteur' => $data['expediteur'] ?? (($data['type'] === Courrier::TYPE_ENTRANT && !empty($data['service_source_id'])) ? Service::find($data['service_source_id'])?->libelle : null) ?? $source?->libelle ?? $user->service?->libelle ?? $user->nom_complet,
+                'destinataire' => $data['destinataire'] ?? null,
+                'source_id' => $source?->id,
+                'parent_courrier_id' => $data['parent_courrier_id'] ?? null,
+                'requiert_reponse' => (bool) ($data['requiert_reponse'] ?? false),
+                'delai_reponse_jours' => $data['delai_reponse_jours'] ?? null,
+                'mode_diffusion' => $data['mode_diffusion'],
+                'statut' => $status,
+                'service_source_id' => $data['service_source_id'] ?? $user->service_id,
+                'service_destinataire_id' => $data['service_destinataire_id'] ?? ($data['type'] === Courrier::TYPE_ENTRANT ? $user->service_id : null),
+                'niveau_confidentialite_id' => $data['niveau_confidentialite_id'],
+                'createur_id' => $user->id,
+            ]);
 
-        if ($type === Courrier::TYPE_ENTRANT) {
-            // For received courriers, the recipient service is the current user's service
-            // (admin can optionally choose another service).
-            if (!$user->estAdmin()) {
-                $serviceDestinataire = $user->service_id ? Service::find($user->service_id) : null;
-            }
-        }
+            $this->syncRecipients($courrier, $data);
+            $this->syncConcernedPeople($courrier, $data['concerned_user_ids'] ?? []);
+            $this->storeCommentsAndInstructions($courrier, $user, $data['instructions'] ?? []);
+            $this->storeAttachments($request, $courrier);
 
-        $donnees['numero'] = 'COUR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -8));
-        if ($user->estSecretaire()) {
-            $donnees['statut'] = Courrier::STATUT_CREE;
-        } elseif ($type === Courrier::TYPE_ENTRANT) {
-            $donnees['statut'] = Courrier::STATUT_RECU;
-        } else {
-            $donnees['statut'] = Courrier::STATUT_VALIDE;
-        }
-        $donnees['date_creation'] = now();
-        $donnees['createur_id'] = $user->id;
-        $donnees['service_source_id'] = $type === Courrier::TYPE_SORTANT
-            ? $user->service_id
-            : $serviceSource?->id;
-        $donnees['service_destinataire_id'] = $serviceDestinataire?->id;
-        $donnees['transmission_demandee'] = $type === Courrier::TYPE_SORTANT
-            ? (bool) ($donnees['transmission_directe'] ?? false)
-            : false;
-        unset($donnees['transmission_directe']);
-
-        if (($donnees['type'] ?? null) === Courrier::TYPE_SORTANT) {
-            $donnees['expediteur'] = $donnees['expediteur']
-                ?? $user->service?->libelle
-                ?? $user->nom_complet
-                ?? $user->name
-                ?? 'Interne';
-            $donnees['destinataire'] = $donnees['destinataire'] ?? $serviceDestinataire?->libelle;
-        }
-
-        if (($donnees['type'] ?? null) === Courrier::TYPE_ENTRANT) {
-            if ($serviceSource) {
-                $donnees['expediteur'] = $serviceSource->libelle;
-            }
-
-            $donnees['destinataire'] = $donnees['destinataire']
-                ?? $serviceDestinataire?->libelle
-                ?? $user->service?->libelle
-                ?? $user->nom_complet
-                ?? $user->name
-                ?? 'Interne';
-        }
-
-        if ($request->hasFile('fichier')) {
-            $donnees['chemin_fichier'] = $request->file('fichier')->store('courriers', 'public');
-        }
-
-        $resultatTransmission = null;
-
-        $courrier = DB::transaction(function () use ($donnees, $user, $serviceDestinataire, &$resultatTransmission) {
-            $courrier = Courrier::create($donnees);
-            $courrier->load($this->courrierRelations());
-
-            if ($courrier->transmission_demandee && $courrier->estValide()) {
-                $resultatTransmission = $this->transmettreEtArchiver($courrier, $user, $serviceDestinataire);
-                return null;
-            }
-
-            // Notify chefs automatically whenever a CREE courrier is created
-            // (status CREE = needs validation, typically created by a secretaire)
             if ($courrier->statut === Courrier::STATUT_CREE) {
-                $serviceId = $courrier->service_source_id ?? $user->service_id;
-
-                $chefs = \App\Models\User::where('service_id', $serviceId)
-                    ->where('role', \App\Models\User::ROLE_CHEF)
-                    ->where('actif', true)
-                    ->get();
-
-                // Fallback: notify admins if no chef in the service
-                if ($chefs->isEmpty()) {
-                    $chefs = \App\Models\User::where('role', \App\Models\User::ROLE_ADMIN)
-                        ->where('actif', true)
-                        ->get();
-                }
-
-                if ($chefs->isNotEmpty()) {
-                    \Illuminate\Support\Facades\Notification::send(
-                        $chefs,
-                        new \App\Notifications\ValidationRequestedNotification($courrier)
-                    );
-                }
+                $this->notifyValidators($courrier, $user);
             }
 
-            return $courrier;
+            return $courrier->load($this->courrierRelations());
         });
 
-        if ($resultatTransmission) {
-            return response()->json([
-                'message' => 'Courrier valide, transmis et archive automatiquement.',
-                'archive' => $this->enrichArchive($resultatTransmission['archive'], $user),
-                'courrier_recu' => $resultatTransmission['courrier_recu']
-                    ? $this->enrichCourrier($resultatTransmission['courrier_recu'], $user)
-                    : null,
-            ], 201);
-        }
-
-        $courrier->load($this->courrierRelations());
-
         return response()->json([
-            'message' => $courrier->transmission_demandee
-                ? 'Courrier cree et soumis pour validation avant transmission.'
-                : 'Courrier cree avec succes.',
+            'message' => 'Courrier cree avec succes.',
             'courrier' => $this->enrichCourrier($courrier, $user),
         ], 201);
     }
@@ -289,10 +156,8 @@ class CourrierController extends Controller
         $user = $request->user();
         $courrier->load($this->courrierRelations());
 
-        if (!$user || !$courrier->peutVoirExistencePar($user)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de voir ce courrier.',
-            ], 403);
+        if (!$courrier->peutVoirExistencePar($user)) {
+            return response()->json(['error' => 'Vous n\'avez pas le droit de voir ce courrier.'], 403);
         }
 
         return response()->json([
@@ -303,69 +168,61 @@ class CourrierController extends Controller
     public function update(UpdateCourrierRequest $request, Courrier $courrier): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
-        $validated = $request->validated();
+        $data = $request->validated();
 
-        unset(
-            $validated['numero'],
-            $validated['statut'],
-            $validated['date_creation'],
-            $validated['date_reception'],
-            $validated['createur_id'],
-            $validated['valideur_id'],
-            $validated['transmis_par_id'],
-            $validated['transmis_le'],
-            $validated['transmission_demandee'],
-            $validated['service_source_id']
-        );
+        DB::transaction(function () use ($request, $user, $courrier, $data) {
+            $source = array_key_exists('source_id', $data) || array_key_exists('source_libelle', $data)
+                ? $this->resolveOrCreateSource($user, $data)
+                : $courrier->source;
 
-        $serviceDestinataire = $this->resolveServiceDestinataire($validated);
-        if ($serviceDestinataire && empty($validated['destinataire'])) {
-            $validated['destinataire'] = $serviceDestinataire->libelle;
-        }
+            $courrier->update([
+                'objet' => $data['objet'] ?? $courrier->objet,
+                'type' => $data['type'] ?? $courrier->type,
+                'courrier_type_id' => $data['courrier_type_id'] ?? $courrier->courrier_type_id,
+                'resume' => $data['resume'] ?? $courrier->resume,
+                'date_reception' => $data['date_reception'] ?? $courrier->date_reception,
+                'expediteur' => $data['expediteur'] ?? $courrier->expediteur,
+                'destinataire' => $data['destinataire'] ?? $courrier->destinataire,
+                'source_id' => $source?->id,
+                'parent_courrier_id' => $data['parent_courrier_id'] ?? $courrier->parent_courrier_id,
+                'requiert_reponse' => $data['requiert_reponse'] ?? $courrier->requiert_reponse,
+                'delai_reponse_jours' => $data['delai_reponse_jours'] ?? $courrier->delai_reponse_jours,
+                'mode_diffusion' => $data['mode_diffusion'] ?? $courrier->mode_diffusion,
+                'service_source_id' => $data['service_source_id'] ?? $courrier->service_source_id,
+                'service_destinataire_id' => $data['service_destinataire_id'] ?? $courrier->service_destinataire_id,
+                'niveau_confidentialite_id' => $data['niveau_confidentialite_id'] ?? $courrier->niveau_confidentialite_id,
+            ]);
 
-        if (($validated['type'] ?? $courrier->type) === Courrier::TYPE_SORTANT && empty($validated['expediteur'])) {
-            $validated['expediteur'] = $courrier->expediteur
-                ?: $user->service?->libelle
-                ?: $user->nom_complet
-                ?: $user->name
-                ?: 'Interne';
-        }
-
-        if (($validated['type'] ?? $courrier->type) === Courrier::TYPE_ENTRANT && empty($validated['destinataire'])) {
-            $validated['destinataire'] = $courrier->destinataire
-                ?: $user->service?->libelle
-                ?: $user->nom_complet
-                ?: $user->name
-                ?: 'Interne';
-        }
-
-        if ($request->hasFile('fichier')) {
-            if ($courrier->chemin_fichier) {
-                Storage::disk('public')->delete($courrier->chemin_fichier);
+            if (array_key_exists('recipients', $data) || array_key_exists('mode_diffusion', $data)) {
+                $this->syncRecipients($courrier, $data);
             }
 
-            $validated['chemin_fichier'] = $request->file('fichier')->store('courriers', 'public');
-        }
+            if (array_key_exists('concerned_user_ids', $data)) {
+                $this->syncConcernedPeople($courrier, $data['concerned_user_ids']);
+            }
 
-        $courrier->update($validated);
-        $courrier->load($this->courrierRelations());
+            if (!empty($data['instructions'])) {
+                $this->storeCommentsAndInstructions($courrier, $user, $data['instructions']);
+            }
+
+            $this->storeAttachments($request, $courrier);
+        });
 
         return response()->json([
             'message' => 'Courrier modifie avec succes.',
-            'courrier' => $this->enrichCourrier($courrier, $user),
+            'courrier' => $this->enrichCourrier($courrier->fresh($this->courrierRelations()), $user),
         ]);
     }
 
     public function destroy(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
-
         if (!$courrier->peutEtreSupprimePar($user)) {
-            return response()->json([
-                'error' => 'Seul le secretaire createur peut supprimer un courrier a l\'etat CREE ou NON_VALIDE. Un courrier VALIDE, TRANSMIS, RECU ou ARCHIVE ne peut pas etre supprime.',
-            ], 403);
+            return response()->json(['error' => 'Vous n\'avez pas le droit de supprimer ce courrier.'], 403);
+        }
+
+        foreach ($courrier->attachments as $attachment) {
+            Storage::disk('public')->delete($attachment->chemin);
         }
 
         if ($courrier->chemin_fichier) {
@@ -374,20 +231,13 @@ class CourrierController extends Controller
 
         $courrier->delete();
 
-        return response()->json([
-            'message' => 'Courrier supprime avec succes.',
-        ]);
+        return response()->json(['message' => 'Courrier supprime avec succes.']);
     }
 
     public function destroyArchive(Archive $archive, Request $request): JsonResponse
     {
-        $user = $request->user();
-        $archive->load($this->archiveRelations());
-
-        if (!$archive->peutEtreSupprimePar($user)) {
-            return response()->json([
-                'error' => 'Seul un administrateur peut supprimer une archive.',
-            ], 403);
+        if (!$archive->peutEtreSupprimePar($request->user())) {
+            return response()->json(['error' => 'Vous n\'avez pas le droit de supprimer cette archive.'], 403);
         }
 
         if ($archive->chemin_fichier) {
@@ -396,30 +246,20 @@ class CourrierController extends Controller
 
         $archive->delete();
 
-        return response()->json([
-            'message' => 'Archive supprimee avec succes.',
-        ]);
+        return response()->json(['message' => 'Archive supprimee avec succes.']);
     }
 
     public function archiver(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
-
         if (!$courrier->peutEtreArchivePar($user)) {
-            return response()->json([
-                'error' => 'On ne peut archiver que les courriers TRANSMIS ou RECU dans votre perimetre.',
-            ], 403);
+            return response()->json(['error' => 'Ce courrier ne peut pas etre archive.'], 403);
         }
 
-        $archive = DB::transaction(fn() => $this->archiverCourrier(
-            $courrier,
-            $user,
-            'Archivage manuel'
-        ));
+        $archive = DB::transaction(fn () => $this->archiverCourrier($courrier, $user, 'Archivage manuel'));
 
         return response()->json([
-            'message' => 'Courrier copie dans les archives puis supprime de la table courriers.',
+            'message' => 'Courrier archive avec succes.',
             'archive' => $this->enrichArchive($archive, $user),
         ]);
     }
@@ -427,122 +267,123 @@ class CourrierController extends Controller
     public function transmettre(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
+        if (!$courrier->peutEtreTransmisPar($user)) {
+            return response()->json(['error' => 'Vous n\'avez pas le droit de transmettre ce courrier.'], 403);
+        }
 
         $validated = $request->validate([
-            'service_destinataire_id' => ['nullable', 'integer', 'exists:services,id'],
-            'destinataire' => ['nullable', 'string', 'max:100'],
+            'recipients' => ['nullable', 'array'],
+            'recipients.*.recipient_type' => ['required', 'in:structure,service,user,all'],
+            'recipients.*.structure_id' => ['nullable', 'integer', 'exists:structures,id'],
+            'recipients.*.service_id' => ['nullable', 'integer', 'exists:services,id'],
+            'recipients.*.user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'mode_diffusion' => ['nullable', 'in:unicast,multicast,broadcast'],
         ]);
 
-        if ($courrier->type !== Courrier::TYPE_SORTANT) {
+        if (empty($validated['recipients']) && $courrier->service_destinataire_id) {
+            $legacyResult = DB::transaction(function () use ($courrier, $user) {
+                $courrier->update([
+                    'statut' => Courrier::STATUT_TRANSMIS,
+                    'transmis_par_id' => $user->id,
+                    'transmis_le' => now(),
+                ]);
+
+                $received = Courrier::create([
+                    'objet' => $courrier->objet,
+                    'type' => Courrier::TYPE_ENTRANT,
+                    'courrier_type_id' => $courrier->courrier_type_id,
+                    'resume' => $courrier->resume,
+                    'date_creation' => now(),
+                    'date_reception' => now(),
+                    'expediteur' => $courrier->serviceSource?->libelle ?? $courrier->expediteur,
+                    'destinataire' => $courrier->serviceDestinataire?->libelle,
+                    'source_id' => $courrier->source_id,
+                    'parent_courrier_id' => $courrier->parent_courrier_id,
+                    'requiert_reponse' => $courrier->requiert_reponse,
+                    'delai_reponse_jours' => $courrier->delai_reponse_jours,
+                    'mode_diffusion' => 'unicast',
+                    'statut' => Courrier::STATUT_RECU,
+                    'service_source_id' => $courrier->service_source_id,
+                    'service_destinataire_id' => $courrier->service_destinataire_id,
+                    'niveau_confidentialite_id' => $courrier->niveau_confidentialite_id,
+                    'createur_id' => $courrier->createur_id,
+                    'valideur_id' => $courrier->valideur_id,
+                    'transmis_par_id' => $user->id,
+                    'transmis_le' => now(),
+                ]);
+
+                $archive = $this->archiverCourrier($courrier, $user, 'Archivage automatique apres transmission');
+
+                return [
+                    'archive' => $archive,
+                    'courrier_recu' => $received->fresh($this->courrierRelations()),
+                ];
+            });
+
             return response()->json([
-                'error' => 'Seuls les courriers sortants peuvent etre transmis.',
-            ], 422);
+                'message' => 'Courrier transmis et archive automatiquement.',
+                'archive' => $this->enrichArchive($legacyResult['archive'], $user),
+                'courrier_recu' => $this->enrichCourrier($legacyResult['courrier_recu'], $user),
+            ]);
         }
 
-        if (!$courrier->peutEtreTransmisPar($user)) {
-            return response()->json([
-                'error' => 'Le courrier doit etre VALIDE avant transmission, et vous devez etre createur, chef du service ou admin.',
-            ], 403);
-        }
+        $courrier = DB::transaction(function () use ($courrier, $user, $validated) {
+            $courrier->update([
+                'statut' => Courrier::STATUT_TRANSMIS,
+                'mode_diffusion' => $validated['mode_diffusion'] ?? $courrier->mode_diffusion,
+                'transmis_par_id' => $user->id,
+                'transmis_le' => now(),
+            ]);
 
-        $serviceDestinataire = $this->resolveServiceDestinataire($validated)
-            ?? $courrier->serviceDestinataire;
+            $this->syncRecipients($courrier, $validated);
 
-        if (!$serviceDestinataire && empty($validated['destinataire']) && empty($courrier->destinataire)) {
-            return response()->json([
-                'error' => 'Indiquez un service destinataire ou un destinataire.',
-            ], 422);
-        }
-
-        $resultat = DB::transaction(fn() => $this->transmettreEtArchiver(
-            $courrier,
-            $user,
-            $serviceDestinataire,
-            $validated['destinataire'] ?? null
-        ));
+            return $courrier->fresh($this->courrierRelations());
+        });
 
         return response()->json([
-            'message' => 'Courrier transmis et archive automatiquement.',
-            'archive' => $this->enrichArchive($resultat['archive'], $user),
-            'courrier_recu' => $resultat['courrier_recu']
-                ? $this->enrichCourrier($resultat['courrier_recu'], $user)
-                : null,
+            'message' => 'Courrier transmis avec succes.',
+            'courrier' => $this->enrichCourrier($courrier, $user),
         ]);
     }
 
     public function valider(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
-
         if (!$courrier->estValidable()) {
-            return response()->json([
-                'error' => 'Ce courrier ne peut plus etre valide.',
-            ], 422);
+            return response()->json(['error' => 'Ce courrier ne peut plus etre valide.'], 422);
         }
 
         if (!$courrier->peutEtreValidePar($user)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de valider ce courrier.',
-            ], 403);
+            return response()->json(['error' => 'Vous n\'avez pas le droit de valider ce courrier.'], 403);
         }
 
-        $resultatTransmission = null;
-
-        DB::transaction(function () use ($courrier, $user, &$resultatTransmission) {
-            $nouveauStatut = $courrier->type === Courrier::TYPE_ENTRANT
-                ? Courrier::STATUT_RECU
-                : Courrier::STATUT_VALIDE;
-
+        DB::transaction(function () use ($courrier, $user) {
             $courrier->update([
-                'statut' => $nouveauStatut,
+                'statut' => $courrier->type === Courrier::TYPE_ENTRANT ? Courrier::STATUT_RECU : Courrier::STATUT_VALIDE,
                 'valideur_id' => $user->id,
             ]);
-            $courrier->refresh()->load($this->courrierRelations());
 
-            if ($courrier->type === Courrier::TYPE_SORTANT && $courrier->transmission_demandee) {
-                $resultatTransmission = $this->transmettreEtArchiver(
-                    $courrier,
-                    $user,
-                    $courrier->serviceDestinataire
-                );
-            }
+            CourrierComment::query()
+                ->where('courrier_id', $courrier->id)
+                ->where('validation_requise', true)
+                ->whereNull('valide_le')
+                ->update([
+                    'valide_par_id' => $user->id,
+                    'valide_le' => now(),
+                ]);
         });
-
-        if ($resultatTransmission) {
-            return response()->json([
-                'message' => 'Courrier valide, transmis et archive automatiquement.',
-                'archive' => $this->enrichArchive($resultatTransmission['archive'], $user),
-                'courrier_recu' => $resultatTransmission['courrier_recu']
-                    ? $this->enrichCourrier($resultatTransmission['courrier_recu'], $user)
-                    : null,
-            ]);
-        }
-
-        $courrier->load($this->courrierRelations());
 
         return response()->json([
             'message' => 'Courrier valide avec succes.',
-            'courrier' => $this->enrichCourrier($courrier, $user),
+            'courrier' => $this->enrichCourrier($courrier->fresh($this->courrierRelations()), $user),
         ]);
     }
 
     public function nonValider(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
-
-        if (!$courrier->estValidable()) {
-            return response()->json([
-                'error' => 'Ce courrier ne peut plus etre marque comme non valide.',
-            ], 422);
-        }
-
         if (!$courrier->peutEtreNonValidePar($user)) {
-            return response()->json([
-                'error' => 'Vous n\'avez pas le droit de marquer ce courrier comme non valide.',
-            ], 403);
+            return response()->json(['error' => 'Vous n\'avez pas le droit de marquer ce courrier comme non valide.'], 403);
         }
 
         $courrier->update([
@@ -550,71 +391,28 @@ class CourrierController extends Controller
             'valideur_id' => $user->id,
         ]);
 
-        $courrier->refresh()->load($this->courrierRelations());
-
         return response()->json([
             'message' => 'Courrier marque comme non valide.',
-            'courrier' => $this->enrichCourrier($courrier, $user),
+            'courrier' => $this->enrichCourrier($courrier->fresh($this->courrierRelations()), $user),
         ]);
     }
 
     public function demanderValidation(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
-        $courrier->load($this->courrierRelations());
-
-        // Only CREE or NON_VALIDE courriers can be submitted for validation
-        if (!in_array($courrier->statut, [Courrier::STATUT_CREE, Courrier::STATUT_NON_VALIDE])) {
-            return response()->json([
-                'error' => 'Ce courrier ne peut pas être soumis à validation (statut incompatible).',
-            ], 422);
-        }
-
-        // The requester must be the creator or an admin
         if ($courrier->createur_id !== $user->id && !$user->estAdmin()) {
-            return response()->json([
-                'error' => 'Seul le créateur du courrier ou un administrateur peut demander la validation.',
-            ], 403);
+            return response()->json(['error' => 'Vous ne pouvez pas demander la validation pour ce courrier.'], 403);
         }
 
-        // Find all chefs in the same service as the courrier's source service
-        $serviceId = $courrier->service_source_id ?? $user->service_id;
+        $this->notifyValidators($courrier, $user);
 
-        $chefs = \App\Models\User::where('service_id', $serviceId)
-            ->where('role', \App\Models\User::ROLE_CHEF)
-            ->where('actif', true)
-            ->get();
-
-        if ($chefs->isEmpty()) {
-            // Also try admin users if no chef is found in the service
-            $chefs = \App\Models\User::where('role', \App\Models\User::ROLE_ADMIN)
-                ->where('actif', true)
-                ->get();
-        }
-
-        if ($chefs->isEmpty()) {
-            return response()->json([
-                'error' => 'Aucun chef ou administrateur disponible pour valider ce courrier.',
-            ], 422);
-        }
-
-        \Illuminate\Support\Facades\Notification::send(
-            $chefs,
-            new \App\Notifications\ValidationRequestedNotification($courrier)
-        );
-
-        return response()->json([
-            'message' => 'Demande de validation envoyée à ' . $chefs->count() . ' chef(s).',
-        ]);
+        return response()->json(['message' => 'Demande de validation envoyee.']);
     }
 
-    private function respondWithCourriers(
-        Request $request,
-        bool $onlyValidation = false,
-        array $forcedFilters = []
-    ): JsonResponse {
+    private function respondWithCourriers(Request $request, bool $onlyValidation = false, array $forcedFilters = []): JsonResponse
+    {
         $user = $request->user();
-        $filtres = array_merge($request->only([
+        $filters = array_merge($request->only([
             'q',
             'numero',
             'objet',
@@ -624,112 +422,141 @@ class CourrierController extends Controller
             'type',
             'niveau_confidentialite_id',
             'date_reception',
+            'resume',
+            'parent_courrier_id',
         ]), $forcedFilters);
 
-        $query = Courrier::with($this->courrierRelations())
+        $query = Courrier::query()
+            ->with($this->courrierRelations())
             ->visiblePourUser($user)
-            ->when($onlyValidation, fn($q) => $q->validablesPourUser($user))
-            ->when($filtres['q'] ?? null, function ($query, $value) {
-                $query->where(function ($subQuery) use ($value) {
-                    $subQuery->where('numero', 'like', '%' . $value . '%')
-                        ->orWhere('objet', 'like', '%' . $value . '%')
-                        ->orWhere('expediteur', 'like', '%' . $value . '%')
-                        ->orWhere('destinataire', 'like', '%' . $value . '%');
-                });
-            })
-            ->when($filtres['numero'] ?? null, fn($q, $v) => $q->numero($v))
-            ->when($filtres['objet'] ?? null, fn($q, $v) => $q->objet($v))
-            ->when($filtres['expediteur'] ?? null, fn($q, $v) => $q->expediteur($v))
-            ->when($filtres['destinataire'] ?? null, fn($q, $v) => $q->destinataire($v))
-            ->when($filtres['type'] ?? null, fn($q, $v) => $q->type($v))
-            ->when($filtres['niveau_confidentialite_id'] ?? null, fn($q, $v) => $q->niveauConfidentialite($v))
-            ->when($filtres['date_reception'] ?? null, fn($q, $v) => $q->dateReception($v))
-            ->orderBy('date_creation', 'desc');
+            ->when($onlyValidation, fn ($builder) => $builder->validablesPourUser($user))
+            ->searchAnyField($filters['q'] ?? null)
+            ->numero($filters['numero'] ?? null)
+            ->objet($filters['objet'] ?? null)
+            ->expediteur($filters['expediteur'] ?? null)
+            ->destinataire($filters['destinataire'] ?? null)
+            ->type($filters['type'] ?? null)
+            ->niveauConfidentialite($filters['niveau_confidentialite_id'] ?? null)
+            ->dateReception($filters['date_reception'] ?? null)
+            ->resumeFullText($filters['resume'] ?? null)
+            ->when(!empty($filters['parent_courrier_id']), fn ($builder) => $builder->where('parent_courrier_id', $filters['parent_courrier_id']))
+            ->orderByDesc('date_creation');
 
-        if (!$onlyValidation && !empty($filtres['statut'])) {
-            $query->statut($filtres['statut']);
+        if (!$onlyValidation && !empty($filters['statut'])) {
+            $query->statut($filters['statut']);
         }
 
         $courriers = $query->paginate(15);
-
-        $courriers->getCollection()->transform(function (Courrier $courrier) use ($user) {
-            return $this->enrichCourrier($courrier, $user);
-        });
+        $courriers->getCollection()->transform(fn (Courrier $courrier) => $this->enrichCourrier($courrier, $user));
 
         return response()->json([
             'courriers' => $courriers,
-            'filtres' => $filtres,
+            'filtres' => $filters,
         ]);
     }
 
-    private function transmettreEtArchiver(
-        Courrier $courrier,
-        User $user,
-        ?Service $serviceDestinataire,
-        ?string $destinataireLibre = null
-    ): array {
-        $destinataire = $destinataireLibre
-            ?: $serviceDestinataire?->libelle
-            ?: $courrier->destinataire;
-
-        $courrier->update([
-            'statut' => Courrier::STATUT_TRANSMIS,
-            'service_destinataire_id' => $serviceDestinataire?->id ?? $courrier->service_destinataire_id,
-            'destinataire' => $destinataire,
-            'transmis_par_id' => $user->id,
-            'transmis_le' => now(),
-            'transmission_demandee' => false,
-        ]);
-
-        $courrier->refresh()->load($this->courrierRelations());
-
-        $courrierRecu = null;
-        if ($serviceDestinataire) {
-            $courrierRecu = Courrier::create([
-                'numero' => $this->genererNumeroCourrier(),
-                'objet' => $courrier->objet,
-                'type' => Courrier::TYPE_ENTRANT,
-                'chemin_fichier' => $courrier->chemin_fichier,
-                'date_creation' => now(),
-                'date_reception' => now(),
-                'expediteur' => $courrier->serviceSource?->libelle ?? $courrier->expediteur,
-                'destinataire' => $serviceDestinataire->libelle,
-                'statut' => Courrier::STATUT_RECU,
-                'transmission_demandee' => false,
-                'service_source_id' => $courrier->service_source_id,
-                'service_destinataire_id' => $serviceDestinataire->id,
-                'niveau_confidentialite_id' => $courrier->niveau_confidentialite_id,
-                'createur_id' => $courrier->createur_id,
-                'valideur_id' => $courrier->valideur_id,
-                'transmis_par_id' => $user->id,
-                'transmis_le' => $courrier->transmis_le,
-            ]);
-            $courrierRecu->load($this->courrierRelations());
-
-            $utilisateursDest = \App\Models\User::where('service_id', $courrierRecu->service_destinataire_id)->where('actif', true)->get();
-            if ($utilisateursDest->isNotEmpty()) {
-                \Illuminate\Support\Facades\Notification::send($utilisateursDest, new \App\Notifications\CourrierReceivedNotification($courrierRecu));
-            }
+    private function resolveOrCreateSource(User $user, array $data): ?Source
+    {
+        if (!empty($data['source_id'])) {
+            return Source::find($data['source_id']);
         }
 
-        $archive = $this->archiverCourrier(
-            $courrier,
-            $user,
-            'Archivage automatique apres transmission'
-        );
+        if (!empty($data['source_libelle']) && $user->peutAjouterSource()) {
+            return Source::firstOrCreate(['libelle' => $data['source_libelle']]);
+        }
 
-        return [
-            'archive' => $archive,
-            'courrier_recu' => $courrierRecu,
-        ];
+        return null;
+    }
+
+    private function syncRecipients(Courrier $courrier, array $data): void
+    {
+        $courrier->recipients()->delete();
+
+        if (($data['mode_diffusion'] ?? $courrier->mode_diffusion) === 'broadcast') {
+            $courrier->recipients()->create(['recipient_type' => 'all']);
+            return;
+        }
+
+        $recipients = $data['recipients'] ?? [];
+
+        if (empty($recipients) && !empty($data['service_destinataire_id'])) {
+            $recipients[] = [
+                'recipient_type' => 'service',
+                'service_id' => $data['service_destinataire_id'],
+            ];
+        }
+
+        foreach ($recipients as $recipient) {
+            $courrier->recipients()->create([
+                'recipient_type' => $recipient['recipient_type'],
+                'structure_id' => $recipient['structure_id'] ?? null,
+                'service_id' => $recipient['service_id'] ?? null,
+                'user_id' => $recipient['user_id'] ?? null,
+            ]);
+        }
+    }
+
+    private function syncConcernedPeople(Courrier $courrier, array $userIds): void
+    {
+        $courrier->concernedPeople()->sync($userIds);
+    }
+
+    private function storeCommentsAndInstructions(Courrier $courrier, User $user, array $items): void
+    {
+        foreach ($items as $item) {
+            $courrier->comments()->create([
+                'user_id' => $user->id,
+                'instruction_id' => $item['instruction_id'] ?? null,
+                'commentaire' => $item['commentaire'] ?? ($item['instruction_id'] ? optional(Instruction::find($item['instruction_id']))->libelle : ''),
+                'validation_requise' => (bool) ($item['validation_requise'] ?? $user->estSecretaire()),
+            ]);
+        }
+    }
+
+    private function storeAttachments(Request $request, Courrier $courrier): void
+    {
+        $files = [];
+
+        if ($request->hasFile('documents')) {
+            $files = array_merge($files, $request->file('documents'));
+        }
+
+        if ($request->hasFile('fichier')) {
+            $files[] = $request->file('fichier');
+        }
+
+        foreach ($files as $file) {
+            $path = $file->store('courriers', 'public');
+            $courrier->attachments()->create([
+                'nom_original' => $file->getClientOriginalName(),
+                'chemin' => $path,
+            ]);
+
+            if (!$courrier->chemin_fichier) {
+                $courrier->updateQuietly(['chemin_fichier' => $path]);
+            }
+        }
+    }
+
+    private function notifyValidators(Courrier $courrier, User $actor): void
+    {
+        $validators = User::query()
+            ->where('actif', true)
+            ->where('role', User::ROLE_CHEF)
+            ->where(function ($query) use ($courrier, $actor) {
+                $query->where('service_id', $courrier->service_source_id ?? $actor->service_id)
+                    ->orWhere('structure_id', $actor->structure_id)
+                    ->orWhere('role_scope', User::SCOPE_GENERAL);
+            })
+            ->get();
+
+        if ($validators->isNotEmpty()) {
+            Notification::send($validators, new \App\Notifications\ValidationRequestedNotification($courrier));
+        }
     }
 
     private function archiverCourrier(Courrier $courrier, User $user, string $motif): Archive
     {
-        if (!$courrier->estArchivable()) {
-            abort(422, 'On ne peut archiver que les courriers TRANSMIS ou RECU.');
-        }
-
         $archive = Archive::create([
             'courrier_original_id' => $courrier->id,
             'numero' => $courrier->numero,
@@ -770,6 +597,7 @@ class CourrierController extends Controller
         $courrier->peut_etre_transmis = $user ? $courrier->peutEtreTransmisPar($user) : false;
         $courrier->peut_etre_non_valide = $user ? $courrier->peutEtreNonValidePar($user) : false;
         $courrier->contenu_restreint = !$courrier->peut_voir_details;
+        $courrier->chaine_reponses = $courrier->reponses;
 
         if (!$courrier->peut_voir_details) {
             $courrier->chemin_fichier = null;
@@ -787,36 +615,10 @@ class CourrierController extends Controller
         $archive->contenu_restreint = !$archive->peut_voir_details;
 
         if (!$archive->peut_voir_details) {
-            $archive->objet = 'Contenu restreint';
-            $archive->expediteur = 'Acces restreint';
-            $archive->destinataire = 'Acces restreint';
             $archive->chemin_fichier = null;
         }
 
         return $archive;
-    }
-
-    private function resolveServiceDestinataire(array $donnees): ?Service
-    {
-        if (empty($donnees['service_destinataire_id'])) {
-            return null;
-        }
-
-        return Service::find($donnees['service_destinataire_id']);
-    }
-
-    private function resolveServiceSource(array $donnees): ?Service
-    {
-        if (empty($donnees['service_source_id'])) {
-            return null;
-        }
-
-        return Service::find($donnees['service_source_id']);
-    }
-
-    private function genererNumeroCourrier(): string
-    {
-        return 'COUR-' . date('Y') . '-' . strtoupper(substr(uniqid(), -8));
     }
 
     private function applyDateReceptionFilter($query, string $dateReception): void
@@ -849,12 +651,24 @@ class CourrierController extends Controller
     private function courrierRelations(): array
     {
         return [
+            'courrierType',
             'niveauConfidentialite',
             'createur',
             'valideur',
-            'serviceSource',
-            'serviceDestinataire',
+            'serviceSource.structure',
+            'serviceDestinataire.structure',
             'transmisPar',
+            'source',
+            'parent',
+            'reponses',
+            'attachments',
+            'comments.user',
+            'comments.instruction',
+            'comments.validePar',
+            'recipients.structure',
+            'recipients.service',
+            'recipients.user',
+            'concernedPeople',
         ];
     }
 
@@ -864,8 +678,8 @@ class CourrierController extends Controller
             'niveauConfidentialite',
             'createur',
             'valideur',
-            'serviceSource',
-            'serviceDestinataire',
+            'serviceSource.structure',
+            'serviceDestinataire.structure',
             'transmisPar',
             'archivePar',
         ];
