@@ -7,10 +7,10 @@ import {
   RefreshCw,
   Search,
   Send,
-  Shield,
   Trash2,
-  UserRound,
   X,
+  ArrowRight,
+  AlertCircle
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
 import Pagination from '../components/Pagination'
@@ -42,39 +42,18 @@ export default function Messages() {
   const [userSearch, setUserSearch] = useState('')
   const [courriers, setCourriers] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
-  const hasInitialized = useRef(false)
 
   async function loadMessages(params = {}) {
     try {
       setLoading(true)
-      setError('')
-
-      const response = await messageApi.getAll({
-        type: mailbox,
-        q: search || undefined,
-        lu: readFilter || undefined,
-        ...params,
-      })
-
-      const paginatedMessages = response.data.messages
-      const list = paginatedMessages?.data || []
-
-      setMessages(list)
-      setPagination(paginatedMessages)
-      setSelectedMessage((current) => {
-        if (current && list.some((item) => item.id === current.id)) {
-          return list.find((item) => item.id === current.id)
-        }
-
-        return list[0] || null
-      })
+      const res = await messageApi.getAll({ type: mailbox, q: search || undefined, lu: readFilter || undefined, ...params })
+      setMessages(res.data.messages.data)
+      setPagination(res.data.messages)
+      if (res.data.messages.data.length > 0 && !selectedMessage) {
+        setSelectedMessage(res.data.messages.data[0])
+      }
     } catch (err) {
-      console.error(err)
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Impossible de charger les messages.',
-      )
+      setError('Erreur de chargement.')
     } finally {
       setLoading(false)
     }
@@ -84,919 +63,172 @@ export default function Messages() {
     try {
       const response = await messageApi.unreadCount()
       setUnreadCount(response.data.non_lus || 0)
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  async function loadCourriersOptions() {
-    try {
-      const response = await courrierApi.getAll()
-      setCourriers((response.data.courriers?.data || []).slice(0, 20))
-    } catch (err) {
-      console.error(err)
-    }
+    } catch (err) { console.error(err) }
   }
 
   useEffect(() => {
-    async function initializeMailbox() {
-      await Promise.all([
-        loadMessages(),
-        loadUnreadCount(),
-        loadCourriersOptions(),
-      ])
-    }
-
-    hasInitialized.current = true
-    void initializeMailbox()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    loadMessages()
+    loadUnreadCount()
   }, [mailbox])
 
-  async function handleOpenMessage(message) {
-    if (selectedMessage?.id === message.id && selectedMessage?.contenu) {
-      return
-    }
-
+  const handleOpenMessage = async (msg) => {
     try {
-      setError('')
-
-      const response = await messageApi.getOne(message.id)
-      const detailedMessage = response.data.message
-
-      setSelectedMessage(detailedMessage)
-      setMessages((current) =>
-        current.map((item) =>
-          item.id === detailedMessage.id ? { ...item, ...detailedMessage } : item,
-        ),
-      )
-
-      if (mailbox === 'recu') {
-        await loadUnreadCount()
-      }
-    } catch (err) {
-      console.error(err)
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          "Impossible d'afficher le message.",
-      )
-    }
+      const res = await messageApi.getOne(msg.id)
+      setSelectedMessage(res.data.message)
+      if (mailbox === 'recu') loadUnreadCount()
+    } catch (err) { console.error(err) }
   }
 
-  async function handleMarkAsRead() {
-    if (!selectedMessage || mailbox !== 'recu' || selectedMessage.lu) return
-
+  const handleDelete = async () => {
+    if (!confirm('Supprimer ce message ?')) return
     try {
-      setActionLoading(true)
-      const response = await messageApi.markAsRead(selectedMessage.id)
-      const updatedMessage = response.data.data
-
-      setSelectedMessage(updatedMessage)
-      setMessages((current) =>
-        current.map((item) => (item.id === updatedMessage.id ? updatedMessage : item)),
-      )
-      await loadUnreadCount()
-    } catch (err) {
-      console.error(err)
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Impossible de marquer le message comme lu.',
-      )
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!selectedMessage) return
-
-    const confirmed = window.confirm('Supprimer ce message ?')
-    if (!confirmed) return
-
-    try {
-      setActionLoading(true)
-      setError('')
       await messageApi.delete(selectedMessage.id)
-      await loadMessages()
-      await loadUnreadCount()
-    } catch (err) {
-      console.error(err)
-      setError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          'Impossible de supprimer ce message.',
-      )
-    } finally {
-      setActionLoading(false)
-    }
+      loadMessages()
+    } catch (err) { console.error(err) }
   }
 
-  function openComposer() {
-    setEditingMessage(null)
-    setForm(initialForm)
-    setUserSearch('')
-    setUsers([])
-    setFormError('')
-    setComposerOpen(true)
-    // Load default recipient suggestions (API returns active users excluding self).
-    void handleUserSearch('')
+  const openComposer = () => {
+    setEditingMessage(null); setForm(initialForm); setUserSearch(''); setUsers([]); setFormError(''); setComposerOpen(true)
+    messageApi.searchUsers('').then(res => setUsers(res.data.utilisateurs || []))
   }
 
-  function openEditor(message) {
-    setEditingMessage(message)
-    setForm({
-      destinataire_id: String(message.destinataire_id || ''),
-      destinataire_label: getUserLabel(message.destinataire),
-      contenu: message.contenu || '',
-      courrier_id: String(message.courrier_id || ''),
-    })
-    setUserSearch(getUserLabel(message.destinataire))
-    setUsers(message.destinataire ? [message.destinataire] : [])
-    setFormError('')
-    setComposerOpen(true)
-  }
-
-  async function handleUserSearch(query) {
-    setUserSearch(query)
-
-    if (editingMessage) return
-
-    // If the user edits the search text after having selected a recipient,
-    // clear the selection to avoid sending a stale destinataire_id.
-    setForm((current) => {
-      if (!current.destinataire_id) return current
-      if (query.trim() === current.destinataire_label.trim()) return current
-      return { ...current, destinataire_id: '', destinataire_label: '' }
-    })
-
-    if (query.trim().length === 0) {
-      try {
-        const response = await messageApi.searchUsers('')
-        setUsers(response.data.utilisateurs || [])
-      } catch (err) {
-        console.error(err)
-        setUsers([])
-      }
-      return
-    }
-
-    if (query.trim().length < 2) {
-      setUsers([])
-      return
-    }
-
-    try {
-      const response = await messageApi.searchUsers(query)
-      setUsers(response.data.utilisateurs || [])
-    } catch (err) {
-      console.error(err)
-    }
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault()
-
+  const handleSubmit = async (e) => {
+    e.preventDefault()
     try {
       setSubmitting(true)
-      setFormError('')
-
-      const submitAction =
-        event?.nativeEvent?.submitter?.dataset?.action === 'save'
-          ? 'save'
-          : 'send'
-
-      if (!editingMessage) {
-        const destinataireId = Number.parseInt(form.destinataire_id, 10)
-        if (!Number.isFinite(destinataireId)) {
-          setFormError('Veuillez sélectionner un destinataire dans la liste.')
-          return
-        }
-      }
-
-      const payload = {
-        contenu: form.contenu,
-        courrier_id: form.courrier_id || null,
-      }
-
-      let response
-
+      const action = e.nativeEvent.submitter?.dataset?.action === 'save' ? 'save' : 'send'
+      const payload = { contenu: form.contenu, courrier_id: form.courrier_id || null }
       if (editingMessage) {
-        // Draft editing only.
-        response = await messageApi.update(editingMessage.id, payload)
-
-        if (submitAction === 'send') {
-          response = await messageApi.sendDraft(editingMessage.id)
-        }
-      } else if (submitAction === 'save') {
-        response = await messageApi.send({
-          ...payload,
-          destinataire_id: Number.parseInt(form.destinataire_id, 10),
-          envoyer: false,
-        })
+        if (action === 'send') await messageApi.sendDraft(editingMessage.id)
+        else await messageApi.update(editingMessage.id, payload)
       } else {
-        response = await messageApi.send({
-          ...payload,
-          destinataire_id: Number.parseInt(form.destinataire_id, 10),
-          envoyer: true,
-        })
+        await messageApi.send({ ...payload, destinataire_id: form.destinataire_id, envoyer: action === 'send' })
       }
-
-      const savedMessage = response.data.data
-
-      setComposerOpen(false)
-      setEditingMessage(null)
-      setForm(initialForm)
-      setSelectedMessage(savedMessage)
-
-      const targetMailbox =
-        savedMessage?.statut === 'CREE' ? 'brouillon' : 'envoye'
-
-      if (mailbox !== targetMailbox) {
-        setMailbox(targetMailbox)
-      } else {
-        await loadMessages({ type: targetMailbox })
-      }
-    } catch (err) {
-      console.error(err)
-
-      const validationErrors = err.response?.data?.errors
-      if (validationErrors) {
-        setFormError(Object.values(validationErrors).flat()[0])
-        return
-      }
-
-      setFormError(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          "Impossible d'enregistrer le message.",
-      )
-    } finally {
-      setSubmitting(false)
-    }
+      setComposerOpen(false); loadMessages()
+    } catch (err) { setFormError('Erreur d’envoi.') } finally { setSubmitting(false) }
   }
-
-  function handleFilter(event) {
-    event.preventDefault()
-    void loadMessages()
-  }
-
-  const stats = useMemo(
-    () => ({
-      total: pagination?.total || messages.length,
-      unread:
-        mailbox === 'recu'
-          ? messages.filter((item) => !item.lu).length
-          : unreadCount,
-      linked: messages.filter((item) => Boolean(item.courrier_id)).length,
-    }),
-    [messages, pagination, mailbox, unreadCount],
-  )
 
   return (
     <div className="space-y-6">
-      <section className="card-lift page-enter overflow-hidden rounded-[28px] border">
-        <div className="relative isolate px-6 py-7">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.14),_transparent_34%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.14),_transparent_36%),linear-gradient(135deg,_#ffffff,_#f8fafc)]" />
-
-          <div className="relative flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-lg shadow-slate-300/30">
-                <MessageSquare size={24} />
-              </div>
-
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-                Messagerie interne
-              </h1>
-
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Boîte de réception, messages envoyés, composition liée aux
-                courriers et gestion du statut de lecture.
-              </p>
-            </div>
-
-            <form
-              onSubmit={handleFilter}
-              className="grid gap-3 xl:min-w-[760px] xl:grid-cols-[auto_auto_minmax(0,1fr)_170px_auto_auto]"
-            >
-              <button
-                type="button"
-                onClick={() => setMailbox('recu')}
-                className={`h-12 rounded-2xl px-4 text-sm font-semibold ${
-                  mailbox === 'recu'
-                    ? 'bg-slate-950 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                Réception
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMailbox('envoye')}
-                className={`h-12 rounded-2xl px-4 text-sm font-semibold ${
-                  mailbox === 'envoye'
-                    ? 'bg-slate-950 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                Envoyés
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setMailbox('brouillon')}
-                className={`h-12 rounded-2xl px-4 text-sm font-semibold ${
-                  mailbox === 'brouillon'
-                    ? 'bg-slate-950 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700'
-                }`}
-              >
-                Brouillons
-              </button>
-
-              <label className="flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
-                <Search size={17} className="text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none"
-                  placeholder="Contenu, nom ou email"
-                />
-              </label>
-
-              <select
-                value={readFilter}
-                onChange={(event) => setReadFilter(event.target.value)}
-                className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none"
-              >
-                <option value="">Tous</option>
-                <option value="false">Non lus</option>
-                <option value="true">Lus</option>
-              </select>
-
-              <button
-                type="submit"
-                className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800"
-              >
-                <Search size={16} />
-                Filtrer
-              </button>
-
-              <button
-                type="button"
-                onClick={openComposer}
-                className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                <Send size={16} />
-                Nouveau
-              </button>
-            </form>
-          </div>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+           <div className="h-10 w-10 bg-indigo-100 text-indigo-700 rounded-lg flex items-center justify-center">
+             <MessageSquare size={20} />
+           </div>
+           <div>
+             <h1 className="text-lg font-bold text-slate-900">Messagerie ({unreadCount} non lus)</h1>
+             <p className="text-xs text-slate-500">Communication interne entre services.</p>
+           </div>
         </div>
-      </section>
 
-      {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-          {error}
-        </div>
-      )}
-
-      <section className="page-enter-delay-1 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="Messages visibles" value={stats.total} icon={<Mail size={20} />} />
-        <StatCard title="Non lus" value={unreadCount} icon={<MailOpen size={20} />} />
-        <StatCard title="Liés à un courrier" value={stats.linked} icon={<Shield size={20} />} />
-        <StatCard
-          title={mailbox === 'recu' ? 'Boîte active' : 'Envois actifs'}
-          value={mailbox === 'recu' ? 'RECU' : 'ENVOYE'}
-          icon={<UserRound size={20} />}
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-        <div className="card-lift page-enter-delay-2 overflow-hidden rounded-[28px] border">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-950">
-                {mailbox === 'recu' ? 'Boîte de réception' : 'Messages envoyés'}
-              </h2>
-              <p className="text-sm text-slate-500">
-                {pagination?.total || 0} message(s) trouvé(s).
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                void loadMessages()
-                void loadUnreadCount()
-              }}
-              className="flex h-10 items-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              <RefreshCw size={16} />
-              Actualiser
+        <div className="flex flex-wrap gap-2">
+          {['recu', 'envoye', 'brouillon'].map(m => (
+            <button key={m} onClick={() => setMailbox(m)} className={`px-4 h-10 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${mailbox === m ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>
+              {m === 'recu' ? 'Boîte' : m === 'envoye' ? 'Envoyés' : 'Brouillons'}
             </button>
+          ))}
+          <button onClick={openComposer} className="px-4 h-10 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors flex items-center gap-2">
+            <Plus size={16} /> Nouveau
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2 space-y-4 min-w-0">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-50 flex items-center gap-3">
+               <div className="relative flex-1">
+                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" size={14} />
+                 <input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && loadMessages({ page: 1 })} placeholder="Rechercher..." className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+               </div>
+               <button onClick={() => loadMessages()} className="p-2 bg-slate-50 text-slate-400 rounded-lg hover:text-slate-600"><RefreshCw size={16} /></button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50/50 text-[10px] font-bold uppercase text-slate-400">
+                  <tr>
+                    <th className="px-4 py-3 border-b">Statut</th>
+                    <th className="px-4 py-3 border-b">{mailbox === 'recu' ? 'Emetteur' : 'Destinataire'}</th>
+                    <th className="px-4 py-3 border-b">Aperçu</th>
+                    <th className="px-4 py-3 border-right border-b text-right">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {messages.map(m => (
+                    <tr key={m.id} onClick={() => handleOpenMessage(m)} className={`cursor-pointer text-xs ${selectedMessage?.id === m.id ? 'bg-blue-50/30' : 'hover:bg-slate-50'}`}>
+                      <td className="px-4 py-3">
+                        <span className={`w-2 h-2 rounded-full inline-block ${m.lu ? 'bg-slate-200' : 'bg-emerald-500'}`}></span>
+                      </td>
+                      <td className="px-4 py-3 font-bold text-slate-900">{mailbox === 'recu' ? m.emetteur?.nom_complet : m.destinataire?.nom_complet}</td>
+                      <td className="px-4 py-3 text-slate-500 truncate max-w-[200px]">{m.contenu}</td>
+                      <td className="px-4 py-3 text-right text-slate-400">{new Date(m.date_envoi).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 border-t border-slate-50">
+               <Pagination pagination={pagination} onPageChange={page => loadMessages({ page })} />
+            </div>
           </div>
-
-          <MessagesTable
-            messages={messages}
-            loading={loading}
-            mailbox={mailbox}
-            selectedMessage={selectedMessage}
-            onSelect={handleOpenMessage}
-          />
-
-          <Pagination
-            pagination={pagination}
-            loading={loading}
-            onPageChange={(page) =>
-              void loadMessages({
-                type: mailbox,
-                q: search || undefined,
-                lu: readFilter || undefined,
-                page,
-              })
-            }
-          />
         </div>
 
-        <MessageDetails
-          message={selectedMessage}
-          mailbox={mailbox}
-          actionLoading={actionLoading}
-          onRead={handleMarkAsRead}
-          onDelete={handleDelete}
-          onEdit={openEditor}
-        />
-      </section>
+        <aside className="min-w-0">
+          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm min-h-[400px]">
+            {selectedMessage ? (
+              <div className="space-y-6">
+                <div>
+                   <h3 className="text-sm font-bold text-slate-900 uppercase">Détails du message</h3>
+                   <p className="text-[10px] text-slate-400 mt-1">{new Date(selectedMessage.date_envoi).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-slate-50 rounded-lg space-y-2 text-xs">
+                   <p><span className="font-bold text-slate-400">De:</span> {selectedMessage.emetteur?.nom_complet}</p>
+                   <p><span className="font-bold text-slate-400">Pour:</span> {selectedMessage.destinataire?.nom_complet}</p>
+                   {selectedMessage.courrier && <p><span className="font-bold text-slate-400">Courrier:</span> {selectedMessage.courrier.numero}</p>}
+                </div>
+                <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap py-2">
+                  {selectedMessage.contenu}
+                </div>
+                <div className="pt-4 border-t border-slate-100">
+                  <button onClick={handleDelete} className="w-full h-10 border border-red-200 text-red-600 rounded-lg text-xs font-bold hover:bg-red-50 flex items-center justify-center gap-2">
+                    <Trash2 size={14} /> Supprimer le message
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-center text-xs text-slate-400 mt-10">Sélectionnez un message.</p>
+            )}
+          </div>
+        </aside>
+      </div>
 
       {composerOpen && (
-        <ComposerModal
-          form={form}
-          users={users}
-          courriers={courriers}
-          userSearch={userSearch}
-          error={formError}
-          submitting={submitting}
-          editingMessage={editingMessage}
-          onClose={() => {
-            setComposerOpen(false)
-            setEditingMessage(null)
-          }}
-          onUserSearch={handleUserSearch}
-          onSelectUser={(user) => {
-            setForm((current) => ({
-              ...current,
-              destinataire_id: String(user.id),
-              destinataire_label: getUserLabel(user),
-            }))
-            setUserSearch(getUserLabel(user))
-            // Close the dropdown after selection; user can type again to re-search.
-            setUsers([])
-          }}
-          onChange={(field, value) =>
-            setForm((current) => ({
-              ...current,
-              [field]: value,
-            }))
-          }
-          onSubmit={handleSubmit}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+           <div className="bg-white rounded-xl shadow-xl w-full max-w-xl overflow-hidden">
+             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+               <h2 className="text-base font-bold text-slate-900">Composer un message</h2>
+               <button onClick={() => setComposerOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+             </div>
+             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Destinataire</label>
+                  <select required value={form.destinataire_id} onChange={e => setForm({...form, destinataire_id: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm bg-white">
+                    <option value="">Choisir...</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.nom_complet} ({u.service?.libelle || u.role})</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Contenu</label>
+                  <textarea required rows={6} value={form.contenu} onChange={e => setForm({...form, contenu: e.target.value})} className="w-full p-3 border border-slate-200 rounded-lg text-sm" placeholder="Votre message..." />
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="submit" className="flex-1 h-11 bg-slate-900 text-white rounded-lg font-bold text-sm">Envoyer</button>
+                  <button type="button" onClick={() => setComposerOpen(false)} className="h-11 px-6 border border-slate-200 rounded-lg font-bold text-sm">Annuler</button>
+                </div>
+             </form>
+           </div>
+        </div>
       )}
     </div>
   )
-}
-
-function MessagesTable({
-  messages,
-  loading,
-  mailbox,
-  selectedMessage,
-  onSelect,
-}) {
-  if (loading) {
-    return (
-      <div className="p-8 text-center text-sm text-slate-500">
-        Chargement des messages...
-      </div>
-    )
-  }
-
-  if (messages.length === 0) {
-    return (
-      <div className="p-8 text-center text-sm text-slate-500">
-        Aucun message trouvé.
-      </div>
-    )
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[860px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-          <tr>
-            <th className="px-5 py-3">Statut</th>
-            <th className="px-5 py-3">{mailbox === 'recu' ? 'Émetteur' : 'Destinataire'}</th>
-            <th className="px-5 py-3">Aperçu</th>
-            <th className="px-5 py-3">Courrier lié</th>
-            <th className="px-5 py-3">Date</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {messages.map((message) => {
-            const active = selectedMessage?.id === message.id
-
-            return (
-              <tr
-                key={message.id}
-                onClick={() => onSelect(message)}
-                className={`table-row-motion cursor-pointer border-t border-slate-100 transition ${
-                  active ? 'bg-emerald-50/70' : 'hover:bg-slate-50'
-                }`}
-              >
-                <td className="px-5 py-4">
-                  {mailbox === 'brouillon' || message.statut === 'CREE' ? (
-                    <InlineBadge tone="slate">Brouillon</InlineBadge>
-                  ) : (
-                    <InlineBadge tone={message.lu ? 'slate' : 'emerald'}>
-                      {message.lu ? 'Lu' : 'Non lu'}
-                    </InlineBadge>
-                  )}
-                </td>
-
-                <td className="px-5 py-4 font-medium text-slate-800">
-                  {mailbox === 'recu'
-                    ? getUserLabel(message.emetteur)
-                    : getUserLabel(message.destinataire)}
-                </td>
-
-                <td className="px-5 py-4 text-slate-600">
-                  {truncate(message.contenu, 90)}
-                </td>
-
-                <td className="px-5 py-4 text-slate-500">
-                  {message.courrier?.numero || '-'}
-                </td>
-
-                <td className="px-5 py-4 text-slate-500">
-                  {formatDateTime(message.date_envoi)}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function MessageDetails({
-  message,
-  mailbox,
-  actionLoading,
-  onRead,
-  onDelete,
-  onEdit,
-}) {
-  if (!message) {
-    return (
-      <aside className="card-lift rounded-[28px] border p-6 text-sm text-slate-500">
-        Sélectionnez un message pour afficher le détail.
-      </aside>
-    )
-  }
-
-  const isDraft = message.statut === 'CREE' || mailbox === 'brouillon'
-  const canEdit = mailbox === 'brouillon' && isDraft
-  const canDelete = mailbox === 'brouillon' && isDraft
-
-  return (
-    <aside className="card-lift rounded-[28px] border p-6">
-      <div className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
-            <MessageSquare size={24} />
-          </div>
-
-          <h3 className="text-2xl font-semibold tracking-tight text-slate-950">
-            {mailbox === 'recu'
-              ? 'Message reçu'
-              : mailbox === 'brouillon'
-                ? 'Brouillon'
-                : 'Message envoyé'}
-          </h3>
-
-          <p className="mt-2 text-sm text-slate-500">
-            {formatDateTime(message.date_envoi)}
-          </p>
-        </div>
-
-        {mailbox !== 'brouillon' && (
-          <InlineBadge tone={message.lu ? 'slate' : 'emerald'}>
-            {message.lu ? 'Lu' : 'Non lu'}
-          </InlineBadge>
-        )}
-      </div>
-
-      <div className="space-y-3 rounded-3xl bg-slate-50 p-4 text-sm">
-        <DetailRow label="Émetteur" value={getUserLabel(message.emetteur)} />
-        <DetailRow
-          label="Destinataire"
-          value={getUserLabel(message.destinataire)}
-        />
-        <DetailRow label="Courrier lié" value={message.courrier?.numero || '-'} />
-        <DetailRow
-          label="Accès au courrier"
-          value={message.courrier_id ? (message.courrier_accessible ? 'Autorisé' : 'Restreint') : '-'}
-        />
-      </div>
-
-      <div className="mt-6 rounded-3xl border border-slate-100 p-4">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">
-          Contenu
-        </p>
-        <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
-          {message.contenu}
-        </p>
-      </div>
-
-      <div className="mt-6 grid gap-3">
-        {mailbox === 'recu' && !message.lu && (
-          <button
-            type="button"
-            onClick={onRead}
-            disabled={actionLoading}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <MailOpen size={16} />
-            Marquer comme lu
-          </button>
-        )}
-
-        {canEdit && (
-          <button
-            type="button"
-            onClick={() => onEdit(message)}
-            disabled={actionLoading}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Pencil size={16} />
-            Modifier
-          </button>
-        )}
-
-        {canDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={actionLoading}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Trash2 size={16} />
-            Supprimer
-          </button>
-        )}
-      </div>
-    </aside>
-  )
-}
-
-function ComposerModal({
-  form,
-  users,
-  courriers,
-  userSearch,
-  error,
-  submitting,
-  editingMessage,
-  onClose,
-  onUserSearch,
-  onSelectUser,
-  onChange,
-  onSubmit,
-}) {
-  const trimmedSearch = userSearch.trim()
-  const showSearchTooShort =
-    !editingMessage && !form.destinataire_id && trimmedSearch.length > 0 && trimmedSearch.length < 2
-  const showNoResults =
-    !editingMessage && !form.destinataire_id && trimmedSearch.length >= 2 && users.length === 0
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-      <form
-        onSubmit={onSubmit}
-        className="page-enter w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl"
-      >
-        <div className="flex items-center justify-between border-b border-slate-100 p-5">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-950">
-              {editingMessage ? 'Modifier le message' : 'Nouveau message'}
-            </h3>
-            <p className="text-sm text-slate-500">
-              {editingMessage
-                ? 'Le destinataire ne change pas après envoi.'
-                : 'Choisissez un destinataire actif et, si besoin, un courrier lié.'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-2xl border border-slate-200 p-2 text-slate-600 hover:bg-slate-50"
-            aria-label="Fermer"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="grid gap-4 p-5 sm:grid-cols-2">
-          {error && (
-            <div className="sm:col-span-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-              {error}
-            </div>
-          )}
-
-          <label className="sm:col-span-2">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Destinataire
-            </span>
-
-            <input
-              value={userSearch}
-              onChange={(event) => void onUserSearch(event.target.value)}
-              disabled={Boolean(editingMessage)}
-              className="h-12 w-full rounded-2xl border border-slate-200 px-4 text-sm outline-none focus:border-slate-900 disabled:cursor-not-allowed disabled:bg-slate-100"
-              placeholder="Rechercher par nom ou email"
-              required
-            />
-
-            {showSearchTooShort && (
-              <p className="mt-2 text-xs font-medium text-slate-500">
-                Tapez au moins 2 caractères pour rechercher, ou choisissez dans les suggestions.
-              </p>
-            )}
-
-            {showNoResults && (
-              <p className="mt-2 text-xs font-medium text-slate-500">
-                Aucun utilisateur trouvé pour cette recherche.
-              </p>
-            )}
-
-            {!editingMessage && !form.destinataire_id && users.length > 0 && (
-              <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200">
-                {users.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    onClick={() => onSelectUser(user)}
-                    className="flex w-full items-center justify-between border-t border-slate-100 px-4 py-3 text-left text-sm first:border-t-0 hover:bg-slate-50"
-                  >
-                    <span className="font-medium text-slate-800">
-                      {getUserLabel(user)}
-                    </span>
-                    <span className="text-slate-500">{user.email}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </label>
-
-          <label>
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Courrier lié
-            </span>
-
-            <select
-              value={form.courrier_id}
-              onChange={(event) => onChange('courrier_id', event.target.value)}
-              className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm outline-none focus:border-slate-900"
-            >
-              <option value="">Aucun courrier</option>
-              {courriers.map((courrier) => (
-                <option key={courrier.id} value={courrier.id}>
-                  {courrier.numero} - {courrier.objet}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Destinataire choisi
-            </span>
-
-            <input
-              value={form.destinataire_label}
-              readOnly
-              className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm text-slate-600 outline-none"
-              placeholder="Sélectionnez un utilisateur"
-            />
-          </label>
-
-          <label className="sm:col-span-2">
-            <span className="mb-2 block text-sm font-medium text-slate-700">
-              Contenu
-            </span>
-
-            <textarea
-              value={form.contenu}
-              onChange={(event) => onChange('contenu', event.target.value)}
-              className="min-h-[180px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900"
-              placeholder="Rédigez votre message"
-              required
-            />
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-3 border-t border-slate-100 p-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Annuler
-          </button>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            data-action="save"
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {editingMessage ? 'Enregistrer' : 'Enregistrer'}
-          </button>
-
-          <button
-            type="submit"
-            disabled={submitting}
-            data-action="send"
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            <Send size={16} />
-            {editingMessage ? 'Envoyer' : 'Envoyer'}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}
-
-function StatCard({ title, value, icon }) {
-  return (
-    <div className="card-lift rounded-[24px] border p-5">
-      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white">
-        {icon}
-      </div>
-
-      <p className="text-sm text-slate-500">{title}</p>
-      <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">
-        {value}
-      </p>
-    </div>
-  )
-}
-
-function InlineBadge({ children, tone = 'slate' }) {
-  const tones = {
-    emerald: 'bg-emerald-100 text-emerald-700',
-    slate: 'bg-slate-100 text-slate-600',
-  }
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-        tones[tone] || tones.slate
-      }`}
-    >
-      {children}
-    </span>
-  )
-}
-
-function DetailRow({ label, value }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-slate-500">{label}</span>
-      <span className="text-right font-medium text-slate-800">{value}</span>
-    </div>
-  )
-}
-
-function getUserLabel(user) {
-  if (!user) return '-'
-
-  const name = `${user.prenom || ''} ${user.nom || ''}`.trim()
-  return name || user.email || `Utilisateur #${user.id}`
-}
-
-function formatDateTime(date) {
-  if (!date) return '-'
-
-  return new Date(date).toLocaleString('fr-FR')
-}
-
-function truncate(value, maxLength) {
-  if (!value) return '-'
-  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value
 }

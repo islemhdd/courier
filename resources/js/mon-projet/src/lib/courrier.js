@@ -1,10 +1,10 @@
 export const COURRIER_STATUS = {
-  CREE: 'Cree',
-  NON_VALIDE: 'Non valide',
-  VALIDE: 'Valide',
+  CREE: 'Crée',
+  NON_VALIDE: 'Attente Validation',
+  VALIDE: 'Validé',
   TRANSMIS: 'Transmis',
-  RECU: 'Recu',
-  ARCHIVE: 'Archive',
+  RECU: 'Reçu',
+  ARCHIVE: 'Archivé',
 }
 
 export function normalizeStatus(statut) {
@@ -16,41 +16,27 @@ export function getStatusLabel(statut) {
   return COURRIER_STATUS[normalized] || normalized || '-'
 }
 
-export function getStatusTone(statut) {
+export function getStatusTone(statut, type = 'text') {
   const normalized = normalizeStatus(statut)
-
-  switch (normalized) {
-    case 'CREE':
-      return 'amber'
-    case 'NON_VALIDE':
-      return 'red'
-    case 'VALIDE':
-      return 'emerald'
-    case 'TRANSMIS':
-      return 'sky'
-    case 'RECU':
-      return 'blue'
-    case 'ARCHIVE':
-      return 'slate'
-    default:
-      return 'slate'
+  
+  const colors = {
+    CREE: { text: 'text-amber-600', badge: 'bg-amber-100 text-amber-700 border-amber-200' },
+    NON_VALIDE: { text: 'text-red-600', badge: 'bg-red-100 text-red-700 border-red-200' },
+    VALIDE: { text: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+    TRANSMIS: { text: 'text-sky-600', badge: 'bg-sky-100 text-sky-700 border-sky-200' },
+    RECU: { text: 'text-blue-600', badge: 'bg-blue-100 text-blue-700 border-blue-200' },
+    ARCHIVE: { text: 'text-slate-600', badge: 'bg-slate-100 text-slate-700 border-slate-200' },
   }
+
+  const color = colors[normalized] || colors.ARCHIVE
+  return type === 'badge' ? `border ${color.badge}` : color.text
 }
 
 export function getConfidentialityLabel(courrier) {
   return (
     courrier?.niveau_confidentialite?.libelle ||
-    courrier?.niveau_confidentialite?.nom ||
     courrier?.niveauConfidentialite?.libelle ||
-    courrier?.niveauConfidentialite?.nom ||
     '-'
-  )
-}
-
-export function isRestrictedContent(courrier) {
-  return (
-    courrier?.contenu_restreint === true ||
-    courrier?.peut_voir_details === false
   )
 }
 

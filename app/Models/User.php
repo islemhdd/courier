@@ -106,6 +106,9 @@ class User extends Authenticatable
         return $this->role === self::ROLE_SECRETAIRE;
     }
 
+    /**
+     * Identifie les utilisateurs de haut rang (Général) ayant autorité sur toute l'organisation.
+     */
     public function estChefGeneral(): bool
     {
         return ($this->estChef() || $this->estAdmin()) && $this->role_scope === self::SCOPE_GENERAL;
@@ -163,6 +166,9 @@ class User extends Authenticatable
         $this->attributes['nom'] = $parts[1] ?? $parts[0] ?? '';
     }
 
+    /**
+     * Récupère le rang numérique de confidentialité pour comparer les accès.
+     */
     public function getRangNiveauConfidentialite(): int
     {
         return $this->niveauConfidentialite?->rang ?? 0;
@@ -183,6 +189,10 @@ class User extends Authenticatable
         return $this->estChefService() && $this->service_id !== null;
     }
 
+    /**
+     * Logique de gestion hiérarchique : un chef peut gérer les agents 
+     * de sa structure ou de son service uniquement.
+     */
     public function peutGererUtilisateur(User $autre): bool
     {
         if ($this->estAdmin() || $this->estChefGeneral()) {

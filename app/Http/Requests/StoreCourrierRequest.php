@@ -14,7 +14,15 @@ class StoreCourrierRequest extends FormRequest
     {
         $user = $this->user();
 
-        return $user && $user->peutCreerCourrier();
+        if (!$user) {
+            return false;
+        }
+
+        if ($this->input('type') === Courrier::TYPE_ENTRANT) {
+            return $user->estChefGeneral() || $user->estSecretaireGeneral();
+        }
+
+        return $user->peutCreerCourrier();
     }
 
     public function rules(): array
@@ -129,10 +137,10 @@ class StoreCourrierRequest extends FormRequest
                 $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
             }
 
-            if ($this->filled('source_libelle') && !$user->peutAjouterSource()) {
+            if ($this->filled('source_libelle') && !$this->filled('source_id') && !$user->peutAjouterSource()) {
                 $validator->errors()->add(
                     'source_libelle',
-                    'Seul le chef general ou son secretaire peut ajouter une nouvelle source.'
+                    'Seul le chef général ou son secrétaire peut ajouter une nouvelle source.'
                 );
             }
 
