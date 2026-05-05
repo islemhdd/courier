@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Archive,
   Check,
@@ -11,6 +12,7 @@ import {
   UsersRound,
 } from 'lucide-react'
 import { formatDate, getStatusLabel } from '../lib/courrier'
+import CourrierTransmitForm from './CourrierTransmitForm'
 
 export default function CourrierDetails({
   courrier,
@@ -19,7 +21,10 @@ export default function CourrierDetails({
   onEdit,
   onDelete,
   onTransmit,
+  onReply,
 }) {
+  const [isTransmitOpen, setIsTransmitOpen] = useState(false)
+
   if (!courrier) {
     return (
       <div className="rounded-3xl bg-white p-6 shadow-sm">
@@ -37,6 +42,7 @@ export default function CourrierDetails({
   const peutSupprimer = courrier.peut_etre_supprime === true
   const peutArchiver = !contenuRestreint && courrier.peut_etre_archive === true
   const peutTransmettre = !contenuRestreint && courrier.peut_etre_transmis === true
+  const peutRepondre = !contenuRestreint && courrier.peut_etre_repondu === true
 
   const handleDelete = () => {
     if (!onDelete) return
@@ -227,14 +233,33 @@ export default function CourrierDetails({
         {peutTransmettre && (
           <button
             type="button"
-            onClick={() => onTransmit?.(courrier.id)}
+            onClick={() => setIsTransmitOpen(true)}
             className="flex items-center justify-center gap-2 rounded-2xl border border-blue-200 px-4 py-3 text-sm font-medium text-blue-600 hover:bg-blue-50"
           >
             <Send size={16} />
             Transmettre
           </button>
         )}
+
+        {peutRepondre && (
+          <button
+            type="button"
+            onClick={() => onReply(courrier)}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <MessageCircle size={16} />
+            Répondre
+          </button>
+        )}
       </div>
+
+      {isTransmitOpen && (
+        <CourrierTransmitForm
+          courrier={courrier}
+          onClose={() => setIsTransmitOpen(false)}
+          onSubmit={(data) => onTransmit?.(courrier.id, data)}
+        />
+      )}
 
       {peutArchiver && (
         <button

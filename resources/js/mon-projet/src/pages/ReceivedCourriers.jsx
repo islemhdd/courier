@@ -6,12 +6,14 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
+import { useAuth } from '../context/auth-context'
 import Pagination from '../components/Pagination'
 import CourrierTable from '../components/CourrierTable'
 import CourrierDetails from '../components/CourrierDetails'
 import CourrierForm from '../components/CourrierForm'
 
 export default function ReceivedCourriers() {
+  const { user } = useAuth()
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -21,6 +23,7 @@ export default function ReceivedCourriers() {
   const [formOpen, setFormOpen] = useState(false)
   const [replyTo, setReplyTo] = useState(null)
   const [error, setError] = useState('')
+  const [canCreateIncoming, setCanCreateIncoming] = useState(false)
 
   const loadData = async (params = {}) => {
     try {
@@ -40,7 +43,18 @@ export default function ReceivedCourriers() {
   }
 
   useEffect(() => {
+    const fetchPermissions = async () => {
+      try {
+        const res = await courrierApi.getCreateData()
+        setCanCreateIncoming(res.data.can_create_incoming_courrier || false)
+      } catch (err) {
+        // Impossible de charger les permissions, présumer false
+        setCanCreateIncoming(false)
+      }
+    }
+
     loadData()
+    fetchPermissions()
   }, [])
 
   const handleAction = async (action, id, data = {}) => {
@@ -61,7 +75,6 @@ export default function ReceivedCourriers() {
 
   return (
     <div className="space-y-6">
-      lirberibfil
       {/* Search & Actions Header */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -85,13 +98,15 @@ export default function ReceivedCourriers() {
               className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
-          <button
-            onClick={() => setFormOpen(true)}
-            className="h-10 px-4 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
-          >
-            <Plus size={16} />
-            Nouveau
-          </button>
+          {canCreateIncoming && (
+            <button
+              onClick={() => setFormOpen(true)}
+              className="h-10 px-4 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus size={16} />
+              Nouveau
+            </button>
+          )}
         </div>
       </div>
 
@@ -139,7 +154,7 @@ export default function ReceivedCourriers() {
 
       {formOpen && (
         <CourrierForm
-          type="entrant"
+          type={replyTo ? 'sortant' : 'entrant'}
           onClose={() => {
             setFormOpen(false)
             setReplyTo(null)

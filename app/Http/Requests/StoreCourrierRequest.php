@@ -14,15 +14,7 @@ class StoreCourrierRequest extends FormRequest
     {
         $user = $this->user();
 
-        if (!$user) {
-            return false;
-        }
-
-        if ($this->input('type') === Courrier::TYPE_ENTRANT) {
-            return $user->estChefGeneral() || $user->estSecretaireGeneral();
-        }
-
-        return $user->peutCreerCourrier();
+        return $user && $user->peutCreerCourrier();
     }
 
     public function rules(): array
@@ -46,6 +38,8 @@ class StoreCourrierRequest extends FormRequest
             'service_destinataire_id' => ['nullable', 'integer', 'exists:services,id'],
             'concerned_user_ids' => ['sometimes', 'array'],
             'concerned_user_ids.*' => ['integer', 'exists:users,id'],
+            'structure_origine_id' => ['nullable', 'integer', 'exists:structures,id'],
+            'structure_destinataire_id' => ['nullable', 'integer', 'exists:structures,id'],
             'recipients' => ['nullable', 'array'],
             'recipients.*.recipient_type' => ['required_with:recipients', Rule::in(['structure', 'service', 'user', 'all'])],
             'recipients.*.structure_id' => ['nullable', 'integer', 'exists:structures,id'],
@@ -83,6 +77,18 @@ class StoreCourrierRequest extends FormRequest
 
             if ($this->boolean('requiert_reponse') && !$this->filled('delai_reponse_jours')) {
                 $validator->errors()->add('delai_reponse_jours', 'Le delai de reponse est obligatoire.');
+            }
+
+            if (
+                $this->input('type') === Courrier::TYPE_ENTRANT
+                && !$user->estAdmin()
+                && !$user->estChefGeneral()
+                && !$user->estSecretaireGeneral()
+            ) {
+                $validator->errors()->add(
+                    'type',
+                    'Les courriers recus doivent etre saisis par le secretariat general ou valides au niveau general.'
+                );
             }
 
             if (
@@ -137,10 +143,24 @@ class StoreCourrierRequest extends FormRequest
                 $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
             }
 
-            if ($this->filled('source_libelle') && !$this->filled('source_id') && !$user->peutAjouterSource()) {
+            $recipients = $this->input('recipients', []);
+            $modeDiffusion = $this->input('mode_diffusion');
+
+            if ($modeDiffusion === 'broadcast' && !empty($recipients)) {
+                $invalidBroadcastRecipients = collect($recipients)->filter(fn($recipient) => ($recipient['recipient_type'] ?? null) !== 'all')->isNotEmpty();
+                if ($invalidBroadcastRecipients) {
+                    $validator->errors()->add('recipients', 'Le mode broadcast doit viser tout le monde.');
+                }
+            }
+
+            if ($modeDiffusion === 'multicast' && count($recipients) < 2) {
+                $validator->errors()->add('recipients', 'Le mode multicast exige plusieurs destinataires.');
+            }
+
+            if ($this->filled('source_libelle') && !$user->peutAjouterSource()) {
                 $validator->errors()->add(
                     'source_libelle',
-                    'Seul le chef général ou son secrétaire peut ajouter une nouvelle source.'
+                    'Seul le chef general ou son secretaire peut ajouter une nouvelle source.'
                 );
             }
 

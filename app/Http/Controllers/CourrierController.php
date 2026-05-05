@@ -22,10 +22,6 @@ use Illuminate\Support\Facades\Storage;
 
 class CourrierController extends Controller
 {
-    /**
-     * Calcule les statistiques globales pour le tableau de bord.
-     * Les compteurs respectent la visibilité hiérarchique de l'utilisateur.
-     */
     public function stats(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -99,23 +95,55 @@ class CourrierController extends Controller
             'niveaux_confidentialite' => NiveauConfidentialite::where('rang', '<=', $user->getRangNiveauConfidentialite())->orderBy('rang')->get(),
             'structures' => Structure::with('services')->orderBy('libelle')->get(),
             'services' => Service::with('structure')->orderBy('libelle')->get(),
-            'utilisateurs' => User::where('actif', true)->orderBy('prenom')->orderBy('nom')->get(['id', 'nom', 'prenom', 'service_id', 'structure_id', 'role', 'role_scope']),
+            'utilisateurs' => User::where('actif', true)
+                ->with(['service', 'structure'])
+                ->orderBy('prenom')
+                ->orderBy('nom')
+                ->get(['id', 'nom', 'prenom', 'email', 'service_id', 'structure_id', 'role', 'role_scope'])
+                ->map(function (User $user) {
+                    return [
+                        'id' => $user->id,
+                        'nom' => $user->nom,
+                        'prenom' => $user->prenom,
+                        'nom_complet' => $user->nom_complet,
+                        'email' => $user->email,
+                        'service_id' => $user->service_id,
+                        'structure_id' => $user->structure_id,
+                        'role' => $user->role,
+                        'role_scope' => $user->role_scope,
+                        'service' => $user->service ? [
+                            'id' => $user->service->id,
+                            'libelle' => $user->service->libelle,
+                            'structure_id' => $user->service->structure_id,
+                        ] : null,
+                        'structure' => $user->structure ? [
+                            'id' => $user->structure->id,
+                            'libelle' => $user->structure->libelle,
+                        ] : null,
+                    ];
+                }),
             'types' => CourrierType::orderBy('libelle')->get(),
             'sources' => Source::orderBy('libelle')->get(),
             'instructions' => Instruction::orderBy('libelle')->get(),
             'modes_diffusion' => ['unicast', 'multicast', 'broadcast'],
+            'can_add_source' => $user->peutAjouterSource(),
+            'can_create_incoming_courrier' => $user->peutCreerCourrierRecu(),
+            'current_user' => $user->only(['id', 'nom', 'prenom', 'email', 'role', 'role_scope', 'service_id', 'structure_id']),
         ]);
     }
 
-    /**
-     * Enregistre un nouveau courrier dans la base de données.
-     * Gère les pièces jointes multiples, les destinataires (unicast/multicast/broadcast),
-     * les instructions hiérarchiques et les personnes concernées.
-     */
     public function store(StoreCourrierRequest $request): JsonResponse
     {
         $user = $request->user();
         $data = $request->validated();
+
+        // Vérifier si l'utilisateur peut créer un courrier reçu
+        if ($data['type'] === Courrier::TYPE_ENTRANT && !$user->peutCreerCourrierRecu()) {
+            return response()->json([
+                'message' => 'Seul le chef général peut créer un courrier reçu.',
+                'error' => 'unauthorized',
+            ], 403);
+        }
 
         $courrier = DB::transaction(function () use ($request, $user, $data) {
             $source = $this->resolveOrCreateSource($user, $data);
@@ -138,6 +166,8 @@ class CourrierController extends Controller
                 'statut' => $status,
                 'service_source_id' => $data['service_source_id'] ?? $user->service_id,
                 'service_destinataire_id' => $data['service_destinataire_id'] ?? ($data['type'] === Courrier::TYPE_ENTRANT ? $user->service_id : null),
+                'structure_origine_id' => $data['structure_origine_id'] ?? null,
+                'structure_destinataire_id' => $data['structure_destinataire_id'] ?? null,
                 'niveau_confidentialite_id' => $data['niveau_confidentialite_id'],
                 'createur_id' => $user->id,
             ]);
@@ -174,10 +204,6 @@ class CourrierController extends Controller
         ]);
     }
 
-    /**
-     * Met à jour les informations d'un courrier existant.
-     * Permet la modification des métadonnées, des destinataires et l'ajout de nouvelles pièces jointes.
-     */
     public function update(UpdateCourrierRequest $request, Courrier $courrier): JsonResponse
     {
         $user = $request->user();
@@ -203,6 +229,8 @@ class CourrierController extends Controller
                 'mode_diffusion' => $data['mode_diffusion'] ?? $courrier->mode_diffusion,
                 'service_source_id' => $data['service_source_id'] ?? $courrier->service_source_id,
                 'service_destinataire_id' => $data['service_destinataire_id'] ?? $courrier->service_destinataire_id,
+                'structure_origine_id' => $data['structure_origine_id'] ?? $courrier->structure_origine_id,
+                'structure_destinataire_id' => $data['structure_destinataire_id'] ?? $courrier->structure_destinataire_id,
                 'niveau_confidentialite_id' => $data['niveau_confidentialite_id'] ?? $courrier->niveau_confidentialite_id,
             ]);
 
@@ -277,10 +305,6 @@ class CourrierController extends Controller
         ]);
     }
 
-    /**
-     * Transmet un courrier à un ou plusieurs destinataires.
-     * Change le statut du courrier et peut déclencher un archivage automatique.
-     */
     public function transmettre(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
@@ -294,85 +318,80 @@ class CourrierController extends Controller
             'recipients.*.structure_id' => ['nullable', 'integer', 'exists:structures,id'],
             'recipients.*.service_id' => ['nullable', 'integer', 'exists:services,id'],
             'recipients.*.user_id' => ['nullable', 'integer', 'exists:users,id'],
-            'instructions' => ['nullable', 'array'],
+            'mode_diffusion' => ['nullable', 'in:unicast,multicast,broadcast'],
+            'service_destinataire_id' => ['nullable', 'integer', 'exists:services,id'],
+            'instructions' => ['sometimes', 'array'],
             'instructions.*.instruction_id' => ['nullable', 'integer', 'exists:instructions,id'],
             'instructions.*.commentaire' => ['nullable', 'string'],
-            'mode_diffusion' => ['nullable', 'in:unicast,multicast,broadcast'],
+            'commentaire' => ['nullable', 'string'],
         ]);
 
-        if (empty($validated['recipients']) && $courrier->service_destinataire_id) {
-            $legacyResult = DB::transaction(function () use ($courrier, $user, $validated) {
-                $courrier->update([
-                    'statut' => Courrier::STATUT_TRANSMIS,
-                    'transmis_par_id' => $user->id,
-                    'transmis_le' => now(),
-                ]);
+        $recipientCount = count($validated['recipients'] ?? []);
+        $mode = $validated['mode_diffusion'] ?? null;
 
-                $received = Courrier::create([
-                    'objet' => $courrier->objet,
-                    'type' => Courrier::TYPE_ENTRANT,
-                    'courrier_type_id' => $courrier->courrier_type_id,
-                    'resume' => $courrier->resume,
-                    'date_creation' => now(),
-                    'date_reception' => now(),
-                    'expediteur' => $courrier->serviceSource?->libelle ?? $courrier->expediteur,
-                    'destinataire' => $courrier->serviceDestinataire?->libelle,
-                    'source_id' => $courrier->source_id,
-                    'parent_courrier_id' => $courrier->parent_courrier_id,
-                    'requiert_reponse' => $courrier->requiert_reponse,
-                    'delai_reponse_jours' => $courrier->delai_reponse_jours,
-                    'mode_diffusion' => 'unicast',
-                    'statut' => Courrier::STATUT_RECU,
-                    'service_source_id' => $courrier->service_source_id,
-                    'service_destinataire_id' => $courrier->service_destinataire_id,
-                    'niveau_confidentialite_id' => $courrier->niveau_confidentialite_id,
-                    'createur_id' => $courrier->createur_id,
-                    'valideur_id' => $courrier->valideur_id,
-                    'transmis_par_id' => $user->id,
-                    'transmis_le' => now(),
-                ]);
+        if (empty($validated['service_destinataire_id']) && !empty($validated['recipients'])) {
+            foreach ($validated['recipients'] as $recipient) {
+                if (($recipient['recipient_type'] ?? null) === 'service' && !empty($recipient['service_id'])) {
+                    $validated['service_destinataire_id'] = $recipient['service_id'];
+                    break;
+                }
 
-                $this->storeCommentsAndInstructions($received, $user, $validated['instructions'] ?? []);
-
-                $archive = $this->archiverCourrier($courrier, $user, 'Archivage automatique apres transmission');
-
-                return [
-                    'archive' => $archive,
-                    'courrier_recu' => $received->fresh($this->courrierRelations()),
-                ];
-            });
-
-            return response()->json([
-                'message' => 'Courrier transmis et archive automatiquement.',
-                'archive' => $this->enrichArchive($legacyResult['archive'], $user),
-                'courrier_recu' => $this->enrichCourrier($legacyResult['courrier_recu'], $user),
-            ]);
+                if (($recipient['recipient_type'] ?? null) === 'user' && !empty($recipient['user_id'])) {
+                    $recipientUser = User::find($recipient['user_id']);
+                    if ($recipientUser?->service_id) {
+                        $validated['service_destinataire_id'] = $recipientUser->service_id;
+                        break;
+                    }
+                }
+            }
         }
 
-        $courrier = DB::transaction(function () use ($courrier, $user, $validated) {
+        if (!$mode) {
+            $mode = $recipientCount > 1 ? 'multicast' : ($recipientCount === 0 ? ($courrier->mode_diffusion ?: 'unicast') : 'unicast');
+        }
+
+        if ($mode !== 'broadcast' && $recipientCount === 0 && !$courrier->service_destinataire_id) {
+            return response()->json(['error' => 'Au moins un destinataire est obligatoire pour transmettre ce courrier.'], 422);
+        }
+
+        $courrier = DB::transaction(function () use ($courrier, $user, $validated, $mode) {
+            $needsChefValidation = $user->estSecretaire();
+
             $courrier->update([
-                'statut' => Courrier::STATUT_TRANSMIS,
-                'mode_diffusion' => $validated['mode_diffusion'] ?? $courrier->mode_diffusion,
-                'transmis_par_id' => $user->id,
-                'transmis_le' => now(),
+                'statut' => $needsChefValidation ? Courrier::STATUT_CREE : Courrier::STATUT_TRANSMIS,
+                'mode_diffusion' => $mode,
+                'service_destinataire_id' => $validated['service_destinataire_id'] ?? $courrier->service_destinataire_id,
+                'transmission_demandee' => $needsChefValidation,
+                'transmis_par_id' => $needsChefValidation ? null : $user->id,
+                'transmis_le' => $needsChefValidation ? null : now(),
             ]);
 
-            $this->syncRecipients($courrier, $validated);
-            $this->storeCommentsAndInstructions($courrier, $user, $validated['instructions'] ?? []);
+            $this->syncRecipients($courrier, array_merge($validated, ['mode_diffusion' => $mode]));
+
+            $instructions = $validated['instructions'] ?? [];
+            if (!empty($validated['commentaire'])) {
+                $instructions[] = ['commentaire' => $validated['commentaire']];
+            }
+
+            if (!empty($instructions)) {
+                $this->storeCommentsAndInstructions($courrier, $user, $instructions);
+            }
+
+            if ($needsChefValidation) {
+                $this->notifyValidators($courrier, $user);
+            }
 
             return $courrier->fresh($this->courrierRelations());
         });
 
         return response()->json([
-            'message' => 'Courrier transmis avec succes.',
+            'message' => $user->estSecretaire()
+                ? 'Transmission enregistree et envoyee pour validation du chef.'
+                : 'Courrier transmis avec succes.',
             'courrier' => $this->enrichCourrier($courrier, $user),
         ]);
     }
 
-    /**
-     * Valide officiellement un courrier par un chef autorisé.
-     * Cette action change le statut pour permettre la diffusion ou la réception finale.
-     */
     public function valider(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
@@ -385,9 +404,16 @@ class CourrierController extends Controller
         }
 
         DB::transaction(function () use ($courrier, $user) {
+            $newStatus = $courrier->transmission_demandee
+                ? Courrier::STATUT_TRANSMIS
+                : ($courrier->type === Courrier::TYPE_ENTRANT ? Courrier::STATUT_RECU : Courrier::STATUT_VALIDE);
+
             $courrier->update([
-                'statut' => $courrier->type === Courrier::TYPE_ENTRANT ? Courrier::STATUT_RECU : Courrier::STATUT_VALIDE,
+                'statut' => $newStatus,
                 'valideur_id' => $user->id,
+                'transmission_demandee' => false,
+                'transmis_par_id' => $courrier->transmission_demandee ? ($courrier->transmis_par_id ?: $courrier->createur_id) : $courrier->transmis_par_id,
+                'transmis_le' => $courrier->transmission_demandee ? now() : $courrier->transmis_le,
             ]);
 
             CourrierComment::query()
@@ -451,6 +477,10 @@ class CourrierController extends Controller
             'date_reception',
             'resume',
             'parent_courrier_id',
+            'repondu',
+            'mois',
+            'structure_id',
+            'service_id',
         ]), $forcedFilters);
 
         $query = Courrier::query()
@@ -467,6 +497,31 @@ class CourrierController extends Controller
             ->dateReception($filters['date_reception'] ?? null)
             ->resumeFullText($filters['resume'] ?? null)
             ->when(!empty($filters['parent_courrier_id']), fn($builder) => $builder->where('parent_courrier_id', $filters['parent_courrier_id']))
+            ->when(!empty($filters['mois']), fn($builder) => $builder->dateReception($filters['mois']))
+            ->when(!empty($filters['service_id']), function ($builder) use ($filters) {
+                $builder->where(function ($sub) use ($filters) {
+                    $sub->where('service_source_id', $filters['service_id'])
+                        ->orWhere('service_destinataire_id', $filters['service_id'])
+                        ->orWhereHas('recipients', fn($q) => $q->where('recipient_type', 'service')->where('service_id', $filters['service_id']));
+                });
+            })
+            ->when(!empty($filters['structure_id']), function ($builder) use ($filters) {
+                $builder->where(function ($sub) use ($filters) {
+                    $sub->where('structure_origine_id', $filters['structure_id'])
+                        ->orWhere('structure_destinataire_id', $filters['structure_id'])
+                        ->orWhereHas('recipients', fn($q) => $q->where('recipient_type', 'structure')->where('structure_id', $filters['structure_id']));
+                });
+            })
+            ->when(isset($filters['repondu']), function ($builder) use ($filters) {
+                $value = filter_var($filters['repondu'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($value === true) {
+                    $builder->where(function ($sub) {
+                        $sub->whereNotNull('repondu_le')->orWhereHas('reponses');
+                    });
+                } elseif ($value === false) {
+                    $builder->where('requiert_reponse', true)->whereNull('repondu_le')->whereDoesntHave('reponses');
+                }
+            })
             ->orderByDesc('date_creation');
 
         if (!$onlyValidation && !empty($filters['statut'])) {
@@ -488,10 +543,8 @@ class CourrierController extends Controller
             return Source::find($data['source_id']);
         }
 
-        $libelle = trim((string) ($data['source_libelle'] ?? ''));
-
-        if ($libelle !== '' && $user->peutAjouterSource()) {
-            return Source::firstOrCreate(['libelle' => $libelle]);
+        if (!empty($data['source_libelle']) && $user->peutAjouterSource()) {
+            return Source::firstOrCreate(['libelle' => $data['source_libelle']]);
         }
 
         return null;
@@ -614,10 +667,6 @@ class CourrierController extends Controller
         return $archive->load($this->archiveRelations());
     }
 
-    /**
-     * Enrichit l'objet Courrier avec des booléens de permissions calculés dynamiquement.
-     * Détermine ce que l'utilisateur peut voir ou faire avec ce courrier précis.
-     */
     private function enrichCourrier(Courrier $courrier, ?User $user): Courrier
     {
         $courrier->peut_voir_details = $user ? $courrier->peutEtreVuEnDetailPar($user) : false;
@@ -629,7 +678,7 @@ class CourrierController extends Controller
         $courrier->peut_etre_archive = $user ? $courrier->peutEtreArchivePar($user) : false;
         $courrier->peut_etre_transmis = $user ? $courrier->peutEtreTransmisPar($user) : false;
         $courrier->peut_etre_non_valide = $user ? $courrier->peutEtreNonValidePar($user) : false;
-        $courrier->peut_repondre = $user ? $courrier->peutEtreReponduPar($user) : false;
+        $courrier->peut_etre_repondu = $user ? $courrier->peutEtreReponduPar($user) : false;
         $courrier->contenu_restreint = !$courrier->peut_voir_details;
         $courrier->chaine_reponses = $courrier->reponses;
 

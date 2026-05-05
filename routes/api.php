@@ -66,16 +66,16 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/test-notification', function (Request $request) {
         $user = $request->user();
-        
+
         $message = new \App\Models\Message();
         $message->id = 999;
         $message->contenu = 'Ceci est un test de notification';
-        
+
         // Mock emetteur
         $message->setRelation('emetteur', $user);
-        
+
         $user->notifyNow(new \App\Notifications\MessageSentNotification($message));
-        
+
         return response()->json(['success' => true, 'message' => 'Notification envoyée !']);
     });
 });

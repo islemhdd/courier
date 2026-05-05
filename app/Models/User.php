@@ -144,6 +144,14 @@ class User extends Authenticatable
         return $this->estAdmin() || $this->estChef() || $this->estSecretaire();
     }
 
+    /**
+     * Seul le chef général (ou admin) peut créer un courrier reçu.
+     */
+    public function peutCreerCourrierRecu(): bool
+    {
+        return $this->estChefGeneral();
+    }
+
     public function peutAjouterSource(): bool
     {
         return $this->estChefGeneral() || $this->estSecretaireGeneral();
@@ -190,7 +198,7 @@ class User extends Authenticatable
     }
 
     /**
-     * Logique de gestion hiérarchique : un chef peut gérer les agents 
+     * Logique de gestion hiérarchique : un chef peut gérer les agents
      * de sa structure ou de son service uniquement.
      */
     public function peutGererUtilisateur(User $autre): bool

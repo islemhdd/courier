@@ -22,6 +22,11 @@ class CourrierPolicy
         return $user->peutCreerCourrier();
     }
 
+    public function createIncoming(User $user): bool
+    {
+        return $user->peutCreerCourrierRecu();
+    }
+
     public function update(User $user, Courrier $courrier): bool
     {
         return $courrier->peutEtreModifiePar($user);

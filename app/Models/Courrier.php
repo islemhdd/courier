@@ -52,6 +52,8 @@ class Courrier extends Model
         'transmission_demandee',
         'service_source_id',
         'service_destinataire_id',
+        'structure_origine_id',
+        'structure_destinataire_id',
         'niveau_confidentialite_id',
         'createur_id',
         'valideur_id',
@@ -81,10 +83,6 @@ class Courrier extends Model
         'est_en_retard',
     ];
 
-    /**
-     * Logique automatique lors de la manipulation du modèle.
-     * Gère la génération séquentielle des numéros et le calcul automatique des dates limites.
-     */
     protected static function booted(): void
     {
         static::creating(function (self $courrier) {
@@ -103,6 +101,39 @@ class Courrier extends Model
             if ($courrier->requiert_reponse && $courrier->delai_reponse_jours && !$courrier->date_limite_reponse) {
                 $courrier->date_limite_reponse = Carbon::parse($courrier->date_reception ?? now())
                     ->addDays($courrier->delai_reponse_jours);
+            }
+        });
+
+        static::saving(function (self $courrier) {
+            if ($courrier->requiert_reponse && $courrier->delai_reponse_jours) {
+                $mustRecalculate = !$courrier->date_limite_reponse
+                    || $courrier->isDirty('date_reception')
+                    || $courrier->isDirty('delai_reponse_jours')
+                    || $courrier->isDirty('requiert_reponse');
+
+                if ($mustRecalculate) {
+                    $courrier->date_limite_reponse = Carbon::parse($courrier->date_reception ?? now())
+                        ->addDays((int) $courrier->delai_reponse_jours);
+                }
+            }
+
+            if (!$courrier->requiert_reponse) {
+                $courrier->date_limite_reponse = null;
+            }
+
+            // Auto-fill structure fields based on services
+            if ($courrier->service_source_id && !$courrier->structure_origine_id) {
+                $service = Service::find($courrier->service_source_id);
+                if ($service) {
+                    $courrier->structure_origine_id = $service->structure_id;
+                }
+            }
+
+            if ($courrier->service_destinataire_id && !$courrier->structure_destinataire_id) {
+                $service = Service::find($courrier->service_destinataire_id);
+                if ($service) {
+                    $courrier->structure_destinataire_id = $service->structure_id;
+                }
             }
         });
 
@@ -144,6 +175,16 @@ class Courrier extends Model
     public function serviceDestinataire(): BelongsTo
     {
         return $this->belongsTo(Service::class, 'service_destinataire_id');
+    }
+
+    public function structureOrigine(): BelongsTo
+    {
+        return $this->belongsTo(Structure::class, 'structure_origine_id');
+    }
+
+    public function structureDestinataire(): BelongsTo
+    {
+        return $this->belongsTo(Structure::class, 'structure_destinataire_id');
     }
 
     public function transmisPar(): BelongsTo
@@ -196,10 +237,6 @@ class Courrier extends Model
         return $this->belongsToMany(User::class, 'courrier_people')->withTimestamps();
     }
 
-    /**
-     * Scope permettant de filtrer les courriers visibles par un utilisateur donné.
-     * Applique les règles de confidentialité et le rattachement hiérarchique (service/structure).
-     */
     public function scopeVisiblePourUser(Builder $query, User $user): Builder
     {
         if ($user->estAdmin()) {
@@ -228,6 +265,12 @@ class Courrier extends Model
                 $subQuery->orWhere('service_source_id', $user->service_id)
                     ->orWhere('service_destinataire_id', $user->service_id)
                     ->orWhereHas('createur', fn(Builder $q) => $q->where('service_id', $user->service_id));
+            }
+
+            if ($user->structure_id) {
+                $subQuery->orWhere('structure_origine_id', $user->structure_id)
+                    ->orWhere('structure_destinataire_id', $user->structure_id)
+                    ->orWhereHas('createur', fn(Builder $q) => $q->where('structure_id', $user->structure_id));
             }
         });
     }
@@ -270,9 +313,6 @@ class Courrier extends Model
         return $query->whereIn('statut', [self::STATUT_CREE, self::STATUT_NON_VALIDE]);
     }
 
-    /**
-     * Scope isolant les courriers en attente de validation par l'utilisateur (Chef).
-     */
     public function scopeValidablesPourUser(Builder $query, User $user): Builder
     {
         if ($user->estAdmin() || $user->estChefGeneral()) {
@@ -333,17 +373,40 @@ class Courrier extends Model
 
     public function scopeSearchAnyField(Builder $query, ?string $term): Builder
     {
-        if (!$term) {
+        $term = trim((string) $term);
+
+        if ($term === '') {
             return $query;
         }
 
         return $query->where(function (Builder $subQuery) use ($term) {
-            $subQuery->where('numero', 'like', '%' . $term . '%')
-                ->orWhere('objet', 'like', '%' . $term . '%')
-                ->orWhere('resume', 'like', '%' . $term . '%')
-                ->orWhere('expediteur', 'like', '%' . $term . '%')
-                ->orWhere('destinataire', 'like', '%' . $term . '%')
-                ->orWhere('statut', 'like', '%' . $term . '%');
+            $like = '%' . $term . '%';
+
+            $subQuery->where('numero', 'like', $like)
+                ->orWhere('objet', 'like', $like)
+                ->orWhere('resume', 'like', $like)
+                ->orWhere('expediteur', 'like', $like)
+                ->orWhere('destinataire', 'like', $like)
+                ->orWhere('statut', 'like', $like)
+                ->orWhere('type', 'like', $like)
+                ->orWhereDate('date_reception', $term)
+                ->orWhereHas('courrierType', fn(Builder $q) => $q->where('libelle', 'like', $like))
+                ->orWhereHas('source', fn(Builder $q) => $q->where('libelle', 'like', $like))
+                ->orWhereHas('serviceSource', fn(Builder $q) => $q->where('libelle', 'like', $like))
+                ->orWhereHas('serviceDestinataire', fn(Builder $q) => $q->where('libelle', 'like', $like))
+                ->orWhereHas('recipients.structure', fn(Builder $q) => $q->where('libelle', 'like', $like))
+                ->orWhereHas('recipients.service', fn(Builder $q) => $q->where('libelle', 'like', $like))
+                ->orWhereHas('recipients.user', function (Builder $q) use ($like) {
+                    $q->where('nom', 'like', $like)
+                        ->orWhere('prenom', 'like', $like)
+                        ->orWhere('email', 'like', $like);
+                })
+                ->orWhereHas('concernedPeople', function (Builder $q) use ($like) {
+                    $q->where('nom', 'like', $like)
+                        ->orWhere('prenom', 'like', $like)
+                        ->orWhere('email', 'like', $like);
+                })
+                ->orWhereHas('comments', fn(Builder $q) => $q->where('commentaire', 'like', $like));
         });
     }
 
@@ -354,13 +417,10 @@ class Courrier extends Model
         }
 
         if (DB::getDriverName() === 'mysql') {
-            return $query->whereFullText(['objet', 'resume'], $term);
+            return $query->whereFullText('resume', $term);
         }
 
-        return $query->where(function (Builder $subQuery) use ($term) {
-            $subQuery->where('objet', 'like', '%' . $term . '%')
-                ->orWhere('resume', 'like', '%' . $term . '%');
-        });
+        return $query->where('resume', 'like', '%' . $term . '%');
     }
 
     public function getEstAccessibleAttribute(): bool
@@ -410,33 +470,6 @@ class Courrier extends Model
         return (bool) $this->repondu_le || $this->reponses()->exists();
     }
 
-    /**
-     * Définit qui peut répondre à un courrier entrant.
-     * Logique :
-     * 1. Le courrier doit être de type Entrant.
-     * 2. Si envoyé à un utilisateur précis -> cet utilisateur.
-     * 3. Si envoyé à un service -> tout membre du service destinataire.
-     * 4. Si envoyé à une structure -> le chef doit d'abord le transmettre (pas de réponse directe).
-     */
-    public function peutEtreReponduPar(User $user): bool
-    {
-        if ($this->type !== self::TYPE_ENTRANT) {
-            return false;
-        }
-
-        // Si l'utilisateur est nommément destinataire
-        if ($this->recipients()->where('recipient_type', 'user')->where('user_id', $user->id)->exists()) {
-            return true;
-        }
-
-        // Si le service de l'utilisateur est destinataire
-        if ($user->service_id && $this->recipients()->where('recipient_type', 'service')->where('service_id', $user->service_id)->exists()) {
-            return true;
-        }
-
-        return false;
-    }
-
     public function getEstEnRetardAttribute(): bool
     {
         return $this->requiert_reponse
@@ -481,9 +514,6 @@ class Courrier extends Model
         return ($this->niveauConfidentialite?->rang ?? 0) <= $user->getRangNiveauConfidentialite();
     }
 
-    /**
-     * Détermine si un utilisateur peut voir l'existence d'un courrier (liste simplifiée).
-     */
     public function peutVoirExistencePar(User $user): bool
     {
         if ($user->estAdmin()) {
@@ -491,6 +521,10 @@ class Courrier extends Model
         }
 
         if ($this->estDirectementConcernePar($user) || $this->appartientAuServiceDe($user)) {
+            return true;
+        }
+
+        if ($user->structure_id && ($this->structure_origine_id === $user->structure_id || $this->structure_destinataire_id === $user->structure_id)) {
             return true;
         }
 
@@ -508,14 +542,20 @@ class Courrier extends Model
         })->exists();
     }
 
-    /**
-     * Vérifie si l'utilisateur a le droit de consulter les détails profonds du courrier
-     * (Résumé, pièces jointes, commentaires).
-     */
     public function peutEtreVuEnDetailPar(User $user): bool
     {
         if ($user->estAdmin() || $user->estChefGeneral()) {
             return true;
+        }
+
+        if ($this->structure_origine_id && $this->structure_destinataire_id && $this->structure_origine_id !== $this->structure_destinataire_id) {
+            if ($user->estChefStructure() && ($this->structure_origine_id === $user->structure_id || $this->structure_destinataire_id === $user->structure_id)) {
+                return true;
+            }
+
+            if ($user->estChefService()) {
+                return false;
+            }
         }
 
         if ($user->estChef()) {
@@ -579,44 +619,30 @@ class Courrier extends Model
 
     public function peutEtreTransmisPar(User $user): bool
     {
-        if ($user->estAdmin() || $user->estChefGeneral()) {
-            return true;
-        }
-
-        if (!in_array($this->statut, [self::STATUT_VALIDE, self::STATUT_TRANSMIS, self::STATUT_RECU], true)) {
+        if (!in_array($this->statut, [self::STATUT_VALIDE, self::STATUT_RECU, self::STATUT_TRANSMIS], true)) {
             return false;
         }
 
-        if ($this->recipients()->where('recipient_type', 'user')->where('user_id', $user->id)->exists()) {
+        if ($user->estAdmin() || $user->estChefGeneral() || $user->estSecretaireGeneral()) {
             return true;
         }
 
-        if ($user->estChefStructure() || $user->estSecretaireStructure()) {
-            if ($this->recipients()->where('recipient_type', 'structure')->where('structure_id', $user->structure_id)->exists()) {
-                return true;
-            }
-
-            if ($this->service_destinataire_id !== null && $this->serviceDestinataire?->structure_id === $user->structure_id) {
-                return true;
-            }
+        if (!$user->estChef() && !$user->estSecretaire()) {
+            return false;
         }
 
-        if ($user->estChefService() || $user->estSecretaireService()) {
-            if ($this->recipients()->where('recipient_type', 'service')->where('service_id', $user->service_id)->exists()) {
-                return true;
-            }
+        if ($this->appartientAuServiceDe($user) || $this->estDirectementConcernePar($user)) {
+            return true;
+        }
 
-            if ($this->service_destinataire_id !== null && $this->service_destinataire_id === $user->service_id) {
-                return true;
-            }
+        if ($user->structure_id) {
+            return $this->recipients()->where('recipient_type', 'structure')->where('structure_id', $user->structure_id)->exists()
+                || $this->recipients()->where('recipient_type', 'service')->whereHas('service', function (Builder $q) use ($user) {
+                    $q->where('structure_id', $user->structure_id);
+                })->exists();
         }
 
         return false;
-    }
-
-    public function estDestineAUneStructure(): bool
-    {
-        return $this->recipients()->where('recipient_type', 'structure')->exists();
     }
 
     public function estCree(): bool
@@ -672,11 +698,56 @@ class Courrier extends Model
             return $this->createur_id === $user->id;
         }
 
-        if ($this->statut !== self::STATUT_VALIDE) {
+        if ($this->statut !== self::STATUT_VALIDE && $this->statut !== self::STATUT_RECU && $this->statut !== self::STATUT_TRANSMIS) {
+            return false;
+        }
+
+        // Pour les courriers inter-structures, seuls les chefs de structure peuvent modifier
+        if ($this->structure_origine_id && $this->structure_destinataire_id && $this->structure_origine_id !== $this->structure_destinataire_id) {
+            return $user->estChefStructure() && (
+                $this->structure_origine_id === $user->structure_id ||
+                $this->structure_destinataire_id === $user->structure_id ||
+                $this->createur_id === $user->id
+            );
+        }
+
+        // Pour les autres courriers, les chefs peuvent modifier
+        // Mais si c'est un courrier de structure, un chef de service ne peut pas le modifier
+        if ($user->estChefService() && ($this->structure_origine_id || $this->structure_destinataire_id)) {
             return false;
         }
 
         return $user->estChef() && ($this->appartientAuServiceDe($user) || $this->createur_id === $user->id);
+    }
+
+    public function peutEtreReponduPar(User $user): bool
+    {
+        if (!$this->requiert_reponse) {
+            return false;
+        }
+
+        if ($this->a_ete_repondu) {
+            return false;
+        }
+
+        if ($user->estAdmin() || $user->estChefGeneral()) {
+            return true;
+        }
+
+        // Pour les courriers inter-structures, seuls les chefs de structure peuvent répondre
+        if ($this->structure_origine_id && $this->structure_destinataire_id && $this->structure_origine_id !== $this->structure_destinataire_id) {
+            return $user->estChefStructure() && (
+                $this->structure_origine_id === $user->structure_id ||
+                $this->structure_destinataire_id === $user->structure_id
+            );
+        }
+
+        // Un chef de service ne peut pas répondre à un courrier de structure
+        if ($user->estChefService() && ($this->structure_origine_id || $this->structure_destinataire_id)) {
+            return false;
+        }
+
+        return $user->estChef() && ($this->appartientAuServiceDe($user) || $this->estDirectementConcernePar($user));
     }
 
     public function getUrlFichierAttribute(): ?string

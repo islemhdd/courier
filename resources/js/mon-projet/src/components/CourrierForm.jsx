@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { 
-  X, 
-  Upload, 
-  Plus, 
-  Trash2, 
+import {
+  X,
+  Upload,
+  Plus,
+  Trash2,
   Info,
   Clock,
   CheckCircle2,
@@ -16,11 +16,11 @@ import {
 import { courrierApi } from '../api/courrierApi'
 import { useAuth } from '../context/auth-context'
 
-export default function CourrierForm({ 
-  type = 'entrant', 
-  onClose, 
+export default function CourrierForm({
+  type = 'entrant',
+  onClose,
   onSuccess,
-  initialData = null 
+  initialData = null
 }) {
   const { user } = useAuth()
   const peutAjouterSource = user?.role_scope === 'general'
@@ -28,7 +28,7 @@ export default function CourrierForm({
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  
+
   // Données de métadonnées pour les sélections hiérarchiques
   const [meta, setMeta] = useState({
     niveaux_confidentialite: [],
@@ -97,7 +97,7 @@ export default function CourrierForm({
 
     try {
       const formData = new FormData()
-      
+
       // Ajout des champs simples
       Object.keys(form).forEach(key => {
         if (key === 'documents') {
@@ -133,7 +133,7 @@ export default function CourrierForm({
       onSuccess()
     } catch (err) {
       console.error(err)
-      const msg = err.response?.data?.errors 
+      const msg = err.response?.data?.errors
         ? Object.values(err.response.data.errors).flat()[0]
         : (err.response?.data?.message || 'Erreur lors de l’envoi.')
       setError(msg)
@@ -165,7 +165,7 @@ export default function CourrierForm({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl h-full max-h-[90vh] flex flex-col overflow-hidden">
-        
+
         {/* En-tête standard */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-3">
@@ -184,14 +184,14 @@ export default function CourrierForm({
           {error && <div className="p-3 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-100 flex items-center gap-2 animate-in fade-in"><AlertCircle size={14} /> {error}</div>}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-            
+
             {/* Colonne 1: Infos Générales */}
             <div className="space-y-6">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Objet du courrier</label>
                 <input required value={form.objet} onChange={e => setForm({...form, objet: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 outline-none" placeholder="Sujet..." />
               </div>
-              
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Résumé / Contenu</label>
                 <textarea required rows={4} value={form.resume} onChange={e => setForm({...form, resume: e.target.value})} className="w-full p-3 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 outline-none" placeholder="Détails du contenu..." />
@@ -221,9 +221,9 @@ export default function CourrierForm({
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Source (Entité)</label>
                   {!showNewSourceInput ? (
                     <div className="flex gap-2">
-                      <select 
-                        required 
-                        value={form.source_id} 
+                      <select
+                        required
+                        value={form.source_id}
                         onChange={e => {
                           if (e.target.value === 'NEW') {
                             setShowNewSourceInput(true)
@@ -232,7 +232,7 @@ export default function CourrierForm({
                             const f = meta.sources.find(s => s.id == e.target.value)
                             setForm({...form, source_id: e.target.value, source_libelle: f ? f.libelle : ''})
                           }
-                        }} 
+                        }}
                         className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm bg-white outline-none"
                       >
                         <option value="">Choisir la source...</option>
@@ -242,17 +242,17 @@ export default function CourrierForm({
                     </div>
                   ) : (
                     <div className="flex gap-2 animate-in slide-in-from-left-2">
-                      <input 
+                      <input
                         autoFocus
                         required
-                        value={form.source_libelle} 
-                        onChange={e => setForm({...form, source_libelle: e.target.value})} 
-                        className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm outline-none" 
-                        placeholder="Nom de la source..." 
+                        value={form.source_libelle}
+                        onChange={e => setForm({...form, source_libelle: e.target.value})}
+                        className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm outline-none"
+                        placeholder="Nom de la source..."
                       />
-                      <button 
-                        type="button" 
-                        onClick={() => setShowNewSourceInput(false)} 
+                      <button
+                        type="button"
+                        onClick={() => setShowNewSourceInput(false)}
                         className="px-3 bg-slate-100 text-slate-500 rounded-lg text-xs font-bold"
                       >
                         Annuler
@@ -279,7 +279,7 @@ export default function CourrierForm({
 
             {/* Colonne 2: Circuit & Pièces */}
             <div className="space-y-8">
-              
+
               {/* Diffusion */}
               <div className="space-y-4">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Destinataires & Mode</p>
@@ -316,7 +316,7 @@ export default function CourrierForm({
                         {r.recipient_type === 'user' && (
                           <select value={r.user_id} onChange={e => updateRecipient(i, 'user_id', e.target.value)} className="w-full h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white outline-none">
                             <option value="">Utilisateur...</option>
-                            {meta.utilisateurs.filter(u => !r.service_id || u.service_id == r.service_id).map(u => <option key={u.id} value={u.id}>{u.nom_complet}</option>)}
+                            {meta.utilisateurs.filter(u => !r.service_id || u.service_id == r.service_id).map(u => <option key={u.id} value={u.id}>{u.nom_complet || `${u.prenom} ${u.nom}`}</option>)}
                           </select>
                         )}
                       </div>

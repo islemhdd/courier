@@ -29,6 +29,7 @@ class UpdateCourrierRequest extends FormRequest
             'destinataire' => ['sometimes', 'nullable', 'string', 'max:100'],
             'niveau_confidentialite_id' => ['sometimes', 'required', 'integer', 'exists:niveau_confidentialites,id'],
             'source_id' => ['sometimes', 'nullable', 'integer', 'exists:sources,id'],
+            'source_libelle' => ['sometimes', 'nullable', 'string', 'max:160'],
             'parent_courrier_id' => ['sometimes', 'nullable', 'integer', 'exists:courriers,id'],
             'requiert_reponse' => ['sometimes', 'boolean'],
             'delai_reponse_jours' => ['sometimes', 'nullable', 'integer', 'min:1'],
@@ -37,6 +38,8 @@ class UpdateCourrierRequest extends FormRequest
             'service_destinataire_id' => ['sometimes', 'nullable', 'integer', 'exists:services,id'],
             'concerned_user_ids' => ['sometimes', 'array'],
             'concerned_user_ids.*' => ['integer', 'exists:users,id'],
+            'structure_origine_id' => ['sometimes', 'nullable', 'integer', 'exists:structures,id'],
+            'structure_destinataire_id' => ['sometimes', 'nullable', 'integer', 'exists:structures,id'],
             'recipients' => ['sometimes', 'array'],
             'recipients.*.recipient_type' => ['required_with:recipients', Rule::in(['structure', 'service', 'user', 'all'])],
             'recipients.*.structure_id' => ['nullable', 'integer', 'exists:structures,id'],
@@ -70,6 +73,54 @@ class UpdateCourrierRequest extends FormRequest
                     );
                 }
             }
+
+            if ($this->boolean('requiert_reponse') && !$this->filled('delai_reponse_jours')) {
+                $validator->errors()->add('delai_reponse_jours', 'Le delai de reponse est obligatoire.');
+            }
+
+            if ($this->filled('source_libelle') && !$user->peutAjouterSource()) {
+                $validator->errors()->add(
+                    'source_libelle',
+                    'Seul le chef general ou son secretaire peut ajouter une nouvelle source.'
+                );
+            }
+
+            $recipients = $this->input('recipients', []);
+            $modeDiffusion = $this->input('mode_diffusion');
+
+            if ($modeDiffusion === 'unicast' && count($recipients) > 1) {
+                $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
+            }
+
+            if ($modeDiffusion === 'multicast' && count($recipients) < 2) {
+                $validator->errors()->add('recipients', 'Le mode multicast exige plusieurs destinataires.');
+            }
+
+            foreach ($recipients as $index => $recipient) {
+                $type = $recipient['recipient_type'] ?? null;
+
+                if ($type === 'structure' && empty($recipient['structure_id'])) {
+                    $validator->errors()->add("recipients.$index.structure_id", 'La structure destinataire est obligatoire.');
+                }
+
+                if ($type === 'service' && empty($recipient['service_id'])) {
+                    $validator->errors()->add("recipients.$index.service_id", 'Le service destinataire est obligatoire.');
+                }
+
+                if ($type === 'user' && empty($recipient['user_id'])) {
+                    $validator->errors()->add("recipients.$index.user_id", 'La personne destinataire est obligatoire.');
+                }
+            }
         });
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('mode_diffusion') && !$this->filled('mode_diffusion')) {
+            $recipients = $this->input('recipients', []);
+            $this->merge([
+                'mode_diffusion' => count($recipients) > 1 ? 'multicast' : 'unicast',
+            ]);
+        }
     }
 }
