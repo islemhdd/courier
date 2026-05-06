@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Users,
   Search,
@@ -13,11 +13,19 @@ import {
   X
 } from 'lucide-react'
 import api from '../api/api'
+import { useAuth } from '../context/auth-context'
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState([])
+  const [pagination, setPagination] = useState({
+    current_page: 1,
+    last_page: 1,
+    total: 0,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [search, setSearch] = useState('')
   
   const [meta, setMeta] = useState({ structures: [], services: [] })
@@ -29,50 +37,201 @@ export default function UsersPage() {
     prenom: '',
     email: '',
     password: '',
-    role: 'secrétaire',
+    password_confirmation: '',
+    role: 'secretaire',
+    role_scope: 'service',
     structure_id: '',
     service_id: ''
   })
 
+  const roleRules = useMemo(() => {
+    const role = form.role
+    const scope = form.role_scope
+
+    const needsStructure =
+      (role === 'chef' && scope === 'structure') ||
+      (role === 'secretaire' && scope === 'structure') ||
+      (role === 'secretaire' && scope === 'service') ||
+      (role === 'chef' && scope === 'service')
+
+    const needsService =
+      (role === 'chef' && scope === 'service') ||
+      (role === 'secretaire' && scope === 'service')
+
+    // Business rules requested:
+    // - Chef structure: must not belong to a service.
+    // - Chef général: must not have a structure (nor a service).
+    const forceNoService = role === 'chef' && scope === 'structure'
+    const forceNoStructure = role === 'chef' && scope === 'general'
+
+    return {
+      role,
+      scope,
+      needsStructure: needsStructure && !forceNoStructure,
+      needsService: needsService && !forceNoService && !forceNoStructure,
+      forceNoService,
+      forceNoStructure,
+    }
+  }, [form.role, form.role_scope])
+
+  const roleBadge = (role) => {
+    const value = String(role || '').toLowerCase()
+    if (value === 'admin') {
+      return {
+        label: 'Administrateur',
+        className: 'bg-violet-50 text-violet-700 border-violet-100',
+      }
+    }
+    if (value === 'chef') {
+      return {
+        label: 'Chef',
+        className: 'bg-amber-50 text-amber-700 border-amber-100',
+      }
+    }
+    return {
+      label: 'Secrétaire',
+      className: 'bg-slate-50 text-slate-700 border-slate-100',
+    }
+  }
+
+  const scopeLabel = (scope) => {
+    const value = String(scope || '').toLowerCase()
+    if (value === 'general') return 'Général'
+    if (value === 'structure') return 'Structure'
+    return 'Service'
+  }
+
+  const scopePillClass = (scope) => {
+    const value = String(scope || '').toLowerCase()
+    if (value === 'general') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    if (value === 'structure') return 'bg-sky-50 text-sky-700 border-sky-100'
+    return 'bg-slate-50 text-slate-700 border-slate-100'
+  }
+
+  const canManageAdmins =
+    currentUser?.role === 'admin' ||
+    currentUser?.permissions?.peut_gerer_tous_les_utilisateurs === true
+
+  useEffect(() => {
+    // Enforce business rules in the form state to prevent 422s.
+    setForm((prev) => {
+      let next = prev
+
+      if (roleRules.forceNoService && prev.service_id) {
+        next = { ...next, service_id: '' }
+      }
+
+      if (roleRules.forceNoStructure && (prev.structure_id || prev.service_id)) {
+        next = { ...next, structure_id: '', service_id: '' }
+      }
+
+      return next
+    })
+  }, [roleRules.forceNoService, roleRules.forceNoStructure])
+
   const loadData = async () => {
     try {
       setLoading(true)
-      const [usersRes, metaRes] = await Promise.all([
-        api.get('/users'),
-        api.get('/courriers/create') // To get structures/services
-      ])
-      setUsers(usersRes.data)
-      setMeta(metaRes.data)
+      setError('')
+      const res = await api.get('/utilisateurs', {
+        params: {
+          q: search || undefined,
+          page: pagination.current_page || 1,
+        },
+      })
+
+      const payload = res.data || {}
+      const pagePayload = payload.utilisateurs || {}
+      setUsers(Array.isArray(pagePayload.data) ? pagePayload.data : [])
+      setPagination({
+        current_page: pagePayload.current_page || 1,
+        last_page: pagePayload.last_page || 1,
+        total: pagePayload.total || 0,
+      })
+      setMeta(payload.meta || { structures: [], services: [] })
     } catch (err) {
-      setError('Erreur lors du chargement des utilisateurs.')
+      const apiMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (err.response?.data?.errors
+          ? Object.values(err.response.data.errors).flat()[0]
+          : '')
+      setUsers([])
+      setPagination({ current_page: 1, last_page: 1, total: 0 })
+      setError(apiMessage || 'Erreur lors du chargement des utilisateurs.')
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    const handle = setTimeout(() => {
+      loadData()
+    }, 250)
+
+    return () => clearTimeout(handle)
+  }, [search, pagination.current_page])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
+      setError('')
+      setFieldErrors({})
+
+      // Client-side guardrails so we don't send obviously invalid payloads.
+      const localErrors = {}
+      if (roleRules.needsStructure && !form.structure_id) {
+        localErrors.structure_id = ['Structure obligatoire pour ce périmètre.']
+      }
+      if (roleRules.needsService && !form.service_id) {
+        localErrors.service_id = ['Service obligatoire pour ce périmètre.']
+      }
+      if (roleRules.forceNoService && form.service_id) {
+        localErrors.service_id = ['Un chef de structure ne doit pas appartenir à un service.']
+      }
+      if (roleRules.forceNoStructure && form.structure_id) {
+        localErrors.structure_id = ['Un chef général ne doit pas appartenir à une structure.']
+      }
+      if (Object.keys(localErrors).length > 0) {
+        setFieldErrors(localErrors)
+        setError(Object.values(localErrors).flat()[0])
+        return
+      }
+
+      const payload = { ...form }
+      if (payload.structure_id === '') payload.structure_id = null
+      if (payload.service_id === '') payload.service_id = null
+      if (editingUser && !payload.password) {
+        delete payload.password
+        delete payload.password_confirmation
+      }
+
       if (editingUser) {
-        await api.put(`/users/${editingUser.id}`, form)
+        await api.patch(`/utilisateurs/${editingUser.id}`, payload)
       } else {
-        await api.post('/users', form)
+        await api.post('/utilisateurs', payload)
       }
       setModalOpen(false)
       loadData()
     } catch (err) {
-      setError('Erreur lors de l’enregistrement.')
+      const errors = err.response?.data?.errors
+      if (errors && typeof errors === 'object') {
+        setFieldErrors(errors)
+      } else {
+        setFieldErrors({})
+      }
+      const apiMessage =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (errors ? Object.values(errors).flat()[0] : '')
+      setError(apiMessage || 'Erreur lors de l’enregistrement.')
     }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet utilisateur ?')) return
     try {
-      await api.delete(`/users/${id}`)
+      await api.delete(`/utilisateurs/${id}`)
       loadData()
     } catch (err) {
       setError('Erreur lors de la suppression.')
@@ -80,6 +239,8 @@ export default function UsersPage() {
   }
 
   const openModal = (user = null) => {
+    setError('')
+    setFieldErrors({})
     if (user) {
       setEditingUser(user)
       setForm({
@@ -87,64 +248,120 @@ export default function UsersPage() {
         prenom: user.prenom,
         email: user.email,
         password: '',
+        password_confirmation: '',
         role: user.role,
+        role_scope: user.role_scope || 'service',
         structure_id: user.structure_id || '',
         service_id: user.service_id || ''
       })
     } else {
       setEditingUser(null)
-      setForm({ nom: '', prenom: '', email: '', password: '', role: 'secrétaire', structure_id: '', service_id: '' })
+      setForm({ nom: '', prenom: '', email: '', password: '', password_confirmation: '', role: 'secretaire', role_scope: 'service', structure_id: '', service_id: '' })
     }
     setModalOpen(true)
   }
 
-  const filteredUsers = users.filter(u => 
-    `${u.nom} ${u.prenom} ${u.email}`.toLowerCase().includes(search.toLowerCase())
-  )
+  const getFieldError = (name) => {
+    const value = fieldErrors?.[name]
+    if (!value) return ''
+    return Array.isArray(value) ? value[0] : String(value)
+  }
+
+  const clearFieldError = (name) => {
+    if (!fieldErrors?.[name]) return
+    setFieldErrors((prev) => {
+      const next = { ...(prev || {}) }
+      delete next[name]
+      return next
+    })
+  }
+
+  const filteredUsers = users
 
   return (
     <div className="space-y-6">
-      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-           <div className="h-10 w-10 bg-slate-100 text-slate-700 rounded-lg flex items-center justify-center">
+           <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-600/20">
              <Users size={20} />
            </div>
            <div>
-             <h1 className="text-lg font-bold text-slate-900">Utilisateurs</h1>
-             <p className="text-xs text-slate-500">Gérez les accès et les structures.</p>
-           </div>
+              <h1 className="text-lg font-bold text-slate-900">Utilisateurs</h1>
+              <p className="text-xs text-slate-500">Gérez les accès et les structures.</p>
+            </div>
         </div>
 
-        <div className="flex gap-3">
+         <div className="flex gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input 
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+             value={search}
+              onChange={e => {
+                setPagination((p) => ({ ...p, current_page: 1 }))
+                setSearch(e.target.value)
+              }}
               placeholder="Rechercher..."
-              className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-lg border border-slate-200 text-sm focus:outline-none"
-            />
+              className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition"
+              />
+            </div>
+            <button 
+              onClick={() => openModal()}
+              className="h-10 px-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-xl text-xs font-bold hover:from-slate-800 hover:to-slate-700 transition-all duration-200 active:scale-[0.98] flex items-center gap-2 shadow-sm shadow-slate-900/10"
+            >
+              <Plus size={16} /> Ajouter
+            </button>
           </div>
-          <button 
-            onClick={() => openModal()}
-            className="h-10 px-4 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors flex items-center gap-2"
+        </div>
+
+      <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
+        <span>
+          {pagination.total ? `${pagination.total} utilisateur(s)` : ''}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={pagination.current_page <= 1}
+            onClick={() =>
+              setPagination((p) => ({
+                ...p,
+                current_page: Math.max(1, (p.current_page || 1) - 1),
+              }))
+            }
+            className="h-8 px-3 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition active:scale-[0.98]"
           >
-            <Plus size={16} /> Ajouter
+            Précédent
+          </button>
+          <span className="text-slate-400">
+            Page {pagination.current_page} / {pagination.last_page}
+          </span>
+          <button
+            type="button"
+            disabled={pagination.current_page >= pagination.last_page}
+            onClick={() =>
+              setPagination((p) => ({
+                ...p,
+                current_page: Math.min(p.last_page || 1, (p.current_page || 1) + 1),
+              }))
+            }
+            className="h-8 px-3 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition active:scale-[0.98]"
+          >
+            Suivant
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-lg text-xs font-medium flex items-center gap-2">
+        <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-xs font-medium flex items-center gap-2 animate-in fade-in-0 duration-200">
+          <span className="h-2 w-2 rounded-full bg-red-500" />
           <AlertCircle size={16} />
           {error}
         </div>
       )}
 
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Utilisateur</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Rôle</th>
@@ -153,11 +370,65 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredUsers.map(u => (
-                <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+              {loading && (
+                <>
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <tr key={idx} className="animate-pulse">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-full bg-slate-100" />
+                          <div className="space-y-2">
+                            <div className="h-3 w-40 rounded bg-slate-100" />
+                            <div className="h-2.5 w-52 rounded bg-slate-100" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="h-5 w-24 rounded bg-slate-100" />
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-2">
+                          <div className="h-3 w-44 rounded bg-slate-100" />
+                          <div className="h-2.5 w-36 rounded bg-slate-100" />
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-end gap-2">
+                          <div className="h-8 w-8 rounded bg-slate-100" />
+                          <div className="h-8 w-8 rounded bg-slate-100" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </>
+              )}
+
+              {!loading && filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-6 py-12 text-center">
+                    <div className="mx-auto flex max-w-md flex-col items-center gap-2 text-slate-500 animate-in fade-in-0 duration-200">
+                      <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600">
+                        <User size={20} />
+                      </div>
+                      <p className="text-sm font-semibold text-slate-700">Aucun utilisateur</p>
+                      <p className="text-xs">Essayez une autre recherche ou ajoutez un nouvel utilisateur.</p>
+                      <button
+                        type="button"
+                        onClick={() => openModal()}
+                        className="mt-2 h-9 px-4 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition active:scale-[0.98]"
+                      >
+                        Ajouter un utilisateur
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {!loading && filteredUsers.map(u => (
+                <tr key={u.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                      <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-100 to-blue-100 flex items-center justify-center text-xs font-bold text-slate-600 ring-1 ring-slate-200">
                         {u.prenom?.[0]}{u.nom?.[0]}
                       </div>
                       <div>
@@ -167,9 +438,16 @@ export default function UsersPage() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 text-slate-600">
-                      {u.role}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${roleBadge(u.role).className}`}>
+                        {roleBadge(u.role).label}
+                      </span>
+                      {u.role !== 'admin' && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${scopePillClass(u.role_scope)}`}>
+                          {scopeLabel(u.role_scope)}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col gap-1">
@@ -187,8 +465,24 @@ export default function UsersPage() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => openModal(u)} className="p-2 text-slate-400 hover:text-blue-600 transition-colors"><Edit size={16} /></button>
-                      <button onClick={() => handleDelete(u.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors"><Trash2 size={16} /></button>
+                      <button
+                        onClick={() => u.peut_modifier && openModal(u)}
+                        disabled={!u.peut_modifier}
+                        className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                        aria-label="Modifier"
+                        title={u.peut_modifier ? 'Modifier' : 'Modification non autorisée'}
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={() => u.peut_supprimer && handleDelete(u.id)}
+                        disabled={!u.peut_supprimer}
+                        className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                        aria-label="Supprimer"
+                        title={u.peut_supprimer ? 'Supprimer' : 'Suppression non autorisée'}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -199,57 +493,178 @@ export default function UsersPage() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in-0 duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-900">{editingUser ? 'Modifier' : 'Ajouter'} Utilisateur</h2>
               <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-               <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-1">
                    <label className="text-[10px] font-bold text-slate-400 uppercase">Nom</label>
-                   <input required value={form.nom} onChange={e => setForm({...form, nom: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm" />
+                   <input
+                     required
+                     value={form.nom}
+                     onChange={e => {
+                       clearFieldError('nom')
+                       setForm({ ...form, nom: e.target.value })
+                     }}
+                     aria-invalid={Boolean(getFieldError('nom'))}
+                     className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('nom') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                   />
+                   {getFieldError('nom') && <p className="text-[11px] text-red-600">{getFieldError('nom')}</p>}
                  </div>
                  <div className="space-y-1">
                    <label className="text-[10px] font-bold text-slate-400 uppercase">Prénom</label>
-                   <input required value={form.prenom} onChange={e => setForm({...form, prenom: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm" />
+                   <input
+                     required
+                     value={form.prenom}
+                     onChange={e => {
+                       clearFieldError('prenom')
+                       setForm({ ...form, prenom: e.target.value })
+                     }}
+                     aria-invalid={Boolean(getFieldError('prenom'))}
+                     className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('prenom') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                   />
+                   {getFieldError('prenom') && <p className="text-[11px] text-red-600">{getFieldError('prenom')}</p>}
                  </div>
                </div>
                <div className="space-y-1">
                  <label className="text-[10px] font-bold text-slate-400 uppercase">Email</label>
-                 <input required type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm" />
+                 <input
+                   required
+                   type="email"
+                   value={form.email}
+                   onChange={e => {
+                     clearFieldError('email')
+                     setForm({ ...form, email: e.target.value })
+                   }}
+                   aria-invalid={Boolean(getFieldError('email'))}
+                   className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('email') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                 />
+                 {getFieldError('email') && <p className="text-[11px] text-red-600">{getFieldError('email')}</p>}
                </div>
                {!editingUser && (
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase">Mot de passe</label>
-                   <input required type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm" />
-                 </div>
-               )}
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase">Rôle</label>
-                 <select value={form.role} onChange={e => setForm({...form, role: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm">
-                   <option value="secrétaire">Secrétaire</option>
-                   <option value="chef">Chef</option>
-                   <option value="admin">Administrateur</option>
-                 </select>
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase">Structure</label>
-                   <select value={form.structure_id} onChange={e => setForm({...form, structure_id: e.target.value, service_id: ''})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm">
-                     <option value="">Aucune</option>
-                     {meta.structures.map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
-                   </select>
-                 </div>
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase">Service</label>
-                   <select value={form.service_id} onChange={e => setForm({...form, service_id: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm">
-                     <option value="">Aucun</option>
-                     {meta.services.filter(s => !form.structure_id || s.structure_id == form.structure_id).map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
-                   </select>
-                 </div>
-               </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Mot de passe</label>
+                      <input
+                        required
+                        type="password"
+                        value={form.password}
+                        onChange={e => {
+                          clearFieldError('password')
+                          setForm({ ...form, password: e.target.value })
+                        }}
+                        aria-invalid={Boolean(getFieldError('password'))}
+                        className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('password') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                      />
+                      {getFieldError('password') && <p className="text-[11px] text-red-600">{getFieldError('password')}</p>}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase">Confirmation</label>
+                      <input
+                        required
+                        type="password"
+                        value={form.password_confirmation}
+                        onChange={e => {
+                          clearFieldError('password_confirmation')
+                          setForm({ ...form, password_confirmation: e.target.value })
+                        }}
+                        aria-invalid={Boolean(getFieldError('password_confirmation'))}
+                        className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('password_confirmation') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                      />
+                      {getFieldError('password_confirmation') && <p className="text-[11px] text-red-600">{getFieldError('password_confirmation')}</p>}
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Rôle</label>
+                  <select
+                    value={form.role}
+                    onChange={e => {
+                      clearFieldError('role')
+                      const nextRole = e.target.value
+                      // Sensible default scopes for roles
+                      const nextScope =
+                        nextRole === 'admin'
+                          ? 'general'
+                          : nextRole === 'chef'
+                            ? 'service'
+                            : form.role_scope
+
+                      setForm({ ...form, role: nextRole, role_scope: nextScope })
+                    }}
+                    aria-invalid={Boolean(getFieldError('role'))}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('role') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                  >
+                    <option value="secretaire">Secrétaire</option>
+                    <option value="chef">Chef</option>
+                    {canManageAdmins && <option value="admin">Administrateur</option>}
+                  </select>
+                  {getFieldError('role') && <p className="text-[11px] text-red-600">{getFieldError('role')}</p>}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Périmètre</label>
+                  <select
+                    value={form.role_scope}
+                    onChange={e => {
+                      clearFieldError('role_scope')
+                      setForm({ ...form, role_scope: e.target.value })
+                    }}
+                    aria-invalid={Boolean(getFieldError('role_scope'))}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('role_scope') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                  >
+                    <option value="service">Service</option>
+                    <option value="structure">Structure</option>
+                    <option value="general">Général</option>
+                  </select>
+                  {getFieldError('role_scope') && <p className="text-[11px] text-red-600">{getFieldError('role_scope')}</p>}
+                  <p className="text-[11px] text-slate-500">Détermine le niveau d'accès (service/structure/général).</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Structure</label>
+                    <select
+                      value={form.structure_id}
+                      onChange={e => {
+                        clearFieldError('structure_id')
+                        setForm({ ...form, structure_id: e.target.value, service_id: '' })
+                      }}
+                      aria-invalid={Boolean(getFieldError('structure_id'))}
+                      disabled={roleRules.forceNoStructure}
+                      className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('structure_id') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                    >
+                      <option value="">Aucune</option>
+                      {meta.structures.map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
+                    </select>
+                    {getFieldError('structure_id') && <p className="text-[11px] text-red-600">{getFieldError('structure_id')}</p>}
+                    {roleRules.forceNoStructure && (
+                      <p className="text-[11px] text-slate-500">Chef général: pas de structure.</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Service</label>
+                    <select
+                      value={form.service_id}
+                      onChange={e => {
+                        clearFieldError('service_id')
+                        setForm({ ...form, service_id: e.target.value })
+                      }}
+                      aria-invalid={Boolean(getFieldError('service_id'))}
+                      disabled={roleRules.forceNoService || roleRules.forceNoStructure}
+                      className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('service_id') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                    >
+                      <option value="">Aucun</option>
+                      {meta.services.filter(s => !form.structure_id || s.structure_id == form.structure_id).map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
+                    </select>
+                    {getFieldError('service_id') && <p className="text-[11px] text-red-600">{getFieldError('service_id')}</p>}
+                    {roleRules.forceNoService && (
+                      <p className="text-[11px] text-slate-500">Chef de structure: pas de service.</p>
+                    )}
+                  </div>
+                </div>
                <div className="pt-4 flex gap-3">
                  <button type="submit" className="flex-1 h-11 bg-slate-900 text-white rounded-lg font-bold text-sm">Enregistrer</button>
                  <button type="button" onClick={() => setModalOpen(false)} className="h-11 px-6 border border-slate-200 rounded-lg font-bold text-sm">Annuler</button>

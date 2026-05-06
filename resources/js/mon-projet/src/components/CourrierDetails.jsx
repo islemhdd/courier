@@ -1,18 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Archive,
   Check,
-  Clock3,
   FileText,
   MessageCircle,
   Pencil,
+  Plus,
   Send,
   Star,
   Trash2,
-  UsersRound,
+  X,
 } from 'lucide-react'
 import { formatDate, getStatusLabel } from '../lib/courrier'
 import CourrierTransmitForm from './CourrierTransmitForm'
+import AllDetails from './AllDetails'
 
 export default function CourrierDetails({
   courrier,
@@ -24,6 +25,27 @@ export default function CourrierDetails({
   onReply,
 }) {
   const [isTransmitOpen, setIsTransmitOpen] = useState(false)
+  const [isAllDetailsOpen, setIsAllDetailsOpen] = useState(false)
+
+  useEffect(() => {
+    if (!isAllDetailsOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsAllDetailsOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isAllDetailsOpen])
 
   if (!courrier) {
     return (
@@ -55,7 +77,7 @@ export default function CourrierDetails({
   }
 
   return (
-    <aside className="rounded-3xl bg-white p-5 shadow-sm">
+    <aside className="relative rounded-3xl bg-white p-5 shadow-sm">
       <div className="mb-6 flex items-start justify-between">
         <div>
           <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
@@ -66,15 +88,31 @@ export default function CourrierDetails({
             {courrier.numero || '-'}
           </h2>
 
-          <p className="text-sm text-slate-500">{courrier.objet || '-'}</p>
+          <p className="mt-1 max-w-[18rem] text-sm text-slate-500 break-words">
+            {courrier.objet || '-'}
+          </p>
         </div>
 
-        <button
-          type="button"
-          className="rounded-xl p-2 text-slate-400 hover:bg-slate-50"
-        >
-          <Star size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIsAllDetailsOpen(true)}
+            className="rounded-xl p-2 text-slate-500 hover:bg-slate-50"
+            aria-label="Afficher tous les détails"
+            title="Afficher tous les détails"
+          >
+            <Plus size={18} />
+          </button>
+
+          <button
+            type="button"
+            className="rounded-xl p-2 text-slate-400 hover:bg-slate-50"
+            aria-label="Favori"
+            title="Favori"
+          >
+            <Star size={18} />
+          </button>
+        </div>
       </div>
 
       <div
@@ -90,11 +128,7 @@ export default function CourrierDetails({
           }
         >
           <Detail label="Type" value={courrier.type || '-'} />
-          <Detail label="Catégorie" value={courrier.courrier_type?.libelle || '-'} />
-          <Detail label="Mode" value={courrier.mode_diffusion || '-'} />
           <Detail label="Source" value={courrier.source?.libelle || courrier.expediteur} />
-          <Detail label="Expediteur" value={courrier.expediteur} />
-          <Detail label="Destinataire" value={courrier.destinataire} />
           <Detail label="Date de reception" value={formatDate(courrier.date_reception)} />
           <Detail
             label="Confidentialite"
@@ -102,13 +136,6 @@ export default function CourrierDetails({
           />
           <Detail label="Statut" value={getStatusLabel(courrier.statut)} />
           <Detail label="Reponse attendue" value={courrier.requiert_reponse ? 'Oui' : 'Non'} />
-          {courrier.requiert_reponse && (
-            <>
-              <Detail label="Delai" value={courrier.delai_reponse_jours ? `${courrier.delai_reponse_jours} jour(s)` : '-'} />
-              <Detail label="Date limite" value={formatDate(courrier.date_limite_reponse)} />
-              <Detail label="Repondu" value={courrier.a_ete_repondu ? 'Oui' : 'Non'} />
-            </>
-          )}
         </div>
 
         {contenuRestreint && (
@@ -118,93 +145,6 @@ export default function CourrierDetails({
             </div>
           </div>
         )}
-      </div>
-
-      {!contenuRestreint && courrier.resume && (
-        <section className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-          <h3 className="mb-2 text-sm font-semibold text-slate-700">Résumé</h3>
-          <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
-            {courrier.resume}
-          </p>
-        </section>
-      )}
-
-      {!contenuRestreint && courrier.recipients?.length > 0 && (
-        <section className="mt-5 rounded-2xl border border-slate-100 p-4">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <UsersRound size={16} /> Destinataires
-          </h3>
-          <div className="space-y-2 text-sm text-slate-600">
-            {courrier.recipients.map((recipient) => (
-              <div key={recipient.id} className="rounded-xl bg-slate-50 px-3 py-2">
-                {recipient.recipient_type === 'all' && 'Tout le monde'}
-                {recipient.recipient_type === 'structure' && `Structure : ${recipient.structure?.libelle || '-'}`}
-                {recipient.recipient_type === 'service' && `Service : ${recipient.service?.libelle || '-'}`}
-                {recipient.recipient_type === 'user' && `Personne : ${recipient.user?.prenom || ''} ${recipient.user?.nom || ''}`}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!contenuRestreint && courrier.comments?.length > 0 && (
-        <section className="mt-5 rounded-2xl border border-slate-100 p-4">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <MessageCircle size={16} /> Instructions / commentaires
-          </h3>
-          <div className="space-y-3">
-            {courrier.comments.map((comment) => (
-              <div key={comment.id} className="rounded-xl bg-slate-50 p-3 text-sm">
-                <div className="font-medium text-slate-700">
-                  {comment.instruction?.libelle || 'Commentaire'}
-                </div>
-                <div className="mt-1 whitespace-pre-wrap text-slate-600">
-                  {comment.commentaire || '-'}
-                </div>
-                <div className="mt-2 text-xs text-slate-400">
-                  {comment.user ? `${comment.user.prenom || ''} ${comment.user.nom || ''}` : 'Utilisateur'}
-                  {comment.validation_requise && !comment.valide_le ? ' - validation requise' : ''}
-                  {comment.valide_le ? ' - valide' : ''}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {!contenuRestreint && courrier.chaine_reponses?.length > 0 && (
-        <section className="mt-5 rounded-2xl border border-slate-100 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-700">Chaîne des réponses</h3>
-          <div className="space-y-2 text-sm text-slate-600">
-            {courrier.chaine_reponses.map((reponse) => (
-              <div key={reponse.id} className="rounded-xl bg-slate-50 px-3 py-2">
-                <span className="font-medium text-slate-800">{reponse.numero}</span>
-                <span className="mx-2">-</span>
-                <span>{reponse.objet}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="mt-5">
-        <h3 className="mb-3 text-sm font-semibold text-slate-700">
-          Historique de traitement
-        </h3>
-
-        <div className="space-y-4">
-          <TimelineItem title="Creation" text="Courrier cree dans le systeme" />
-          {courrier.transmission_demandee && (
-            <TimelineItem title="Validation requise" text="Action effectuee par un secretaire et en attente du chef" />
-          )}
-          {courrier.requiert_reponse && !courrier.a_ete_repondu && (
-            <TimelineItem title="En attente de reponse" text="Ce courrier doit recevoir une reponse" icon={<Clock3 size={14} />} />
-          )}
-          {courrier.statut === 'CREE' && <TimelineItem title="Cree" text="En attente de validation par le chef" />}
-          {courrier.statut === 'VALIDE' && <TimelineItem title="Valide" text="Courrier valide par le chef" />}
-          {courrier.statut === 'TRANSMIS' && <TimelineItem title="Transmis" text="Courrier transmis" />}
-          {courrier.statut === 'RECU' && <TimelineItem title="Recu" text="Courrier recu par le service" />}
-        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3">
@@ -272,38 +212,6 @@ export default function CourrierDetails({
         </button>
       )}
 
-      {courrier.attachments && courrier.attachments.length > 0 && !contenuRestreint && (
-        <div className="mt-4">
-          <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Pieces jointes</h4>
-          <div className="space-y-2">
-            {courrier.attachments.map((att) => (
-              <a
-                key={att.id}
-                href={`/storage/${att.chemin}`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex h-10 items-center justify-start gap-3 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                <span className="text-blue-500">📎</span>
-                <span className="truncate">{att.nom_original || 'Fichier joint'}</span>
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {courrier.url_fichier && (!courrier.attachments || courrier.attachments.length === 0) && !contenuRestreint && (
-        <a
-          href={courrier.url_fichier}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          <span>📎</span>
-          Ouvrir le fichier
-        </a>
-      )}
-
       {peutSupprimer && (
         <button
           type="button"
@@ -314,6 +222,44 @@ export default function CourrierDetails({
           Supprimer
         </button>
       )}
+
+      {isAllDetailsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setIsAllDetailsOpen(false)}
+            aria-label="Fermer la fenêtre"
+          />
+
+          <div className="relative z-10 w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Détails du courrier
+                </p>
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {courrier.numero || '-'} • {courrier.objet || '-'}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAllDetailsOpen(false)}
+                className="rounded-xl p-2 text-slate-400 hover:bg-slate-50"
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="max-h-[80vh] overflow-auto px-6 py-5">
+              <AllDetails courrier={courrier} contenuRestreint={contenuRestreint} />
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
@@ -322,21 +268,9 @@ function Detail({ label, value }) {
   return (
     <div className="flex justify-between gap-4">
       <span className="text-slate-400">{label}</span>
-      <span className="text-right font-medium text-slate-700">{value || '-'}</span>
-    </div>
-  )
-}
-
-function TimelineItem({ title, text, icon }) {
-  return (
-    <div className="flex gap-3">
-      <div className="mt-1 flex h-3 w-3 items-center justify-center rounded-full bg-blue-600 text-white">
-        {icon || null}
-      </div>
-      <div>
-        <p className="text-sm font-medium text-slate-700">{title}</p>
-        <p className="text-xs text-slate-400">{text}</p>
-      </div>
+      <span className="min-w-0 text-right font-medium text-slate-700 break-words">
+        {value || '-'}
+      </span>
     </div>
   )
 }
