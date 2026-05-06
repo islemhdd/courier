@@ -8,7 +8,7 @@ use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 
-function createCourrierUser(string $role = 'admin'): array
+function createCourrierUser(string $role = 'admin', string $scope = null): array
 {
     $niveau = NiveauConfidentialite::create([
         'libelle' => 'Public',
@@ -19,11 +19,17 @@ function createCourrierUser(string $role = 'admin'): array
         'libelle' => 'Direction',
     ]);
 
-    $user = User::factory()->create([
+    $userData = [
         'role' => $role,
         'service_id' => $service->id,
         'niveau_confidentialite_id' => $niveau->id,
-    ]);
+    ];
+
+    if ($scope) {
+        $userData['role_scope'] = $scope;
+    }
+
+    $user = User::factory()->create($userData);
 
     return [$user, $niveau, $service];
 }
@@ -183,7 +189,7 @@ test('received courrier creation requires a file', function () {
 });
 
 test('received courrier can use a source service instead of a free expediteur', function () {
-    [$user, $niveau, $serviceDestination] = createCourrierUser('secretaire');
+    [$user, $niveau, $serviceDestination] = createCourrierUser('secretaire_general');
     $serviceSource = Service::create(['libelle' => 'Service Juridique']);
 
     $this->actingAs($user)

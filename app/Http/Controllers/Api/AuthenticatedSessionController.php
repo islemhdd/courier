@@ -43,7 +43,7 @@ class AuthenticatedSessionController extends Controller
 
     private function serializeUser($user): array
     {
-        $user->loadMissing(['service', 'niveauConfidentialite']);
+        $user->loadMissing(['service', 'structure', 'niveauConfidentialite']);
 
         return [
             'id' => $user->id,
@@ -52,10 +52,17 @@ class AuthenticatedSessionController extends Controller
             'nom_complet' => $user->nom_complet,
             'email' => $user->email,
             'role' => $user->role,
+            'role_scope' => $user->role_scope,
+            'service_id' => $user->service_id,
+            'structure_id' => $user->structure_id,
             'actif' => $user->actif,
             'service' => $user->service ? [
                 'id' => $user->service->id,
                 'libelle' => $user->service->libelle,
+            ] : null,
+            'structure' => $user->structure ? [
+                'id' => $user->structure->id,
+                'libelle' => $user->structure->libelle,
             ] : null,
             'niveau_confidentialite' => $user->niveauConfidentialite ? [
                 'id' => $user->niveauConfidentialite->id,

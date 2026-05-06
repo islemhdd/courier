@@ -137,8 +137,32 @@ class CourrierController extends Controller
         $user = $request->user();
         $data = $request->validated();
 
-        // Vérifier si l'utilisateur peut créer un courrier reçu
-        if ($data['type'] === Courrier::TYPE_ENTRANT && !$user->peutCreerCourrierRecu()) {
+        if (!empty($data['parent_courrier_id'])) {
+            $parent = Courrier::find($data['parent_courrier_id']);
+            if ($parent && $parent->requiert_reponse && !$parent->peutEtreReponduPar($user)) {
+                return response()->json([
+                    'message' => 'Vous n\'avez pas le droit de répondre à ce courrier.',
+                    'error' => 'unauthorized',
+                ], 403);
+            }
+
+            // Pour les réponses : définir automatiquement les destinataires
+            $data['recipients'] = $this->getReplyRecipients($user);
+            $data['mode_diffusion'] = 'multicast'; // Plusieurs destinataires
+
+            // Pour les réponses : forcer certains champs depuis le parent
+            $data['type'] = $parent->type; // Même type que le parent
+            $data['source_id'] = $parent->source_id ? (int) $parent->source_id : null; // Même source que le parent
+            $data['niveau_confidentialite_id'] = $parent->niveau_confidentialite_id ? (int) $parent->niveau_confidentialite_id : null; // Même confidentialité
+            $data['service_destinataire_id'] = $parent->service_source_id ? (int) $parent->service_source_id : null; // Destination = service source du parent
+            $data['structure_destinataire_id'] = $parent->structure_origine_id ? (int) $parent->structure_origine_id : null; // Structure destination = structure origine du parent
+            $data['instructions'] = []; // Pas d'instructions dans une réponse
+            $data['commentaire'] = null; // Pas de commentaire dans une réponse
+        }
+
+        // Vérifier si l'utilisateur peut créer un courrier reçu (sauf pour les réponses)
+        $isReply = !empty($data['parent_courrier_id']);
+        if (!$isReply && ($data['type'] ?? Courrier::TYPE_ENTRANT) === Courrier::TYPE_ENTRANT && !$user->peutCreerCourrierRecu()) {
             return response()->json([
                 'message' => 'Seul le chef général peut créer un courrier reçu.',
                 'error' => 'unauthorized',
@@ -167,7 +191,7 @@ class CourrierController extends Controller
                 'service_source_id' => $data['service_source_id'] ?? $user->service_id,
                 'service_destinataire_id' => $data['service_destinataire_id'] ?? ($data['type'] === Courrier::TYPE_ENTRANT ? $user->service_id : null),
                 'structure_origine_id' => $data['structure_origine_id'] ?? null,
-                'structure_destinataire_id' => $data['structure_destinataire_id'] ?? null,
+                'structure_destinataire_id' => $this->resolveStructureDestinataireId($data),
                 'niveau_confidentialite_id' => $data['niveau_confidentialite_id'],
                 'createur_id' => $user->id,
             ]);
@@ -275,6 +299,99 @@ class CourrierController extends Controller
         return response()->json(['message' => 'Courrier supprime avec succes.']);
     }
 
+    /**
+     * Définit automatiquement les destinataires pour une réponse
+     */
+    private function getReplyRecipients(User $user): array
+    {
+        $recipients = [];
+
+        // 1. Chef général et son secrétaire
+        $chefGeneral = User::where('role', User::ROLE_CHEF)
+            ->where('role_scope', User::SCOPE_GENERAL)
+            ->where('actif', true)
+            ->first();
+
+        if ($chefGeneral) {
+            $recipients[] = [
+                'recipient_type' => 'user',
+                'user_id' => $chefGeneral->id,
+            ];
+        }
+
+        $secretaireGeneral = User::where('role', User::ROLE_SECRETAIRE)
+            ->where('role_scope', User::SCOPE_GENERAL)
+            ->where('actif', true)
+            ->first();
+
+        if ($secretaireGeneral) {
+            $recipients[] = [
+                'recipient_type' => 'user',
+                'user_id' => $secretaireGeneral->id,
+            ];
+        }
+
+        // 2. Chef de service de l'utilisateur et son secrétaire
+        if ($user->service_id) {
+            $chefService = User::where('role', User::ROLE_CHEF)
+                ->where('role_scope', User::SCOPE_SERVICE)
+                ->where('service_id', $user->service_id)
+                ->where('actif', true)
+                ->first();
+
+            if ($chefService) {
+                $recipients[] = [
+                    'recipient_type' => 'user',
+                    'user_id' => $chefService->id,
+                ];
+            }
+
+            $secretaireService = User::where('role', User::ROLE_SECRETAIRE)
+                ->where('role_scope', User::SCOPE_SERVICE)
+                ->where('service_id', $user->service_id)
+                ->where('actif', true)
+                ->first();
+
+            if ($secretaireService) {
+                $recipients[] = [
+                    'recipient_type' => 'user',
+                    'user_id' => $secretaireService->id,
+                ];
+            }
+        }
+
+        // 3. Chef de structure de l'utilisateur et son secrétaire
+        if ($user->structure_id) {
+            $chefStructure = User::where('role', User::ROLE_CHEF)
+                ->where('role_scope', User::SCOPE_STRUCTURE)
+                ->where('structure_id', $user->structure_id)
+                ->where('actif', true)
+                ->first();
+
+            if ($chefStructure) {
+                $recipients[] = [
+                    'recipient_type' => 'user',
+                    'user_id' => $chefStructure->id,
+                ];
+            }
+
+            $secretaireStructure = User::where('role', User::ROLE_SECRETAIRE)
+                ->where('role_scope', User::SCOPE_STRUCTURE)
+                ->where('structure_id', $user->structure_id)
+                ->where('actif', true)
+                ->first();
+
+            if ($secretaireStructure) {
+                $recipients[] = [
+                    'recipient_type' => 'user',
+                    'user_id' => $secretaireStructure->id,
+                ];
+            }
+        }
+
+        return $recipients;
+    }
+
     public function destroyArchive(Archive $archive, Request $request): JsonResponse
     {
         if (!$archive->peutEtreSupprimePar($request->user())) {
@@ -346,6 +463,10 @@ class CourrierController extends Controller
             }
         }
 
+        if ($user->estChefStructure()) {
+            $this->assertChefStructureTransmissionTargets($user, $validated);
+        }
+
         if (!$mode) {
             $mode = $recipientCount > 1 ? 'multicast' : ($recipientCount === 0 ? ($courrier->mode_diffusion ?: 'unicast') : 'unicast');
         }
@@ -361,6 +482,7 @@ class CourrierController extends Controller
                 'statut' => $needsChefValidation ? Courrier::STATUT_CREE : Courrier::STATUT_TRANSMIS,
                 'mode_diffusion' => $mode,
                 'service_destinataire_id' => $validated['service_destinataire_id'] ?? $courrier->service_destinataire_id,
+                'structure_destinataire_id' => $this->resolveStructureDestinataireId(array_merge($validated, ['structure_destinataire_id' => $courrier->structure_destinataire_id])),
                 'transmission_demandee' => $needsChefValidation,
                 'transmis_par_id' => $needsChefValidation ? null : $user->id,
                 'transmis_le' => $needsChefValidation ? null : now(),
@@ -729,6 +851,94 @@ class CourrierController extends Controller
         }
 
         $query->whereDate('date_reception', \Carbon\Carbon::parse($dateReception));
+    }
+
+    private function resolveStructureDestinataireId(array $data): ?int
+    {
+        // Si une structure destinataire est explicitement définie, l'utiliser
+        if (!empty($data['structure_destinataire_id'])) {
+            return $data['structure_destinataire_id'];
+        }
+
+        // Sinon, déterminer à partir des destinataires
+        $recipients = $data['recipients'] ?? [];
+
+        foreach ($recipients as $recipient) {
+            if (($recipient['recipient_type'] ?? null) === 'structure' && !empty($recipient['structure_id'])) {
+                return $recipient['structure_id'];
+            }
+
+            if (($recipient['recipient_type'] ?? null) === 'service' && !empty($recipient['service_id'])) {
+                $service = Service::find($recipient['service_id']);
+                if ($service?->structure_id) {
+                    return $service->structure_id;
+                }
+            }
+
+            if (($recipient['recipient_type'] ?? null) === 'user' && !empty($recipient['user_id'])) {
+                $recipientUser = User::find($recipient['user_id']);
+                if ($recipientUser?->structure_id) {
+                    return $recipientUser->structure_id;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function assertChefStructureTransmissionTargets(User $user, array $data): void
+    {
+        if (!$user->structure_id) {
+            abort(403, 'Chef de structure sans structure définie.');
+        }
+
+        if (($data['mode_diffusion'] ?? null) === 'broadcast') {
+            abort(422, 'Un chef de structure ne peut pas transmettre en mode broadcast.');
+        }
+
+        if (!empty($data['service_destinataire_id'])) {
+            $service = Service::find($data['service_destinataire_id']);
+            if (!$service || $service->structure_id !== $user->structure_id) {
+                abort(422, 'Le service destinataire doit appartenir à votre structure.');
+            }
+        }
+
+        foreach ($data['recipients'] ?? [] as $recipient) {
+            $recipientType = $recipient['recipient_type'] ?? null;
+
+            if ($recipientType === 'service') {
+                if (empty($recipient['service_id'])) {
+                    abort(422, 'Service destinataire invalide.');
+                }
+
+                $service = Service::find($recipient['service_id']);
+                if (!$service || $service->structure_id !== $user->structure_id) {
+                    abort(422, 'Le service destinataire doit appartenir à votre structure.');
+                }
+            }
+
+            if ($recipientType === 'user') {
+                if (empty($recipient['user_id'])) {
+                    abort(422, 'Utilisateur destinataire invalide.');
+                }
+
+                $recipientUser = User::find($recipient['user_id']);
+                if (!$recipientUser || !$recipientUser->service_id) {
+                    abort(422, 'Utilisateur destinataire invalide.');
+                }
+
+                $service = Service::find($recipientUser->service_id);
+                if (!$service || $service->structure_id !== $user->structure_id) {
+                    abort(422, 'L\'utilisateur destinataire doit appartenir à un service de votre structure.');
+                }
+            }
+
+            if ($recipientType === 'structure') {
+                if (empty($recipient['structure_id']) || $recipient['structure_id'] !== $user->structure_id) {
+                    abort(422, 'Un chef de structure ne peut transmettre qu\'à sa propre structure si la destination est une structure.');
+                }
+            }
+        }
     }
 
     private function courrierRelations(): array

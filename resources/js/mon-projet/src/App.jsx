@@ -188,7 +188,7 @@ function AuthenticatedApp() {
                 </div>
                 <div>
                   <p className="text-sm font-semibold">Gestion Courrier</p>
-                  <p className="text-xs text-slate-500">{user.role}</p>
+                  <p className="text-xs text-slate-500">{user.role} {user.role_scope}</p>
                 </div>
               </div>
 
@@ -607,7 +607,10 @@ function UserSummary({ user }) {
           {user.nom_complet}
         </p>
         <p className="truncate text-xs text-slate-500">
-          {user.service?.libelle || user.role}
+         {[user.service?.libelle, user.role].filter(Boolean).join(" - ")}
+        </p>
+        <p className="truncate text-xs text-slate-500">
+          {user.structure?.libelle}
         </p>
       </div>
     </div>

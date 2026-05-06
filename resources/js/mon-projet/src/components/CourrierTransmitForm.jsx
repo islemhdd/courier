@@ -28,6 +28,17 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
     service_destinataire_id: courrier?.service_destinataire_id || '',
   })
 
+  const isChefStructure = user?.role === 'chef' && user?.role_scope === 'structure'
+  const allowedServices = isChefStructure
+    ? meta.services.filter((service) => service.structure_id == user.structure_id)
+    : meta.services
+  const allowedStructures = isChefStructure
+    ? meta.structures.filter((structure) => structure.id == user.structure_id)
+    : meta.structures
+  const allowedUtilisateurs = isChefStructure
+    ? meta.utilisateurs.filter((utilisateur) => utilisateur.structure_id == user.structure_id)
+    : meta.utilisateurs
+
   useEffect(() => {
     async function fetchMeta() {
       try {
@@ -173,15 +184,7 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Service destinataire</label>
-                <select value={form.service_destinataire_id} onChange={e => setForm({ ...form, service_destinataire_id: e.target.value })} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm bg-white outline-none">
-                  <option value="">Aucun service défini</option>
-                  {meta.services.map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
-                </select>
-                <p className="text-xs text-slate-500">Si vous souhaitez mettre à jour la destination hiérarchique du courrier.</p>
-              </div>
-
+              
               <div className="space-y-2">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Mode de diffusion</label>
                 <div className="flex flex-wrap gap-2">
@@ -211,7 +214,7 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
                         </select>
                         <select value={recipient.structure_id} onChange={e => updateRecipient(index, 'structure_id', e.target.value)} className="w-full h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white outline-none">
                           <option value="">Structure...</option>
-                          {meta.structures.map((structure) => (
+                          {allowedStructures.map((structure) => (
                             <option key={structure.id} value={structure.id}>{structure.libelle}</option>
                           ))}
                         </select>
@@ -220,18 +223,22 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
                       {recipient.recipient_type !== 'structure' && (
                         <select value={recipient.service_id} onChange={e => updateRecipient(index, 'service_id', e.target.value)} className="w-full h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white outline-none">
                           <option value="">Service...</option>
-                          {meta.services.filter((service) => !recipient.structure_id || service.structure_id == recipient.structure_id).map((service) => (
-                            <option key={service.id} value={service.id}>{service.libelle}</option>
-                          ))}
+                          {allowedServices
+                            .filter((service) => !recipient.structure_id || service.structure_id == recipient.structure_id)
+                            .map((service) => (
+                              <option key={service.id} value={service.id}>{service.libelle}</option>
+                            ))}
                         </select>
                       )}
 
                       {recipient.recipient_type === 'user' && (
                         <select value={recipient.user_id} onChange={e => updateRecipient(index, 'user_id', e.target.value)} className="w-full h-9 px-2 border border-slate-200 rounded-lg text-xs bg-white outline-none">
                           <option value="">Utilisateur...</option>
-                          {meta.utilisateurs.filter((u) => !recipient.service_id || u.service_id == recipient.service_id).map((userOption) => (
-                            <option key={userOption.id} value={userOption.id}>{userOption.nom_complet || `${userOption.prenom} ${userOption.nom}`}</option>
-                          ))}
+                          {allowedUtilisateurs
+                            .filter((u) => !recipient.service_id || u.service_id == recipient.service_id)
+                            .map((userOption) => (
+                              <option key={userOption.id} value={userOption.id}>{userOption.nom_complet || `${userOption.prenom} ${userOption.nom}`}</option>
+                            ))}
                         </select>
                       )}
                     </div>

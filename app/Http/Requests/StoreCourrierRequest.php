@@ -4,7 +4,6 @@ namespace App\Http\Requests;
 
 use App\Models\Courrier;
 use App\Models\NiveauConfidentialite;
-use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -13,22 +12,31 @@ class StoreCourrierRequest extends FormRequest
     public function authorize(): bool
     {
         $user = $this->user();
+        if (!$user) {
+            return false;
+        }
 
-        return $user && $user->peutCreerCourrier();
+        if ($this->filled('parent_courrier_id')) {
+            return true;
+        }
+
+        return $user->peutCreerCourrier();
     }
 
     public function rules(): array
     {
+        $isReply = $this->filled('parent_courrier_id');
+
         return [
             'objet' => ['required', 'string', 'max:100'],
-            'type' => ['required', Rule::in([Courrier::TYPE_ENTRANT, Courrier::TYPE_SORTANT])],
+            'type' => [$isReply ? 'sometimes' : 'required', Rule::in([Courrier::TYPE_ENTRANT, Courrier::TYPE_SORTANT])],
             'courrier_type_id' => ['nullable', 'integer', 'exists:courrier_types,id'],
             'resume' => ['required', 'string'],
             'expediteur' => ['nullable', 'string', 'max:100'],
             'destinataire' => ['nullable', 'string', 'max:100'],
             'date_reception' => ['required', 'date'],
-            'niveau_confidentialite_id' => ['required', 'integer', 'exists:niveau_confidentialites,id'],
-            'source_id' => ['nullable', 'integer', 'exists:sources,id'],
+            'niveau_confidentialite_id' => [$isReply ? 'sometimes' : 'required', 'integer', 'exists:niveau_confidentialites,id'],
+            'source_id' => [$isReply ? 'sometimes' : 'nullable', 'integer', 'exists:sources,id'],
             'source_libelle' => ['nullable', 'string', 'max:160'],
             'parent_courrier_id' => ['nullable', 'integer', 'exists:courriers,id'],
             'requiert_reponse' => ['sometimes', 'boolean'],
@@ -59,19 +67,23 @@ class StoreCourrierRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             $user = $this->user();
+            $isReply = $this->filled('parent_courrier_id');
 
             if (!$user) {
                 return;
             }
 
-            $niveauId = $this->input('niveau_confidentialite_id');
-            if ($niveauId) {
-                $niveauChoisi = NiveauConfidentialite::find($niveauId);
-                if ($niveauChoisi && $niveauChoisi->rang > $user->getRangNiveauConfidentialite()) {
-                    $validator->errors()->add(
-                        'niveau_confidentialite_id',
-                        'Vous ne pouvez pas choisir un niveau de confidentialite superieur au votre.'
-                    );
+            // Pour les réponses, on ne valide pas le niveau de confidentialité car il est forcé depuis le parent
+            if (!$isReply) {
+                $niveauId = $this->input('niveau_confidentialite_id');
+                if ($niveauId) {
+                    $niveauChoisi = NiveauConfidentialite::find($niveauId);
+                    if ($niveauChoisi && $niveauChoisi->rang > $user->getRangNiveauConfidentialite()) {
+                        $validator->errors()->add(
+                            'niveau_confidentialite_id',
+                            'Vous ne pouvez pas choisir un niveau de confidentialite superieur au votre.'
+                        );
+                    }
                 }
             }
 
@@ -123,38 +135,45 @@ class StoreCourrierRequest extends FormRequest
                 );
             }
 
-            if ($this->input('mode_diffusion') !== 'broadcast' && empty($this->input('recipients')) && !$this->filled('destinataire') && !$this->filled('service_destinataire_id')) {
+            // Pour les réponses, les destinataires sont automatiquement définis, pas besoin de les valider
+            if (!$isReply && $this->input('mode_diffusion') !== 'broadcast' && empty($this->input('recipients')) && !$this->filled('destinataire') && !$this->filled('service_destinataire_id')) {
                 $validator->errors()->add('recipients', 'Au moins un destinataire est obligatoire.');
             }
 
-            if (
-                $this->input('mode_diffusion') === 'unicast'
-                && empty($this->input('recipients'))
-                && !($this->filled('destinataire') || $this->filled('service_destinataire_id'))
-            ) {
-                $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
-            }
+            // Pour les réponses, pas de validation des destinataires (automatiques)
+            if (!$isReply) {
+                if (
+                    $this->input('mode_diffusion') === 'unicast'
+                    && empty($this->input('recipients'))
+                    && !($this->filled('destinataire') || $this->filled('service_destinataire_id'))
+                ) {
+                    $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
+                }
 
-            if (
-                $this->input('mode_diffusion') === 'unicast'
-                && !empty($this->input('recipients'))
-                && count($this->input('recipients', [])) !== 1
-            ) {
-                $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
+                if (
+                    $this->input('mode_diffusion') === 'unicast'
+                    && !empty($this->input('recipients'))
+                    && count($this->input('recipients', [])) !== 1
+                ) {
+                    $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
+                }
             }
 
             $recipients = $this->input('recipients', []);
             $modeDiffusion = $this->input('mode_diffusion');
 
-            if ($modeDiffusion === 'broadcast' && !empty($recipients)) {
-                $invalidBroadcastRecipients = collect($recipients)->filter(fn($recipient) => ($recipient['recipient_type'] ?? null) !== 'all')->isNotEmpty();
-                if ($invalidBroadcastRecipients) {
-                    $validator->errors()->add('recipients', 'Le mode broadcast doit viser tout le monde.');
+            // Pour les réponses, pas de validation des modes de diffusion (toujours unicast automatique)
+            if (!$isReply) {
+                if ($modeDiffusion === 'broadcast' && !empty($recipients)) {
+                    $invalidBroadcastRecipients = collect($recipients)->filter(fn($recipient) => ($recipient['recipient_type'] ?? null) !== 'all')->isNotEmpty();
+                    if ($invalidBroadcastRecipients) {
+                        $validator->errors()->add('recipients', 'Le mode broadcast doit viser tout le monde.');
+                    }
                 }
-            }
 
-            if ($modeDiffusion === 'multicast' && count($recipients) < 2) {
-                $validator->errors()->add('recipients', 'Le mode multicast exige plusieurs destinataires.');
+                if ($modeDiffusion === 'multicast' && count($recipients) < 2) {
+                    $validator->errors()->add('recipients', 'Le mode multicast exige plusieurs destinataires.');
+                }
             }
 
             if ($this->filled('source_libelle') && !$user->peutAjouterSource()) {
@@ -173,19 +192,22 @@ class StoreCourrierRequest extends FormRequest
                 }
             }
 
-            foreach ($this->input('recipients', []) as $index => $recipient) {
-                $type = $recipient['recipient_type'] ?? null;
+            // Pour les réponses, pas de validation des destinataires individuels (automatiques)
+            if (!$isReply) {
+                foreach ($this->input('recipients', []) as $index => $recipient) {
+                    $type = $recipient['recipient_type'] ?? null;
 
-                if ($type === 'structure' && empty($recipient['structure_id'])) {
-                    $validator->errors()->add("recipients.$index.structure_id", 'La structure destinataire est obligatoire.');
-                }
+                    if ($type === 'structure' && empty($recipient['structure_id'])) {
+                        $validator->errors()->add("recipients.$index.structure_id", 'La structure destinataire est obligatoire.');
+                    }
 
-                if ($type === 'service' && empty($recipient['service_id'])) {
-                    $validator->errors()->add("recipients.$index.service_id", 'Le service destinataire est obligatoire.');
-                }
+                    if ($type === 'service' && empty($recipient['service_id'])) {
+                        $validator->errors()->add("recipients.$index.service_id", 'Le service destinataire est obligatoire.');
+                    }
 
-                if ($type === 'user' && empty($recipient['user_id'])) {
-                    $validator->errors()->add("recipients.$index.user_id", 'La personne destinataire est obligatoire.');
+                    if ($type === 'user' && empty($recipient['user_id'])) {
+                        $validator->errors()->add("recipients.$index.user_id", 'La personne destinataire est obligatoire.');
+                    }
                 }
             }
 

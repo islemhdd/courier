@@ -157,7 +157,7 @@ export default function ReceivedCourriers() {
           type={replyTo ? 'sortant' : 'entrant'}
           onClose={() => {
             setFormOpen(false)
-            setReplyTo(null)
+            //TODO setReplyTo(null)
           }}
           initialData={replyTo ? { parent_courrier_id: replyTo.id, objet: `Réponse à: ${replyTo.objet}` } : null}
           onSuccess={() => {
