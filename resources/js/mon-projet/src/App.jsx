@@ -604,7 +604,7 @@ function UserSummary({ user }) {
       </div>
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-slate-950">
-          {user.nom_complet}
+          {user.nom_complet} 
         </p>
         <p className="truncate text-xs text-slate-500">
          {[user.service?.libelle, user.role].filter(Boolean).join(" - ")}
