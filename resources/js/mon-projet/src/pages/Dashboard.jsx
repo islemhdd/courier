@@ -33,6 +33,18 @@ export default function Dashboard() {
   const [error, setError] = useState('')
   const [canCreateIncoming, setCanCreateIncoming] = useState(false)
 
+  const getApiErrorMessage = (err) => {
+    return (
+      err.response?.data?.message ||
+      err.response?.data?.detail ||
+      err.response?.data?.error ||
+      (err.response?.data?.errors
+        ? Object.values(err.response.data.errors).flat()[0]
+        : '') ||
+      "L'action a échoué."
+    )
+  }
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -78,18 +90,25 @@ export default function Dashboard() {
   }, [])
 
   const handleAction = async (action, id, data = {}) => {
+    setActionLoading(true)
+    setError('')
     try {
-      setActionLoading(true)
       if (action === 'archive') await courrierApi.archive(id)
       if (action === 'delete') await courrierApi.delete(id)
       if (action === 'validate') await courrierApi.validate(id)
       if (action === 'reject') await courrierApi.markAsNotValidated(id)
       if (action === 'transmit') await courrierApi.transmit(id, data)
-      await loadData()
     } catch (err) {
-      setError("L'action a échoué.")
+      setError(getApiErrorMessage(err))
+      throw err
     } finally {
       setActionLoading(false)
+    }
+
+    try {
+      await loadData()
+    } catch (err) {
+      setError(getApiErrorMessage(err))
     }
   }
 

@@ -801,6 +801,9 @@ class CourrierController extends Controller
         $courrier->peut_etre_transmis = $user ? $courrier->peutEtreTransmisPar($user) : false;
         $courrier->peut_etre_non_valide = $user ? $courrier->peutEtreNonValidePar($user) : false;
         $courrier->peut_etre_repondu = $user ? $courrier->peutEtreReponduPar($user) : false;
+        $courrier->peut_repondre = $user
+            ? ($courrier->peut_voir_details && $courrier->peut_etre_repondu === true)
+            : false;
         $courrier->contenu_restreint = !$courrier->peut_voir_details;
         $courrier->chaine_reponses = $courrier->reponses;
 

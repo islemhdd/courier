@@ -596,6 +596,10 @@ class Courrier extends Model
             return true;
         }
 
+        if ($user->estChefStructure() && $user->structure_id && $this->structure_destinataire_id === $user->structure_id) {
+            return true;
+        }
+
         if ($this->isUserStructureRecipient($user)) {
             return true;
         }
@@ -734,51 +738,12 @@ class Courrier extends Model
 
     public function peutEtreSupprimePar(User $user): bool
     {
-        if ($user->estAdmin()) {
-            return true;
-        }
-
-        if (!in_array($this->statut, [self::STATUT_CREE, self::STATUT_NON_VALIDE], true)) {
-            return false;
-        }
-
-        return $user->estSecretaire() && $this->createur_id === $user->id;
+        return $user->estAdmin();
     }
 
     public function peutEtreModifiePar(User $user): bool
     {
-        if ($user->estAdmin()) {
-            return true;
-        }
-
-        if (in_array($this->statut, [self::STATUT_CREE, self::STATUT_NON_VALIDE], true)) {
-            return $this->createur_id === $user->id;
-        }
-
-        if ($this->statut !== self::STATUT_VALIDE && $this->statut !== self::STATUT_RECU && $this->statut !== self::STATUT_TRANSMIS) {
-            return false;
-        }
-
-        if ($user->estChefStructure() && $this->isUserStructureRecipient($user)) {
-            return true;
-        }
-
-        if ($this->structure_origine_id && $this->structure_destinataire_id && $this->structure_origine_id !== $this->structure_destinataire_id) {
-            return $user->estChefStructure() && (
-                $this->structure_origine_id === $user->structure_id ||
-                $this->structure_destinataire_id === $user->structure_id ||
-                $this->isUserStructureRecipient($user) ||
-                $this->createur_id === $user->id
-            );
-        }
-
-        // Pour les autres courriers, les chefs peuvent modifier
-        // Mais si c'est un courrier de structure, un chef de service ne peut pas le modifier
-        if ($user->estChefService() && ($this->structure_origine_id || $this->structure_destinataire_id || $this->isUserStructureRecipient($user))) {
-            return false;
-        }
-
-        return $user->estChef() && ($this->appartientAuServiceDe($user) || $this->createur_id === $user->id);
+        return $user->estAdmin();
     }
 
     public function peutEtreReponduPar(User $user): bool
@@ -833,7 +798,20 @@ class Courrier extends Model
         }
 
         if ($isStructureRecipient) {
-            return $user->estChefStructure();
+            if (!$user->estChefStructure()) {
+                return false;
+            }
+
+            // If the courrier has been transmitted down to a service,
+            // the chef de structure must no longer be able to reply.
+            if ($this->service_destinataire_id) {
+                $service = Service::find($this->service_destinataire_id);
+                if ($service && $service->structure_id === $userStructureId) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         // Fallback : si pas de destinataire spécifique trouvé, seuls les concernés directs peuvent répondre
