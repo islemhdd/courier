@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   X,
-  Plus,
   Trash2,
   Users,
   Clock,

@@ -1,7 +1,6 @@
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';
-import { API_ORIGIN } from '../api/axios';
-import api from '../api/axios';
+import api from '../api/api';
 
 window.Pusher = Pusher;
 

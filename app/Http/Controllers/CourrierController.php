@@ -63,14 +63,14 @@ class CourrierController extends Controller
             ->visiblePourUser($user)
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($subQuery) use ($search) {
-                    $subQuery->where('numero', 'like', '%' . $search . '%')
+                    $subQuery->where('numero', 'like', $search . '%')
                         ->orWhere('objet', 'like', '%' . $search . '%')
-                        ->orWhere('expediteur', 'like', '%' . $search . '%')
-                        ->orWhere('destinataire', 'like', '%' . $search . '%');
+                        ->orWhere('expediteur', 'like', $search . '%')
+                        ->orWhere('destinataire', 'like', $search . '%');
                 });
             })
             ->when($request->filled('date_reception'), fn($query) => $this->applyDateReceptionFilter($query, (string) $request->date_reception))
-            ->when($request->filled('numero'), fn($query) => $query->where('numero', 'like', '%' . $request->numero . '%'))
+            ->when($request->filled('numero'), fn($query) => $query->where('numero', 'like', $request->numero . '%'))
             ->orderByDesc('archive_le')
             ->paginate(15);
 
@@ -606,7 +606,7 @@ class CourrierController extends Controller
         ]), $forcedFilters);
 
         $query = Courrier::query()
-            ->with($this->courrierRelations())
+            ->with($this->courrierListRelations())
             ->visiblePourUser($user)
             ->when($onlyValidation, fn($builder) => $builder->validablesPourUser($user))
             ->searchAnyField($filters['q'] ?? null)
@@ -942,6 +942,21 @@ class CourrierController extends Controller
                 }
             }
         }
+    }
+
+    private function courrierListRelations(): array
+    {
+        return [
+            'courrierType',
+            'niveauConfidentialite',
+            'createur',
+            'serviceSource.structure',
+            'serviceDestinataire.structure',
+            'source',
+            'attachments',
+            'recipients',
+            'reponses',
+        ];
     }
 
     private function courrierRelations(): array

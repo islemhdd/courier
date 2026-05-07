@@ -71,6 +71,7 @@ class AuthenticatedSessionController extends Controller
             ] : null,
             'permissions' => [
                 'peut_creer_courrier' => $user->peutCreerCourrier(),
+                'peut_creer_courrier_recu' => $user->peutCreerCourrierRecu(),
                 'peut_valider_courriers' => $user->estChef() || $user->estAdmin(),
                 'peut_gerer_utilisateurs' => $user->peutConsulterUtilisateurs(),
                 'peut_gerer_tous_les_utilisateurs' => $user->peutGererTousLesUtilisateurs(),

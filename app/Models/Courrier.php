@@ -284,7 +284,7 @@ class Courrier extends Model
 
     public function scopeNumero(Builder $query, ?string $numero): Builder
     {
-        return $numero ? $query->where('numero', 'like', '%' . $numero . '%') : $query;
+        return $numero ? $query->where('numero', 'like', $numero . '%') : $query;
     }
 
     public function scopeObjet(Builder $query, ?string $objet): Builder
@@ -297,12 +297,12 @@ class Courrier extends Model
 
     public function scopeExpediteur(Builder $query, ?string $expediteur): Builder
     {
-        return $expediteur ? $query->where('expediteur', 'like', '%' . $expediteur . '%') : $query;
+        return $expediteur ? $query->where('expediteur', 'like', $expediteur . '%') : $query;
     }
 
     public function scopeDestinataire(Builder $query, ?string $destinataire): Builder
     {
-        return $destinataire ? $query->where('destinataire', 'like', '%' . $destinataire . '%') : $query;
+        return $destinataire ? $query->where('destinataire', 'like', $destinataire . '%') : $query;
     }
 
     public function scopeStatut(Builder $query, ?string $statut): Builder
@@ -388,13 +388,20 @@ class Courrier extends Model
 
         return $query->where(function (Builder $subQuery) use ($term) {
             $like = '%' . $term . '%';
+            $prefixLike = $term . '%';
+            $isMysql = DB::getDriverName() === 'mysql';
 
-            $subQuery->where('numero', 'like', $like)
-                ->orWhere('objet', 'like', $like)
-                ->orWhere('resume', 'like', $like)
-                ->orWhere('expediteur', 'like', $like)
-                ->orWhere('destinataire', 'like', $like)
-                ->orWhere('statut', 'like', $like)
+            if ($isMysql) {
+                $subQuery->whereRaw('MATCH(numero, objet, resume, expediteur, destinataire) AGAINST(? IN BOOLEAN MODE)', [$term . '*']);
+            } else {
+                $subQuery->where('numero', 'like', $prefixLike)
+                    ->orWhere('objet', 'like', $like)
+                    ->orWhere('resume', 'like', $like)
+                    ->orWhere('expediteur', 'like', $prefixLike)
+                    ->orWhere('destinataire', 'like', $prefixLike);
+            }
+
+            $subQuery->orWhere('statut', 'like', $like)
                 ->orWhere('type', 'like', $like)
                 ->orWhereDate('date_reception', $term)
                 ->orWhereHas('courrierType', fn(Builder $q) => $q->where('libelle', 'like', $like))

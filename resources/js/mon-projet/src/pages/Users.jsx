@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Users,
   Search,
@@ -9,11 +9,14 @@ import {
   Building2,
   Trash2,
   Edit,
-  ShieldCheck,
-  X
+  X,
 } from 'lucide-react'
+
 import api from '../api/api'
 import { useAuth } from '../context/auth-context'
+import { buildPageCacheKey, getPageCache, invalidatePageCache, setPageCache } from '../lib/pageCache'
+
+const USERS_CACHE_TTL = 60 * 1000
 
 export default function UsersPage() {
   const { user: currentUser } = useAuth()
@@ -27,11 +30,9 @@ export default function UsersPage() {
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [search, setSearch] = useState('')
-  
   const [meta, setMeta] = useState({ structures: [], services: [] })
   const [modalOpen, setModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
-  
   const [form, setForm] = useState({
     nom: '',
     prenom: '',
@@ -41,7 +42,7 @@ export default function UsersPage() {
     role: 'secretaire',
     role_scope: 'service',
     structure_id: '',
-    service_id: ''
+    service_id: '',
   })
 
   const roleRules = useMemo(() => {
@@ -58,15 +59,10 @@ export default function UsersPage() {
       (role === 'chef' && scope === 'service') ||
       (role === 'secretaire' && scope === 'service')
 
-    // Business rules requested:
-    // - Chef structure: must not belong to a service.
-    // - Chef général: must not have a structure (nor a service).
     const forceNoService = role === 'chef' && scope === 'structure'
     const forceNoStructure = role === 'chef' && scope === 'general'
 
     return {
-      role,
-      scope,
       needsStructure: needsStructure && !forceNoStructure,
       needsService: needsService && !forceNoService && !forceNoStructure,
       forceNoService,
@@ -74,46 +70,11 @@ export default function UsersPage() {
     }
   }, [form.role, form.role_scope])
 
-  const roleBadge = (role) => {
-    const value = String(role || '').toLowerCase()
-    if (value === 'admin') {
-      return {
-        label: 'Administrateur',
-        className: 'bg-violet-50 text-violet-700 border-violet-100',
-      }
-    }
-    if (value === 'chef') {
-      return {
-        label: 'Chef',
-        className: 'bg-amber-50 text-amber-700 border-amber-100',
-      }
-    }
-    return {
-      label: 'Secrétaire',
-      className: 'bg-slate-50 text-slate-700 border-slate-100',
-    }
-  }
-
-  const scopeLabel = (scope) => {
-    const value = String(scope || '').toLowerCase()
-    if (value === 'general') return 'Général'
-    if (value === 'structure') return 'Structure'
-    return 'Service'
-  }
-
-  const scopePillClass = (scope) => {
-    const value = String(scope || '').toLowerCase()
-    if (value === 'general') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
-    if (value === 'structure') return 'bg-sky-50 text-sky-700 border-sky-100'
-    return 'bg-slate-50 text-slate-700 border-slate-100'
-  }
-
   const canManageAdmins =
     currentUser?.role === 'admin' ||
     currentUser?.permissions?.peut_gerer_tous_les_utilisateurs === true
 
   useEffect(() => {
-    // Enforce business rules in the form state to prevent 422s.
     setForm((prev) => {
       let next = prev
 
@@ -129,68 +90,104 @@ export default function UsersPage() {
     })
   }, [roleRules.forceNoService, roleRules.forceNoStructure])
 
-  const loadData = async () => {
-    try {
-      setLoading(true)
-      setError('')
-      const res = await api.get('/utilisateurs', {
-        params: {
-          q: search || undefined,
-          page: pagination.current_page || 1,
-        },
-      })
+  const loadData = useCallback(
+    async ({ page = pagination.current_page || 1, preferCache = false, revalidate = false } = {}) => {
+      const query = {
+        q: search || undefined,
+        page,
+      }
+      const cacheKey = buildPageCacheKey('users', query)
+      const cached = getPageCache(cacheKey)
 
-      const payload = res.data || {}
-      const pagePayload = payload.utilisateurs || {}
-      setUsers(Array.isArray(pagePayload.data) ? pagePayload.data : [])
-      setPagination({
-        current_page: pagePayload.current_page || 1,
-        last_page: pagePayload.last_page || 1,
-        total: pagePayload.total || 0,
-      })
-      setMeta(payload.meta || { structures: [], services: [] })
-    } catch (err) {
-      const apiMessage =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        (err.response?.data?.errors
-          ? Object.values(err.response.data.errors).flat()[0]
-          : '')
-      setUsers([])
-      setPagination({ current_page: 1, last_page: 1, total: 0 })
-      setError(apiMessage || 'Erreur lors du chargement des utilisateurs.')
-    } finally {
-      setLoading(false)
-    }
-  }
+      if (preferCache && cached) {
+        setUsers(cached.users || [])
+        setPagination(cached.pagination || { current_page: 1, last_page: 1, total: 0 })
+        setMeta(cached.meta || { structures: [], services: [] })
+        setError('')
+        setLoading(false)
+
+        if (!revalidate) {
+          return
+        }
+      } else {
+        setLoading(true)
+      }
+
+      try {
+        setError('')
+
+        const res = await api.get('/utilisateurs', { params: query })
+        const payload = res.data || {}
+        const pagePayload = payload.utilisateurs || {}
+        const nextUsers = Array.isArray(pagePayload.data) ? pagePayload.data : []
+        const nextPagination = {
+          current_page: pagePayload.current_page || 1,
+          last_page: pagePayload.last_page || 1,
+          total: pagePayload.total || 0,
+        }
+        const nextMeta = payload.meta || { structures: [], services: [] }
+
+        setUsers(nextUsers)
+        setPagination(nextPagination)
+        setMeta(nextMeta)
+
+        setPageCache(
+          cacheKey,
+          {
+            users: nextUsers,
+            pagination: nextPagination,
+            meta: nextMeta,
+          },
+          USERS_CACHE_TTL,
+        )
+      } catch (err) {
+        const apiMessage =
+          err.response?.data?.message ||
+          err.response?.data?.error ||
+          (err.response?.data?.errors
+            ? Object.values(err.response.data.errors).flat()[0]
+            : '')
+
+        setUsers([])
+        setPagination({ current_page: 1, last_page: 1, total: 0 })
+        setError(apiMessage || 'Erreur lors du chargement des utilisateurs.')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [pagination.current_page, search],
+  )
 
   useEffect(() => {
     const handle = setTimeout(() => {
-      loadData()
-    }, 250)
+      loadData({
+        preferCache: true,
+        revalidate: true,
+      })
+    }, 180)
 
     return () => clearTimeout(handle)
-  }, [search, pagination.current_page])
+  }, [loadData])
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+
     try {
       setError('')
       setFieldErrors({})
 
-      // Client-side guardrails so we don't send obviously invalid payloads.
       const localErrors = {}
       if (roleRules.needsStructure && !form.structure_id) {
-        localErrors.structure_id = ['Structure obligatoire pour ce périmètre.']
+        localErrors.structure_id = ['Structure obligatoire pour ce perimetre.']
       }
       if (roleRules.needsService && !form.service_id) {
-        localErrors.service_id = ['Service obligatoire pour ce périmètre.']
+        localErrors.service_id = ['Service obligatoire pour ce perimetre.']
       }
       if (roleRules.forceNoService && form.service_id) {
-        localErrors.service_id = ['Un chef de structure ne doit pas appartenir à un service.']
+        localErrors.service_id = ['Un chef de structure ne doit pas appartenir a un service.']
       }
       if (roleRules.forceNoStructure && form.structure_id) {
-        localErrors.structure_id = ['Un chef général ne doit pas appartenir à une structure.']
+        localErrors.structure_id = ['Un chef general ne doit pas appartenir a une structure.']
       }
       if (Object.keys(localErrors).length > 0) {
         setFieldErrors(localErrors)
@@ -211,8 +208,10 @@ export default function UsersPage() {
       } else {
         await api.post('/utilisateurs', payload)
       }
+
       setModalOpen(false)
-      loadData()
+      invalidatePageCache(['users'])
+      loadData({ revalidate: true })
     } catch (err) {
       const errors = err.response?.data?.errors
       if (errors && typeof errors === 'object') {
@@ -224,16 +223,18 @@ export default function UsersPage() {
         err.response?.data?.message ||
         err.response?.data?.error ||
         (errors ? Object.values(errors).flat()[0] : '')
-      setError(apiMessage || 'Erreur lors de l’enregistrement.')
+      setError(apiMessage || "Erreur lors de l'enregistrement.")
     }
   }
 
   const handleDelete = async (id) => {
     if (!confirm('Supprimer cet utilisateur ?')) return
+
     try {
       await api.delete(`/utilisateurs/${id}`)
-      loadData()
-    } catch (err) {
+      invalidatePageCache(['users'])
+      loadData({ revalidate: true })
+    } catch {
       setError('Erreur lors de la suppression.')
     }
   }
@@ -241,6 +242,7 @@ export default function UsersPage() {
   const openModal = (user = null) => {
     setError('')
     setFieldErrors({})
+
     if (user) {
       setEditingUser(user)
       setForm({
@@ -252,12 +254,23 @@ export default function UsersPage() {
         role: user.role,
         role_scope: user.role_scope || 'service',
         structure_id: user.structure_id || '',
-        service_id: user.service_id || ''
+        service_id: user.service_id || '',
       })
     } else {
       setEditingUser(null)
-      setForm({ nom: '', prenom: '', email: '', password: '', password_confirmation: '', role: 'secretaire', role_scope: 'service', structure_id: '', service_id: '' })
+      setForm({
+        nom: '',
+        prenom: '',
+        email: '',
+        password: '',
+        password_confirmation: '',
+        role: 'secretaire',
+        role_scope: 'service',
+        structure_id: '',
+        service_id: '',
+      })
     }
+
     setModalOpen(true)
   }
 
@@ -276,60 +289,90 @@ export default function UsersPage() {
     })
   }
 
-  const filteredUsers = users
+  const roleBadge = (role) => {
+    const value = String(role || '').toLowerCase()
+    if (value === 'admin') {
+      return {
+        label: 'Administrateur',
+        className: 'bg-violet-50 text-violet-700 border-violet-100',
+      }
+    }
+    if (value === 'chef') {
+      return {
+        label: 'Chef',
+        className: 'bg-amber-50 text-amber-700 border-amber-100',
+      }
+    }
+    return {
+      label: 'Secretaire',
+      className: 'bg-slate-50 text-slate-700 border-slate-100',
+    }
+  }
+
+  const scopeLabel = (scope) => {
+    const value = String(scope || '').toLowerCase()
+    if (value === 'general') return 'General'
+    if (value === 'structure') return 'Structure'
+    return 'Service'
+  }
+
+  const scopePillClass = (scope) => {
+    const value = String(scope || '').toLowerCase()
+    if (value === 'general') return 'bg-emerald-50 text-emerald-700 border-emerald-100'
+    if (value === 'structure') return 'bg-sky-50 text-sky-700 border-sky-100'
+    return 'bg-slate-50 text-slate-700 border-slate-100'
+  }
 
   return (
     <div className="space-y-6">
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-           <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-600/20">
-             <Users size={20} />
-           </div>
-           <div>
-              <h1 className="text-lg font-bold text-slate-900">Utilisateurs</h1>
-              <p className="text-xs text-slate-500">Gérez les accès et les structures.</p>
-            </div>
-        </div>
-
-         <div className="flex gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
-             value={search}
-              onChange={e => {
-                setPagination((p) => ({ ...p, current_page: 1 }))
-                setSearch(e.target.value)
-              }}
-              placeholder="Rechercher..."
-              className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition"
-              />
-            </div>
-            <button 
-              onClick={() => openModal()}
-              className="h-10 px-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-xl text-xs font-bold hover:from-slate-800 hover:to-slate-700 transition-all duration-200 active:scale-[0.98] flex items-center gap-2 shadow-sm shadow-slate-900/10"
-            >
-              <Plus size={16} /> Ajouter
-            </button>
+          <div className="h-10 w-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-600/20">
+            <Users size={20} />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">Utilisateurs</h1>
+            <p className="text-xs text-slate-500">Gerez les acces et les structures.</p>
           </div>
         </div>
 
+        <div className="flex gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              value={search}
+              onChange={(event) => {
+                setPagination((current) => ({ ...current, current_page: 1 }))
+                setSearch(event.target.value)
+              }}
+              placeholder="Rechercher..."
+              className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 transition"
+            />
+          </div>
+          <button
+            onClick={() => openModal()}
+            className="h-10 px-4 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-xl text-xs font-bold hover:from-slate-800 hover:to-slate-700 transition-all duration-200 active:scale-[0.98] flex items-center gap-2 shadow-sm shadow-slate-900/10"
+          >
+            <Plus size={16} /> Ajouter
+          </button>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between gap-3 text-xs text-slate-500">
-        <span>
-          {pagination.total ? `${pagination.total} utilisateur(s)` : ''}
-        </span>
+        <span>{pagination.total ? `${pagination.total} utilisateur(s)` : ''}</span>
         <div className="flex items-center gap-2">
           <button
             type="button"
             disabled={pagination.current_page <= 1}
             onClick={() =>
-              setPagination((p) => ({
-                ...p,
-                current_page: Math.max(1, (p.current_page || 1) - 1),
+              setPagination((current) => ({
+                ...current,
+                current_page: Math.max(1, (current.current_page || 1) - 1),
               }))
             }
             className="h-8 px-3 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition active:scale-[0.98]"
           >
-            Précédent
+            Precedent
           </button>
           <span className="text-slate-400">
             Page {pagination.current_page} / {pagination.last_page}
@@ -338,9 +381,9 @@ export default function UsersPage() {
             type="button"
             disabled={pagination.current_page >= pagination.last_page}
             onClick={() =>
-              setPagination((p) => ({
-                ...p,
-                current_page: Math.min(p.last_page || 1, (p.current_page || 1) + 1),
+              setPagination((current) => ({
+                ...current,
+                current_page: Math.min(current.last_page || 1, (current.current_page || 1) + 1),
               }))
             }
             className="h-8 px-3 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-50 hover:bg-slate-50 transition active:scale-[0.98]"
@@ -351,7 +394,7 @@ export default function UsersPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-xs font-medium flex items-center gap-2 animate-in fade-in-0 duration-200">
+        <div className="bg-red-50 border border-red-100 text-red-700 px-4 py-3 rounded-xl text-xs font-medium flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-red-500" />
           <AlertCircle size={16} />
           {error}
@@ -364,7 +407,7 @@ export default function UsersPage() {
             <thead className="bg-gradient-to-r from-slate-50 to-blue-50 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Utilisateur</th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Rôle</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Role</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Structure / Service</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 text-right">Actions</th>
               </tr>
@@ -403,10 +446,10 @@ export default function UsersPage() {
                 </>
               )}
 
-              {!loading && filteredUsers.length === 0 && (
+              {!loading && users.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center">
-                    <div className="mx-auto flex max-w-md flex-col items-center gap-2 text-slate-500 animate-in fade-in-0 duration-200">
+                    <div className="mx-auto flex max-w-md flex-col items-center gap-2 text-slate-500">
                       <div className="h-12 w-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-600">
                         <User size={20} />
                       </div>
@@ -424,27 +467,27 @@ export default function UsersPage() {
                 </tr>
               )}
 
-              {!loading && filteredUsers.map(u => (
-                <tr key={u.id} className="hover:bg-blue-50/30 transition-colors">
+              {!loading && users.map((entry) => (
+                <tr key={entry.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-100 to-blue-100 flex items-center justify-center text-xs font-bold text-slate-600 ring-1 ring-slate-200">
-                        {u.prenom?.[0]}{u.nom?.[0]}
+                        {entry.prenom?.[0]}{entry.nom?.[0]}
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-900">{u.prenom} {u.nom}</p>
-                        <p className="text-xs text-slate-500">{u.email}</p>
+                        <p className="text-sm font-bold text-slate-900">{entry.prenom} {entry.nom}</p>
+                        <p className="text-xs text-slate-500">{entry.email}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${roleBadge(u.role).className}`}>
-                        {roleBadge(u.role).label}
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${roleBadge(entry.role).className}`}>
+                        {roleBadge(entry.role).label}
                       </span>
-                      {u.role !== 'admin' && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${scopePillClass(u.role_scope)}`}>
-                          {scopeLabel(u.role_scope)}
+                      {entry.role !== 'admin' && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase border ${scopePillClass(entry.role_scope)}`}>
+                          {scopeLabel(entry.role_scope)}
                         </span>
                       )}
                     </div>
@@ -453,12 +496,12 @@ export default function UsersPage() {
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1.5 text-xs text-slate-700 font-medium">
                         <Building size={12} className="text-slate-400" />
-                        {u.structure?.libelle || '-'}
+                        {entry.structure?.libelle || '-'}
                       </div>
-                      {u.service && (
+                      {entry.service && (
                         <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
                           <Building2 size={10} className="text-slate-300" />
-                          {u.service.libelle}
+                          {entry.service.libelle}
                         </div>
                       )}
                     </div>
@@ -466,20 +509,20 @@ export default function UsersPage() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
-                        onClick={() => u.peut_modifier && openModal(u)}
-                        disabled={!u.peut_modifier}
+                        onClick={() => entry.peut_modifier && openModal(entry)}
+                        disabled={!entry.peut_modifier}
                         className="p-2 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                         aria-label="Modifier"
-                        title={u.peut_modifier ? 'Modifier' : 'Modification non autorisée'}
+                        title={entry.peut_modifier ? 'Modifier' : 'Modification non autorisee'}
                       >
                         <Edit size={16} />
                       </button>
                       <button
-                        onClick={() => u.peut_supprimer && handleDelete(u.id)}
-                        disabled={!u.peut_supprimer}
+                        onClick={() => entry.peut_supprimer && handleDelete(entry.id)}
+                        disabled={!entry.peut_supprimer}
                         className="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                         aria-label="Supprimer"
-                        title={u.peut_supprimer ? 'Supprimer' : 'Suppression non autorisée'}
+                        title={entry.peut_supprimer ? 'Supprimer' : 'Suppression non autorisee'}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -493,182 +536,187 @@ export default function UsersPage() {
       </div>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in-0 duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in fade-in-0 zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-900">{editingUser ? 'Modifier' : 'Ajouter'} Utilisateur</h2>
-              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              <button onClick={() => setModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={20} />
+              </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase">Nom</label>
-                   <input
-                     required
-                     value={form.nom}
-                     onChange={e => {
-                       clearFieldError('nom')
-                       setForm({ ...form, nom: e.target.value })
-                     }}
-                     aria-invalid={Boolean(getFieldError('nom'))}
-                     className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('nom') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                   />
-                   {getFieldError('nom') && <p className="text-[11px] text-red-600">{getFieldError('nom')}</p>}
-                 </div>
-                 <div className="space-y-1">
-                   <label className="text-[10px] font-bold text-slate-400 uppercase">Prénom</label>
-                   <input
-                     required
-                     value={form.prenom}
-                     onChange={e => {
-                       clearFieldError('prenom')
-                       setForm({ ...form, prenom: e.target.value })
-                     }}
-                     aria-invalid={Boolean(getFieldError('prenom'))}
-                     className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('prenom') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                   />
-                   {getFieldError('prenom') && <p className="text-[11px] text-red-600">{getFieldError('prenom')}</p>}
-                 </div>
-               </div>
-               <div className="space-y-1">
-                 <label className="text-[10px] font-bold text-slate-400 uppercase">Email</label>
-                 <input
-                   required
-                   type="email"
-                   value={form.email}
-                   onChange={e => {
-                     clearFieldError('email')
-                     setForm({ ...form, email: e.target.value })
-                   }}
-                   aria-invalid={Boolean(getFieldError('email'))}
-                   className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('email') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                 />
-                 {getFieldError('email') && <p className="text-[11px] text-red-600">{getFieldError('email')}</p>}
-               </div>
-               {!editingUser && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Mot de passe</label>
-                      <input
-                        required
-                        type="password"
-                        value={form.password}
-                        onChange={e => {
-                          clearFieldError('password')
-                          setForm({ ...form, password: e.target.value })
-                        }}
-                        aria-invalid={Boolean(getFieldError('password'))}
-                        className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('password') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                      />
-                      {getFieldError('password') && <p className="text-[11px] text-red-600">{getFieldError('password')}</p>}
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase">Confirmation</label>
-                      <input
-                        required
-                        type="password"
-                        value={form.password_confirmation}
-                        onChange={e => {
-                          clearFieldError('password_confirmation')
-                          setForm({ ...form, password_confirmation: e.target.value })
-                        }}
-                        aria-invalid={Boolean(getFieldError('password_confirmation'))}
-                        className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('password_confirmation') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                      />
-                      {getFieldError('password_confirmation') && <p className="text-[11px] text-red-600">{getFieldError('password_confirmation')}</p>}
-                    </div>
-                  </div>
-                )}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Rôle</label>
-                  <select
-                    value={form.role}
-                    onChange={e => {
-                      clearFieldError('role')
-                      const nextRole = e.target.value
-                      // Sensible default scopes for roles
-                      const nextScope =
-                        nextRole === 'admin'
-                          ? 'general'
-                          : nextRole === 'chef'
-                            ? 'service'
-                            : form.role_scope
-
-                      setForm({ ...form, role: nextRole, role_scope: nextScope })
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Nom</label>
+                  <input
+                    required
+                    value={form.nom}
+                    onChange={(event) => {
+                      clearFieldError('nom')
+                      setForm({ ...form, nom: event.target.value })
                     }}
-                    aria-invalid={Boolean(getFieldError('role'))}
-                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('role') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                  >
-                    <option value="secretaire">Secrétaire</option>
-                    <option value="chef">Chef</option>
-                    {canManageAdmins && <option value="admin">Administrateur</option>}
-                  </select>
-                  {getFieldError('role') && <p className="text-[11px] text-red-600">{getFieldError('role')}</p>}
+                    aria-invalid={Boolean(getFieldError('nom'))}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('nom') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                  />
+                  {getFieldError('nom') && <p className="text-[11px] text-red-600">{getFieldError('nom')}</p>}
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Périmètre</label>
-                  <select
-                    value={form.role_scope}
-                    onChange={e => {
-                      clearFieldError('role_scope')
-                      setForm({ ...form, role_scope: e.target.value })
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Prenom</label>
+                  <input
+                    required
+                    value={form.prenom}
+                    onChange={(event) => {
+                      clearFieldError('prenom')
+                      setForm({ ...form, prenom: event.target.value })
                     }}
-                    aria-invalid={Boolean(getFieldError('role_scope'))}
-                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('role_scope') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                  >
-                    <option value="service">Service</option>
-                    <option value="structure">Structure</option>
-                    <option value="general">Général</option>
-                  </select>
-                  {getFieldError('role_scope') && <p className="text-[11px] text-red-600">{getFieldError('role_scope')}</p>}
-                  <p className="text-[11px] text-slate-500">Détermine le niveau d'accès (service/structure/général).</p>
+                    aria-invalid={Boolean(getFieldError('prenom'))}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('prenom') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                  />
+                  {getFieldError('prenom') && <p className="text-[11px] text-red-600">{getFieldError('prenom')}</p>}
                 </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Email</label>
+                <input
+                  required
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => {
+                    clearFieldError('email')
+                    setForm({ ...form, email: event.target.value })
+                  }}
+                  aria-invalid={Boolean(getFieldError('email'))}
+                  className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('email') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                />
+                {getFieldError('email') && <p className="text-[11px] text-red-600">{getFieldError('email')}</p>}
+              </div>
+              {!editingUser && (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Structure</label>
-                    <select
-                      value={form.structure_id}
-                      onChange={e => {
-                        clearFieldError('structure_id')
-                        setForm({ ...form, structure_id: e.target.value, service_id: '' })
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Mot de passe</label>
+                    <input
+                      required
+                      type="password"
+                      value={form.password}
+                      onChange={(event) => {
+                        clearFieldError('password')
+                        setForm({ ...form, password: event.target.value })
                       }}
-                      aria-invalid={Boolean(getFieldError('structure_id'))}
-                      disabled={roleRules.forceNoStructure}
-                      className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('structure_id') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                    >
-                      <option value="">Aucune</option>
-                      {meta.structures.map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
-                    </select>
-                    {getFieldError('structure_id') && <p className="text-[11px] text-red-600">{getFieldError('structure_id')}</p>}
-                    {roleRules.forceNoStructure && (
-                      <p className="text-[11px] text-slate-500">Chef général: pas de structure.</p>
-                    )}
+                      aria-invalid={Boolean(getFieldError('password'))}
+                      className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('password') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                    />
+                    {getFieldError('password') && <p className="text-[11px] text-red-600">{getFieldError('password')}</p>}
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase">Service</label>
-                    <select
-                      value={form.service_id}
-                      onChange={e => {
-                        clearFieldError('service_id')
-                        setForm({ ...form, service_id: e.target.value })
+                    <label className="text-[10px] font-bold text-slate-400 uppercase">Confirmation</label>
+                    <input
+                      required
+                      type="password"
+                      value={form.password_confirmation}
+                      onChange={(event) => {
+                        clearFieldError('password_confirmation')
+                        setForm({ ...form, password_confirmation: event.target.value })
                       }}
-                      aria-invalid={Boolean(getFieldError('service_id'))}
-                      disabled={roleRules.forceNoService || roleRules.forceNoStructure}
-                      className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('service_id') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
-                    >
-                      <option value="">Aucun</option>
-                      {meta.services.filter(s => !form.structure_id || s.structure_id == form.structure_id).map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
-                    </select>
-                    {getFieldError('service_id') && <p className="text-[11px] text-red-600">{getFieldError('service_id')}</p>}
-                    {roleRules.forceNoService && (
-                      <p className="text-[11px] text-slate-500">Chef de structure: pas de service.</p>
-                    )}
+                      aria-invalid={Boolean(getFieldError('password_confirmation'))}
+                      className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('password_confirmation') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                    />
+                    {getFieldError('password_confirmation') && <p className="text-[11px] text-red-600">{getFieldError('password_confirmation')}</p>}
                   </div>
                 </div>
-               <div className="pt-4 flex gap-3">
-                 <button type="submit" className="flex-1 h-11 bg-slate-900 text-white rounded-lg font-bold text-sm">Enregistrer</button>
-                 <button type="button" onClick={() => setModalOpen(false)} className="h-11 px-6 border border-slate-200 rounded-lg font-bold text-sm">Annuler</button>
-               </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Role</label>
+                <select
+                  value={form.role}
+                  onChange={(event) => {
+                    clearFieldError('role')
+                    const nextRole = event.target.value
+                    const nextScope =
+                      nextRole === 'admin'
+                        ? 'general'
+                        : nextRole === 'chef'
+                          ? 'service'
+                          : form.role_scope
+
+                    setForm({ ...form, role: nextRole, role_scope: nextScope })
+                  }}
+                  aria-invalid={Boolean(getFieldError('role'))}
+                  className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('role') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                >
+                  <option value="secretaire">Secretaire</option>
+                  <option value="chef">Chef</option>
+                  {canManageAdmins && <option value="admin">Administrateur</option>}
+                </select>
+                {getFieldError('role') && <p className="text-[11px] text-red-600">{getFieldError('role')}</p>}
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase">Perimetre</label>
+                <select
+                  value={form.role_scope}
+                  onChange={(event) => {
+                    clearFieldError('role_scope')
+                    setForm({ ...form, role_scope: event.target.value })
+                  }}
+                  aria-invalid={Boolean(getFieldError('role_scope'))}
+                  className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('role_scope') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                >
+                  <option value="service">Service</option>
+                  <option value="structure">Structure</option>
+                  <option value="general">General</option>
+                </select>
+                {getFieldError('role_scope') && <p className="text-[11px] text-red-600">{getFieldError('role_scope')}</p>}
+                <p className="text-[11px] text-slate-500">Determine le niveau d'acces.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Structure</label>
+                  <select
+                    value={form.structure_id}
+                    onChange={(event) => {
+                      clearFieldError('structure_id')
+                      setForm({ ...form, structure_id: event.target.value, service_id: '' })
+                    }}
+                    aria-invalid={Boolean(getFieldError('structure_id'))}
+                    disabled={roleRules.forceNoStructure}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('structure_id') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                  >
+                    <option value="">Aucune</option>
+                    {meta.structures.map((structure) => (
+                      <option key={structure.id} value={structure.id}>{structure.libelle}</option>
+                    ))}
+                  </select>
+                  {getFieldError('structure_id') && <p className="text-[11px] text-red-600">{getFieldError('structure_id')}</p>}
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase">Service</label>
+                  <select
+                    value={form.service_id}
+                    onChange={(event) => {
+                      clearFieldError('service_id')
+                      setForm({ ...form, service_id: event.target.value })
+                    }}
+                    aria-invalid={Boolean(getFieldError('service_id'))}
+                    disabled={roleRules.forceNoService || roleRules.forceNoStructure}
+                    className={`w-full h-10 px-3 border rounded-lg text-sm ${getFieldError('service_id') ? 'border-red-300 focus:outline-none focus:ring-2 focus:ring-red-200' : 'border-slate-200'}`}
+                  >
+                    <option value="">Aucun</option>
+                    {meta.services
+                      .filter((service) => !form.structure_id || service.structure_id == form.structure_id)
+                      .map((service) => (
+                        <option key={service.id} value={service.id}>{service.libelle}</option>
+                      ))}
+                  </select>
+                  {getFieldError('service_id') && <p className="text-[11px] text-red-600">{getFieldError('service_id')}</p>}
+                </div>
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button type="submit" className="flex-1 h-11 bg-slate-900 text-white rounded-lg font-bold text-sm">
+                  Enregistrer
+                </button>
+                <button type="button" onClick={() => setModalOpen(false)} className="h-11 px-6 border border-slate-200 rounded-lg font-bold text-sm">
+                  Annuler
+                </button>
+              </div>
             </form>
           </div>
         </div>
