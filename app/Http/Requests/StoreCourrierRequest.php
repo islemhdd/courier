@@ -58,8 +58,8 @@ class StoreCourrierRequest extends FormRequest
             'instructions.*.commentaire' => ['nullable', 'string'],
             'instructions.*.validation_requise' => ['sometimes', 'boolean'],
             'documents' => ['sometimes', 'array'],
-            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
-            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png', 'max:10240'],
+            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'max:10240'],
+            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'max:10240'],
         ];
     }
 

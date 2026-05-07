@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreCourrierRequest;
 use App\Http\Requests\UpdateCourrierRequest;
+use App\Jobs\ProcessOcrJob;
 use App\Models\Archive;
 use App\Models\Courrier;
 use App\Models\CourrierComment;
@@ -208,6 +209,10 @@ class CourrierController extends Controller
             return $courrier->load($this->courrierRelations());
         });
 
+        if ($courrier->attachments()->exists()) {
+            ProcessOcrJob::dispatch($courrier);
+        }
+
         return response()->json([
             'message' => 'Courrier cree avec succes.',
             'courrier' => $this->enrichCourrier($courrier, $user),
@@ -272,6 +277,10 @@ class CourrierController extends Controller
 
             $this->storeAttachments($request, $courrier);
         });
+
+        if ($request->hasFile('documents') || $request->hasFile('fichier')) {
+            ProcessOcrJob::dispatch($courrier->fresh());
+        }
 
         return response()->json([
             'message' => 'Courrier modifie avec succes.',
@@ -809,7 +818,10 @@ class CourrierController extends Controller
 
         if (!$courrier->peut_voir_details) {
             $courrier->chemin_fichier = null;
+            $courrier->extracted_text = null;
         }
+
+        $courrier->resume_auto_genere = $courrier->resume_auto_genere;
 
         return $courrier;
     }

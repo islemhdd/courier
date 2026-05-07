@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   X,
   Upload,
@@ -8,7 +8,12 @@ import {
   CheckCircle2,
   AlertCircle,
   Users,
-  FileText
+  FileText,
+  Scan,
+  ScanText,
+  Eye,
+  EyeOff,
+  RefreshCw,
 } from 'lucide-react'
 import { courrierApi } from '../api/courrierApi'
 import { useAuth } from '../context/auth-context'
@@ -25,6 +30,8 @@ export default function NewCourrierForm({
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [ocrStates, setOcrStates] = useState({}) // { index: { status, summary, text, error } }
+  const [showExtractedText, setShowExtractedText] = useState(false)
 
   // Données de métadonnées pour les sélections hiérarchiques
   const [meta, setMeta] = useState({
@@ -58,6 +65,38 @@ export default function NewCourrierForm({
     parent_courrier_id: '',
     ...initialData
   })
+
+  const runOcrPreview = useCallback(async (file, index) => {
+    setOcrStates(prev => ({ ...prev, [index]: { status: 'processing', summary: '', text: '', error: '' } }))
+
+    try {
+      const res = await courrierApi.ocrPreview(file)
+      const { summary, text, success } = res.data
+
+      if (success) {
+        setOcrStates(prev => ({
+          ...prev,
+          [index]: { status: 'completed', summary: summary || '', text: text || '', error: '' }
+        }))
+
+        setForm(prev => ({
+          ...prev,
+          resume: summary || prev.resume || ''
+        }))
+      } else {
+        setOcrStates(prev => ({
+          ...prev,
+          [index]: { status: 'failed', summary: '', text: '', error: res.data.error || 'Échec OCR' }
+        }))
+      }
+    } catch (err) {
+      const errorMsg = err.response?.data?.error || 'Erreur lors de l\'analyse OCR'
+      setOcrStates(prev => ({
+        ...prev,
+        [index]: { status: 'failed', summary: '', text: '', error: errorMsg }
+      }))
+    }
+  }, [])
 
   useEffect(() => {
     async function fetchMeta() {
@@ -137,6 +176,50 @@ export default function NewCourrierForm({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleFileAdd = (files) => {
+    const newFiles = Array.from(files)
+    const startIndex = form.documents.length
+
+    setForm(p => ({ ...p, documents: [...p.documents, ...newFiles] }))
+
+    newFiles.forEach((file, i) => {
+      const index = startIndex + i
+      setOcrStates(prev => ({ ...prev, [index]: { status: 'pending', summary: '', text: '', error: '' } }))
+      runOcrPreview(file, index)
+    })
+  }
+
+  const handleFileRemove = (index) => {
+    setForm(p => ({ ...p, documents: p.documents.filter((_, idx) => idx !== index) }))
+    setOcrStates(prev => {
+      const updated = {}
+      Object.keys(prev).forEach(key => {
+        const k = parseInt(key)
+        if (k < index) updated[k] = prev[k]
+        else if (k > index) updated[k - 1] = prev[k]
+      })
+      return updated
+    })
+  }
+
+  const getOcrIcon = (state) => {
+    if (!state) return <FileText size={14} className="text-slate-400 shrink-0" />
+    switch (state.status) {
+      case 'processing': return <Clock size={14} className="text-blue-500 shrink-0 animate-spin" />
+      case 'completed': return <ScanText size={14} className="text-emerald-500 shrink-0" />
+      case 'failed': return <AlertCircle size={14} className="text-amber-500 shrink-0" />
+      default: return <FileText size={14} className="text-slate-400 shrink-0" />
+    }
+  }
+
+  const getOcrStatusText = (state) => {
+    if (!state || state.status === 'pending') return 'OCR en attente'
+    if (state.status === 'processing') return 'Analyse en cours...'
+    if (state.status === 'completed') return 'Texte extrait'
+    if (state.status === 'failed') return `OCR: ${state.error || 'Échec'}`
+    return ''
   }
 
   const addRecipient = () => setForm(p => ({ ...p, recipients: [...p.recipients, { recipient_type: 'structure', structure_id: '', service_id: '', user_id: '' }] }))
@@ -362,21 +445,61 @@ export default function NewCourrierForm({
               <div className="space-y-4">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 pb-1">Pièces Jointes</p>
                 <div className="relative h-24 border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100/50 hover:border-slate-300 transition-all">
-                  <input type="file" multiple onChange={e => setForm({...form, documents: [...form.documents, ...Array.from(e.target.files)]})} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  <Upload size={20} className="text-slate-400 mb-1" />
+                  <input type="file" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" onChange={e => { handleFileAdd(e.target.files); e.target.value = '' }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  <Scan size={20} className="text-slate-400 mb-1" />
                   <p className="text-[10px] font-bold text-slate-400 uppercase">Glisser ou cliquer</p>
+                  <p className="text-[8px] text-slate-400 mt-0.5">PDF, DOC, DOCX, JPG, PNG, WEBP (max 10 Mo)</p>
                 </div>
                 <div className="space-y-2">
-                  {form.documents.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-lg text-xs font-medium text-slate-600 shadow-sm animate-in fade-in">
-                      <div className="flex items-center gap-2 truncate">
-                        <FileText size={14} className="text-slate-400" />
-                        <span className="truncate">{f.name}</span>
+                  {form.documents.map((f, i) => {
+                    const ocr = ocrStates[i]
+                    return (
+                      <div key={i} className="p-2.5 bg-white border border-slate-100 rounded-lg text-xs font-medium text-slate-600 shadow-sm animate-in fade-in">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 truncate min-w-0">
+                            {getOcrIcon(ocr)}
+                            <span className="truncate">{f.name}</span>
+                          </div>
+                          <button type="button" onClick={() => handleFileRemove(i)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0"><X size={16} /></button>
+                        </div>
+                        {ocr && ocr.status === 'completed' && (
+                          <div className="mt-1.5 text-[9px] text-emerald-600 font-bold uppercase tracking-wide">
+                            Texte extrait avec succès
+                          </div>
+                        )}
+                        {ocr && ocr.status === 'failed' && (
+                          <div className="mt-1.5 text-[9px] text-amber-600 break-words" title={ocr.error}>
+                            {ocr.error.length > 60 ? ocr.error.substring(0, 60) + '...' : ocr.error}
+                          </div>
+                        )}
                       </div>
-                      <button type="button" onClick={() => setForm({...form, documents: form.documents.filter((_, idx) => idx !== i)})} className="text-slate-300 hover:text-red-500 transition-colors"><X size={16} /></button>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
+                {Object.values(ocrStates).some(s => s.status === 'completed') && (
+                  <button
+                    type="button"
+                    onClick={() => setShowExtractedText(!showExtractedText)}
+                    className="flex items-center gap-2 text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                  >
+                    {showExtractedText ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showExtractedText ? 'Masquer le texte extrait' : 'Afficher le texte extrait'}
+                  </button>
+                )}
+                {showExtractedText && Object.values(ocrStates).some(s => s.status === 'completed' && s.text) && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg max-h-48 overflow-y-auto text-[10px] text-slate-600 whitespace-pre-wrap break-words font-mono leading-relaxed">
+                    {Object.entries(ocrStates)
+                      .filter(([_, s]) => s.status === 'completed' && s.text)
+                      .map(([idx, s]) => (
+                        <div key={idx} className="mb-2 last:mb-0">
+                          <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">
+                            Document {parseInt(idx) + 1}
+                          </p>
+                          <p>{s.text.substring(0, 2000)}{s.text.length > 2000 ? '...' : ''}</p>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>

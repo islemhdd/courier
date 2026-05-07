@@ -36,6 +36,9 @@ class Courrier extends Model
         'type',
         'courrier_type_id',
         'resume',
+        'extracted_text',
+        'ocr_status',
+        'summary_source',
         'chemin_fichier',
         'date_creation',
         'date_reception',
@@ -81,6 +84,7 @@ class Courrier extends Model
         'est_validable',
         'a_ete_repondu',
         'est_en_retard',
+        'resume_auto_genere',
     ];
 
     protected static function booted(): void
@@ -421,6 +425,12 @@ class Courrier extends Model
                         ->orWhere('email', 'like', $like);
                 })
                 ->orWhereHas('comments', fn(Builder $q) => $q->where('commentaire', 'like', $like));
+
+            if ($isMysql) {
+                $subQuery->orWhereRaw('MATCH(extracted_text) AGAINST(? IN BOOLEAN MODE)', [$term . '*']);
+            } else {
+                $subQuery->orWhere('extracted_text', 'like', $like);
+            }
         });
     }
 
@@ -435,6 +445,21 @@ class Courrier extends Model
         }
 
         return $query->where('resume', 'like', '%' . $term . '%');
+    }
+
+    public function scopeExtractedTextSearch(Builder $query, ?string $term): Builder
+    {
+        if (!$term) {
+            return $query;
+        }
+
+        $like = '%' . $term . '%';
+
+        if (DB::getDriverName() === 'mysql') {
+            return $query->whereFullText('extracted_text', $term);
+        }
+
+        return $query->where('extracted_text', 'like', $like);
     }
 
     public function getEstAccessibleAttribute(): bool
@@ -502,6 +527,31 @@ class Courrier extends Model
             && !$this->a_ete_repondu
             && $this->date_limite_reponse !== null
             && $this->date_limite_reponse->isPast();
+    }
+
+    public function getResumeAutoGenereAttribute(): ?string
+    {
+        return $this->summary_source === 'auto_generated' ? $this->resume : null;
+    }
+
+    public function ocrEstTermine(): bool
+    {
+        return $this->ocr_status === 'completed';
+    }
+
+    public function ocrAEchoue(): bool
+    {
+        return $this->ocr_status === 'failed';
+    }
+
+    public function ocrEstEnCours(): bool
+    {
+        return $this->ocr_status === 'processing';
+    }
+
+    public function ocrEstEnAttente(): bool
+    {
+        return $this->ocr_status === 'pending' || $this->ocr_status === null;
     }
 
     public function appartientAuServiceDe(User $user): bool

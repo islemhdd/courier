@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Broadcast;
 Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
 use App\Http\Controllers\Api\AuthenticatedSessionController;
+use App\Http\Controllers\Api\OcrController;
 use App\Http\Controllers\CourrierController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\ServiceController;
@@ -55,6 +56,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [UserController::class, 'store']);
         Route::patch('/{user}', [UserController::class, 'update']);
         Route::delete('/{user}', [UserController::class, 'destroy']);
+    });
+
+    Route::post('/ocr/preview', [OcrController::class, 'preview']);
+
+    Route::prefix('/courriers')->group(function () {
+        Route::get('/{courrier}/ocr', [OcrController::class, 'status']);
+        Route::post('/{courrier}/ocr/rerun', [OcrController::class, 'rerun']);
     });
 
     Route::prefix('/services')->group(function () {

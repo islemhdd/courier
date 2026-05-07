@@ -1,6 +1,22 @@
 import api from './api'
 
 export const courrierApi = {
+  ocrPreview(file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post('/ocr/preview', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  ocrStatus(courrierId) {
+    return api.get(`/courriers/${courrierId}/ocr`)
+  },
+
+  ocrRerun(courrierId) {
+    return api.post(`/courriers/${courrierId}/ocr/rerun`)
+  },
+
   getAll(params = {}) {
     return api.get('/courriers', { params })
   },

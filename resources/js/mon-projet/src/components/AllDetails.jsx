@@ -1,4 +1,4 @@
-import { Clock3, MessageCircle, UsersRound } from 'lucide-react'
+import { Clock3, MessageCircle, UsersRound, ScanText, RefreshCw, AlertCircle, CheckCircle2, Clock, FileText } from 'lucide-react'
 import { formatDate, getStatusLabel } from '../lib/courrier'
 
 export default function AllDetails({ courrier, contenuRestreint }) {
@@ -177,6 +177,82 @@ export default function AllDetails({ courrier, contenuRestreint }) {
           )}
         </div>
       </section>
+
+      {!contenuRestreint && courrier.ocr_status && (
+        <section className="rounded-2xl border border-slate-100 p-4">
+          <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <ScanText size={16} /> OCR & Texte extrait
+          </h4>
+          <div className="mb-3">
+            {courrier.ocr_status === 'pending' && (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Clock size={14} className="text-slate-400" /> OCR en attente...
+              </div>
+            )}
+            {courrier.ocr_status === 'processing' && (
+              <div className="flex items-center gap-2 text-xs text-blue-600">
+                <Clock size={14} className="animate-spin" /> Traitement OCR en cours...
+              </div>
+            )}
+            {courrier.ocr_status === 'completed' && (
+              <div className="flex items-center gap-2 text-xs text-emerald-600">
+                <CheckCircle2 size={14} /> OCR terminé{courrier.summary_source === 'auto_generated' ? ' (résumé auto-généré)' : ''}
+              </div>
+            )}
+            {courrier.ocr_status === 'failed' && (
+              <div className="flex items-center gap-2 text-xs text-amber-600">
+                <AlertCircle size={14} /> L\'OCR a rencontré une erreur pour certains fichiers
+              </div>
+            )}
+          </div>
+
+          {courrier.attachments && courrier.attachments.length > 0 && (
+            <div className="space-y-2 mb-3">
+              {courrier.attachments.map((att) => (
+                <div key={att.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText size={14} className="text-slate-400 shrink-0" />
+                    <span className="truncate text-slate-600">{att.nom_original || 'Fichier'}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {att.ocr_status === 'completed' && (
+                      <span className="text-emerald-600 font-medium flex items-center gap-1">
+                        <CheckCircle2 size={12} /> OK
+                      </span>
+                    )}
+                    {att.ocr_status === 'failed' && (
+                      <span className="text-amber-600 font-medium flex items-center gap-1" title={att.ocr_error || ''}>
+                        <AlertCircle size={12} /> Échec
+                      </span>
+                    )}
+                    {att.ocr_status === 'processing' && (
+                      <span className="text-blue-600 flex items-center gap-1">
+                        <Clock size={12} className="animate-spin" /> ...
+                      </span>
+                    )}
+                    {(!att.ocr_status || att.ocr_status === 'pending') && (
+                      <span className="text-slate-400">En attente</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {courrier.extracted_text && (
+            <div className="max-h-60 overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-600 whitespace-pre-wrap break-words font-mono leading-relaxed">
+              {courrier.summary_source === 'auto_generated' && courrier.resume && (
+                <div className="mb-3 rounded-lg bg-blue-50 border border-blue-100 p-2 text-blue-700 font-sans">
+                  <p className="text-[9px] font-bold uppercase tracking-wide mb-1">Résumé auto-généré</p>
+                  <p className="text-xs">{courrier.resume}</p>
+                </div>
+              )}
+              {courrier.extracted_text.substring(0, 5000)}
+              {courrier.extracted_text.length > 5000 && '...'}
+            </div>
+          )}
+        </section>
+      )}
 
       {!contenuRestreint &&
         courrier.attachments &&
