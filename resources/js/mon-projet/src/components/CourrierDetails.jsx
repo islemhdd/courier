@@ -64,7 +64,10 @@ export default function CourrierDetails({
   const peutSupprimer = courrier.peut_etre_supprime === true
   const peutArchiver = !contenuRestreint && courrier.peut_etre_archive === true
   const peutTransmettre = !contenuRestreint && courrier.peut_etre_transmis === true
-  const peutRepondre = !contenuRestreint && courrier.peut_etre_repondu === true
+  const canReply =
+    !contenuRestreint &&
+    courrier?.peut_repondre === true &&
+    typeof onReply === 'function'
 
   const handleDelete = () => {
     if (!onDelete) return
@@ -181,7 +184,7 @@ export default function CourrierDetails({
           </button>
         )}
 
-        {peutRepondre && (
+        {canReply && (
           <button
             type="button"
             onClick={() => onReply(courrier)}
