@@ -67,7 +67,7 @@ export default function ReceivedCourriers() {
       if (action === 'transmit') await courrierApi.transmit(id, data)
       await loadData()
     } catch (err) {
-      setError("L'action a échoué.")
+      setError(err)
     } finally {
       setActionLoading(false)
     }

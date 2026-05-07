@@ -37,7 +37,7 @@ export default function Archives() {
       const res = await courrierApi.getArchived({ ...filters, ...params })
       setCourriers(res.data.courriers.data)
       setPagination(res.data.courriers)
-      
+
       if (res.data.courriers.data.length > 0 && !selectedCourrier) {
         setSelectedCourrier(res.data.courriers.data[0])
       }
@@ -62,7 +62,7 @@ export default function Archives() {
       if (action === 'transmit') await courrierApi.transmit(id, data)
       await loadData()
     } catch (err) {
-      setError("L'action a échoué.")
+      setError(err)
     } finally {
       setActionLoading(false)
     }
@@ -76,7 +76,7 @@ export default function Archives() {
 
   return (
     <div className="space-y-6">
-      
+
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
            <div className="h-10 w-10 bg-amber-100 text-amber-700 rounded-lg flex items-center justify-center">
@@ -91,7 +91,7 @@ export default function Archives() {
         <div className="flex items-center gap-3">
            <div className="relative">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-             <input 
+             <input
                value={filters.q}
                onChange={e => setFilters({...filters, q: e.target.value})}
                onKeyDown={e => e.key === 'Enter' && loadData({ page: 1 })}
@@ -99,7 +99,7 @@ export default function Archives() {
                className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-lg border border-slate-200 text-sm focus:outline-none"
              />
            </div>
-           <button 
+           <button
              onClick={() => setShowFilters(!showFilters)}
              className={`h-10 w-10 rounded-lg border flex items-center justify-center transition-colors ${showFilters ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
            >
@@ -112,8 +112,8 @@ export default function Archives() {
         <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-top-2">
            <div className="space-y-1">
              <label className="text-[10px] font-bold text-slate-400 uppercase">Type</label>
-             <select 
-               value={filters.type} 
+             <select
+               value={filters.type}
                onChange={e => setFilters({...filters, type: e.target.value})}
                className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm"
              >
@@ -124,18 +124,18 @@ export default function Archives() {
            </div>
            <div className="space-y-1">
              <label className="text-[10px] font-bold text-slate-400 uppercase">Depuis le</label>
-             <input 
-               type="date" 
-               value={filters.date_from} 
+             <input
+               type="date"
+               value={filters.date_from}
                onChange={e => setFilters({...filters, date_from: e.target.value})}
                className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm"
              />
            </div>
            <div className="space-y-1">
              <label className="text-[10px] font-bold text-slate-400 uppercase">Jusqu'au</label>
-             <input 
-               type="date" 
-               value={filters.date_to} 
+             <input
+               type="date"
+               value={filters.date_to}
                onChange={e => setFilters({...filters, date_to: e.target.value})}
                className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm"
              />
@@ -158,7 +158,7 @@ export default function Archives() {
         <div className="lg:col-span-2 space-y-6 min-w-0">
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <CourrierTable 
+              <CourrierTable
                 courriers={courriers}
                 loading={loading}
                 selectedCourrier={selectedCourrier}
@@ -172,7 +172,7 @@ export default function Archives() {
         </div>
 
         <aside className="min-w-0">
-          <CourrierDetails 
+          <CourrierDetails
             courrier={selectedCourrier}
             actionLoading={actionLoading}
             onArchive={() => handleAction('archive', selectedCourrier.id)}

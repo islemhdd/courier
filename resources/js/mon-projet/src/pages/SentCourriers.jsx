@@ -27,7 +27,7 @@ export default function SentCourriers() {
       const res = await courrierApi.getSent({ ...params, q: search || undefined })
       setCourriers(res.data.courriers.data)
       setPagination(res.data.courriers)
-      
+
       if (res.data.courriers.data.length > 0 && !selectedCourrier) {
         setSelectedCourrier(res.data.courriers.data[0])
       }
@@ -52,7 +52,7 @@ export default function SentCourriers() {
       if (action === 'transmit') await courrierApi.transmit(id, data)
       await loadData()
     } catch (err) {
-      setError("L'action a échoué.")
+      setError(err)
     } finally {
       setActionLoading(false)
     }
@@ -60,7 +60,7 @@ export default function SentCourriers() {
 
   return (
     <div className="space-y-6">
-      
+
       {/* Search & Actions Header */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -76,7 +76,7 @@ export default function SentCourriers() {
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input 
+            <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && loadData({ page: 1 })}
@@ -84,7 +84,7 @@ export default function SentCourriers() {
               className="h-10 w-full sm:w-64 pl-10 pr-4 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
-          <button 
+          <button
             onClick={() => setFormOpen(true)}
             className="h-10 px-4 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
           >
@@ -106,7 +106,7 @@ export default function SentCourriers() {
         <div className="lg:col-span-2 space-y-6 min-w-0">
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <CourrierTable 
+              <CourrierTable
                 courriers={courriers}
                 loading={loading}
                 selectedCourrier={selectedCourrier}
@@ -120,7 +120,7 @@ export default function SentCourriers() {
         </div>
 
         <aside className="min-w-0">
-          <CourrierDetails 
+          <CourrierDetails
             courrier={selectedCourrier}
             actionLoading={actionLoading}
             onArchive={() => handleAction('archive', selectedCourrier.id)}
@@ -133,7 +133,7 @@ export default function SentCourriers() {
       </div>
 
       {formOpen && (
-        <CourrierForm 
+        <CourrierForm
           type="sortant"
           onClose={() => setFormOpen(false)}
           onSuccess={() => {

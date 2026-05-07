@@ -23,7 +23,7 @@ export default function AllDetails({ courrier, contenuRestreint }) {
             <Detail label="Mode" value={courrier.mode_diffusion || '-'} />
             <Detail label="Source" value={courrier.source?.libelle || courrier.expediteur} />
             <Detail label="Expediteur" value={courrier.expediteur} />
-            <Detail label="Destinataire" value={courrier.destinataire} />
+            {courrier.destinataire && <Detail label="Destinataire" value={courrier.destinataire} />}
             <Detail label="Date de reception" value={formatDate(courrier.date_reception)} />
             <Detail label="Confidentialite" value={courrier.niveau_confidentialite?.libelle} />
             <Detail label="Statut" value={getStatusLabel(courrier.statut)} />
@@ -190,11 +190,10 @@ export default function AllDetails({ courrier, contenuRestreint }) {
                 <a
                   key={att.id}
                   href={`/storage/${att.chemin}`}
-                  target="_blank"
-                  rel="noreferrer"
+                  download={att.nom_original || 'Fichier joint'}
                   className="flex h-10 items-center justify-start gap-3 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <span className="text-blue-500">ðŸ“Ž</span>
+
                   <span className="min-w-0 flex-1 truncate">
                     {att.nom_original || 'Fichier joint'}
                   </span>

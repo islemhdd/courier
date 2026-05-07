@@ -24,7 +24,7 @@ export default function Validation() {
       const res = await courrierApi.getValidationQueue({ ...params, q: search || undefined })
       setCourriers(res.data.courriers.data)
       setPagination(res.data.courriers)
-      
+
       if (res.data.courriers.data.length > 0 && !selectedCourrier) {
         setSelectedCourrier(res.data.courriers.data[0])
       }
@@ -49,7 +49,7 @@ export default function Validation() {
       if (action === 'transmit') await courrierApi.transmit(id, data)
       await loadData()
     } catch (err) {
-      setError("L'action a échoué.")
+      setError(err)
     } finally {
       setActionLoading(false)
     }
@@ -57,7 +57,7 @@ export default function Validation() {
 
   return (
     <div className="space-y-6">
-      
+
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
            <div className="h-10 w-10 bg-red-100 text-red-700 rounded-lg flex items-center justify-center">
@@ -71,7 +71,7 @@ export default function Validation() {
 
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input 
+          <input
             value={search}
             onChange={e => setSearch(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && loadData({ page: 1 })}
@@ -92,7 +92,7 @@ export default function Validation() {
         <div className="lg:col-span-2 space-y-6 min-w-0">
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <CourrierTable 
+              <CourrierTable
                 courriers={courriers}
                 loading={loading}
                 selectedCourrier={selectedCourrier}
@@ -106,7 +106,7 @@ export default function Validation() {
         </div>
 
         <aside className="min-w-0">
-          <CourrierDetails 
+          <CourrierDetails
             courrier={selectedCourrier}
             actionLoading={actionLoading}
             onArchive={() => handleAction('archive', selectedCourrier.id)}

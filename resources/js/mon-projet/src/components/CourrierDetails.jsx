@@ -60,7 +60,7 @@ export default function CourrierDetails({
     courrier.peut_voir_details === false
 
   const peutValider = courrier.peut_etre_valide === true
-  const peutModifier = courrier.peut_etre_modifie === false
+  const peutModifier = courrier.peut_etre_modifie === true
   const peutSupprimer = courrier.peut_etre_supprime === true
   const peutArchiver = !contenuRestreint && courrier.peut_etre_archive === true
   const peutTransmettre = !contenuRestreint && courrier.peut_etre_transmis === true

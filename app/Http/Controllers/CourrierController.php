@@ -472,7 +472,7 @@ class CourrierController extends Controller
         }
 
         if ($mode !== 'broadcast' && $recipientCount === 0 && !$courrier->service_destinataire_id) {
-            return response()->json(['error' => 'Au moins un destinataire est obligatoire pour transmettre ce courrier.'], 422);
+            return response()->json(['error' => 'Au moins un destinataire est obligatoire pour transmettre ce courrier.'], 429);
         }
 
         $courrier = DB::transaction(function () use ($courrier, $user, $validated, $mode) {

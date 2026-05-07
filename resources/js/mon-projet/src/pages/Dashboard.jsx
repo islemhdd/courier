@@ -87,7 +87,7 @@ export default function Dashboard() {
       if (action === 'transmit') await courrierApi.transmit(id, data)
       await loadData()
     } catch (err) {
-      setError("L'action a échoué.")
+      setError(err.message)
     } finally {
       setActionLoading(false)
     }
