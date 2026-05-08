@@ -154,6 +154,21 @@ function getNotificationRoute(notification) {
     return `/courriers/${notification.parent_id || notification.data?.parent_id}`
   }
 
+  // Handle message received notifications
+  if (
+    rawType === 'message_received' ||
+    dataType === 'message_received' ||
+    rawType === 'message_sent' ||
+    dataType === 'message_sent'
+  ) {
+    // Aller directement au message reçu
+    const messageId = notification.message_id || notification.data?.message_id
+    if (messageId) {
+      return `/messages?messageId=${messageId}`
+    }
+    return '/messages'
+  }
+
   return '/recus'
 }
 
@@ -566,6 +581,7 @@ function NotificationItem({ notification, onDismiss, onClick }) {
     courrier_received: { dot: 'bg-emerald-500', bg: 'hover:bg-emerald-50/70' },
     validation_requested: { dot: 'bg-amber-500', bg: 'hover:bg-amber-50/70' },
     message_sent: { dot: 'bg-sky-500', bg: 'hover:bg-sky-50/70' },
+    message_received: { dot: 'bg-blue-500', bg: 'hover:bg-blue-50/70' },
   }
 
   const rawType = notification.type || ''

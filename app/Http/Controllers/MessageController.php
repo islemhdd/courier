@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\Service;
 use App\Models\Structure;
 use App\Models\User;
+use App\Notifications\MessageReceivedNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -40,8 +41,8 @@ class MessageController extends Controller
         if ($type === 'brouillon') {
             $query
                 ->where('emetteur_id', $user->id)
-                ->when($hasStatut, fn ($q) => $q->where('statut', Message::STATUT_CREE))
-                ->when(!$hasStatut, fn ($q) => $q->whereRaw('0 = 1'));
+                ->when($hasStatut, fn($q) => $q->where('statut', Message::STATUT_CREE))
+                ->when(!$hasStatut, fn($q) => $q->whereRaw('0 = 1'));
         } elseif ($type === 'envoye') {
             $query->where('emetteur_id', $user->id);
             if ($hasStatut) {
@@ -129,7 +130,7 @@ class MessageController extends Controller
 
         $message = Message::create($donnees);
         $message->load(['emetteur', 'destinataire', 'courrier']);
-        
+
         if ($message->courrier_id) {
             $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
         } else {
@@ -137,7 +138,7 @@ class MessageController extends Controller
         }
 
         if ($envoyer || !$hasStatut) {
-            $message->destinataire->notify(new \App\Notifications\MessageSentNotification($message));
+            $message->destinataire->notify(new \App\Notifications\MessageReceivedNotification($message));
         }
 
         return response()->json([
@@ -218,7 +219,7 @@ class MessageController extends Controller
 
         $message->update($payload);
         $message->load(['emetteur', 'destinataire', 'courrier']);
-        
+
         if ($message->courrier_id) {
             $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
             if (!$message->courrier_accessible) {
@@ -300,14 +301,14 @@ class MessageController extends Controller
         ]);
 
         $message->load(['emetteur', 'destinataire', 'courrier']);
-        
+
         if ($message->courrier_id) {
             $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
         } else {
             $message->courrier_accessible = true;
         }
 
-        $message->destinataire->notify(new \App\Notifications\MessageSentNotification($message));
+        $message->destinataire->notify(new \App\Notifications\MessageReceivedNotification($message));
 
         return response()->json([
             'message' => 'Message envoyé avec succès.',
@@ -402,7 +403,7 @@ class MessageController extends Controller
         $hasStatut = $this->messagesHasStatut();
 
         $nombre = Message::where('destinataire_id', $user->id)
-            ->when($hasStatut, fn ($q) => $q->where('statut', Message::STATUT_ENVOYE))
+            ->when($hasStatut, fn($q) => $q->where('statut', Message::STATUT_ENVOYE))
             ->where('lu', false)
             ->count();
 
@@ -410,5 +411,4 @@ class MessageController extends Controller
             'non_lus' => $nombre,
         ]);
     }
-
 }
