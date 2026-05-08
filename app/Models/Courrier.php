@@ -609,6 +609,7 @@ class Courrier extends Model
 
     public function niveauEstAutorisePour(User $user): bool
     {
+        $this->unsetRelation('niveauConfidentialite');
         if (!$this->relationLoaded('niveauConfidentialite')) {
             $this->load('niveauConfidentialite');
         }
@@ -647,8 +648,16 @@ class Courrier extends Model
         })->exists();
     }
 
-    public function peutEtreVuEnDetailPar(User $user): bool
+    /**
+     * Centralized method to check if a user can see the details of a courrier.
+     */
+    public function peutEtreConsultePar(User $user): bool
     {
+        // Confidentiality check is paramount
+        if (!$this->niveauEstAutorisePour($user)) {
+            return false;
+        }
+
         if ($user->estAdmin() || $user->estChefGeneral()) {
             return true;
         }
@@ -685,10 +694,15 @@ class Courrier extends Model
         }
 
         if ($this->appartientAuServiceSourceOuCreateur($user)) {
-            return $this->niveauEstAutorisePour($user);
+            return true; // Confidentiality already checked above
         }
 
         return false;
+    }
+
+    public function peutEtreVuEnDetailPar(User $user): bool
+    {
+        return $this->peutEtreConsultePar($user);
     }
 
     public function peutEtreArchivePar(User $user): bool

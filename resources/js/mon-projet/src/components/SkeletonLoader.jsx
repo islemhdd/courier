@@ -22,31 +22,53 @@ export default function SkeletonLoader({ count = 5, variant = 'table' }) {
 
   if (variant === 'detail') {
     return (
-      <div className="float-in p-5 space-y-6">
-        <div className="flex items-start gap-4">
-          <div className="skeleton skeleton-avatar" />
-          <div className="flex-1 space-y-2">
-            <div className="skeleton skeleton-heading" />
-            <div className="skeleton skeleton-text" />
+      <div className="animate-pulse space-y-6">
+        <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+          <div className="h-56 bg-slate-200" />
+          <div className="grid grid-cols-1 divide-y divide-slate-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <div className="p-5">
+              <div className="skeleton h-3 w-24" />
+              <div className="mt-3 skeleton h-4 w-40" />
+            </div>
+            <div className="p-5">
+              <div className="skeleton h-3 w-24" />
+              <div className="mt-3 skeleton h-4 w-40" />
+            </div>
+            <div className="p-5">
+              <div className="skeleton h-3 w-24" />
+              <div className="mt-3 skeleton h-4 w-40" />
+            </div>
           </div>
         </div>
-        <div className="border-t border-slate-100 pt-5 space-y-4">
-          <div className="flex justify-between">
-            <div className="skeleton h-4 w-24" />
-            <div className="skeleton h-4 w-32" />
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
+          <div className="space-y-6">
+            <div className="h-52 rounded-[1.5rem] border border-slate-200 bg-white p-6">
+              <div className="skeleton h-10 w-52" />
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <div className="skeleton h-20 rounded-2xl" />
+                <div className="skeleton h-20 rounded-2xl" />
+                <div className="skeleton h-20 rounded-2xl" />
+                <div className="skeleton h-20 rounded-2xl" />
+              </div>
+            </div>
+            <div className="h-72 rounded-[1.5rem] border border-slate-200 bg-white p-6">
+              <div className="skeleton h-10 w-44" />
+              <div className="mt-6 skeleton h-44 rounded-2xl" />
+            </div>
           </div>
-          <div className="flex justify-between">
-            <div className="skeleton h-4 w-24" />
-            <div className="skeleton h-4 w-32" />
+          <div className="space-y-6">
+            <div className="h-72 rounded-[1.5rem] border border-slate-200 bg-white p-6">
+              <div className="skeleton h-10 w-40" />
+              <div className="mt-6 space-y-3">
+                <div className="skeleton h-20 rounded-2xl" />
+                <div className="skeleton h-20 rounded-2xl" />
+              </div>
+            </div>
+            <div className="h-56 rounded-[1.5rem] border border-slate-200 bg-white p-6">
+              <div className="skeleton h-10 w-52" />
+              <div className="mt-6 skeleton h-28 rounded-2xl" />
+            </div>
           </div>
-          <div className="flex justify-between">
-            <div className="skeleton h-4 w-24" />
-            <div className="skeleton h-4 w-32" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 pt-4">
-          <div className="skeleton h-12 rounded-2xl" />
-          <div className="skeleton h-12 rounded-2xl" />
         </div>
       </div>
     )

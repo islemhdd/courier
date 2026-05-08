@@ -157,6 +157,6 @@ class Message extends Model
             return false;
         }
 
-        return $this->courrier->peutEtreVuEnDetailPar($destinataire);
+        return $this->courrier->peutEtreConsultePar($destinataire);
     }
 }

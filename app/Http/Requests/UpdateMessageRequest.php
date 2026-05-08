@@ -43,6 +43,7 @@ class UpdateMessageRequest extends FormRequest
         $validator->after(function ($validator) {
             $user = $this->user();
             $courrierId = $this->input('courrier_id');
+            $message = $this->route('message');
 
             if (!$user || !$courrierId) {
                 return;
@@ -54,17 +55,26 @@ class UpdateMessageRequest extends FormRequest
                 return;
             }
 
-            if (!$this->userPeutVoirCourrier($user, $courrier)) {
+            // Vérifier que l'expéditeur peut voir ce courrier
+            if (!$courrier->peutEtreConsultePar($user)) {
                 $validator->errors()->add(
                     'courrier_id',
                     'Vous n\'avez pas le droit de référencer ce courrier.'
                 );
+                return;
+            }
+
+            // Vérifier que le destinataire peut aussi voir ce courrier
+            $destinataireId = $this->input('destinataire_id', $message?->destinataire_id);
+            if ($destinataireId) {
+                $destinataire = User::find($destinataireId);
+                if ($destinataire && !$courrier->peutEtreConsultePar($destinataire)) {
+                    $validator->errors()->add(
+                        'courrier_id',
+                        'Le destinataire n\'a pas l\'autorisation de consulter le courrier référencé.'
+                    );
+                }
             }
         });
-    }
-
-    private function userPeutVoirCourrier(User $user, Courrier $courrier): bool
-    {
-        return $courrier->peutEtreVuEnDetailPar($user);
     }
 }

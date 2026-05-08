@@ -6,6 +6,8 @@ use App\Http\Requests\StoreMessageRequest;
 use App\Http\Requests\UpdateMessageRequest;
 use App\Models\Courrier;
 use App\Models\Message;
+use App\Models\Service;
+use App\Models\Structure;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -79,8 +81,17 @@ class MessageController extends Controller
 
         $messages = $query->orderBy('date_envoi', 'desc')->paginate(15);
 
-        $messages->getCollection()->transform(function (Message $message) {
-            $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+        $messages->getCollection()->transform(function (Message $message) use ($user) {
+            if ($message->courrier_id) {
+                $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
+                if (!$message->courrier_accessible) {
+                    $message->setRelation('courrier', null);
+                    // Add a flag to indicate it exists but is not visible
+                    $message->courrier_id_hidden = $message->courrier_id;
+                }
+            } else {
+                $message->courrier_accessible = true;
+            }
             return $message;
         });
 
@@ -108,22 +119,6 @@ class MessageController extends Controller
             ], 422);
         }
 
-        if (!empty($donnees['courrier_id'])) {
-            $courrier = Courrier::with('niveauConfidentialite', 'createur')->find($donnees['courrier_id']);
-
-            if (!$courrier) {
-                return response()->json([
-                    'error' => 'Le courrier référencé n\'existe pas.'
-                ], 422);
-            }
-
-            if (!$this->userPeutVoirCourrier($user, $courrier)) {
-                return response()->json([
-                    'error' => 'Vous n\'avez pas le droit de référencer ce courrier.'
-                ], 422);
-            }
-        }
-
         $donnees['emetteur_id'] = $user->id;
         $donnees['lu'] = false;
         if ($hasStatut) {
@@ -134,7 +129,12 @@ class MessageController extends Controller
 
         $message = Message::create($donnees);
         $message->load(['emetteur', 'destinataire', 'courrier']);
-        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+        
+        if ($message->courrier_id) {
+            $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
+        } else {
+            $message->courrier_accessible = true;
+        }
 
         if ($envoyer || !$hasStatut) {
             $message->destinataire->notify(new \App\Notifications\MessageSentNotification($message));
@@ -171,7 +171,14 @@ class MessageController extends Controller
             $message->refresh();
         }
 
-        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+        if ($message->courrier_id) {
+            $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
+            if (!$message->courrier_accessible) {
+                $message->setRelation('courrier', null);
+            }
+        } else {
+            $message->courrier_accessible = true;
+        }
 
         return response()->json([
             'message' => $message,
@@ -211,7 +218,15 @@ class MessageController extends Controller
 
         $message->update($payload);
         $message->load(['emetteur', 'destinataire', 'courrier']);
-        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+        
+        if ($message->courrier_id) {
+            $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
+            if (!$message->courrier_accessible) {
+                $message->setRelation('courrier', null);
+            }
+        } else {
+            $message->courrier_accessible = true;
+        }
 
         return response()->json([
             'message' => 'Brouillon modifié avec succès.',
@@ -285,7 +300,12 @@ class MessageController extends Controller
         ]);
 
         $message->load(['emetteur', 'destinataire', 'courrier']);
-        $message->courrier_accessible = $message->destinatairePeutVoirCourrier();
+        
+        if ($message->courrier_id) {
+            $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
+        } else {
+            $message->courrier_accessible = true;
+        }
 
         $message->destinataire->notify(new \App\Notifications\MessageSentNotification($message));
 
@@ -313,10 +333,20 @@ class MessageController extends Controller
         }
 
         $message->marquerCommeLu();
+        $message->load(['emetteur', 'destinataire', 'courrier']);
+
+        if ($message->courrier_id) {
+            $message->courrier_accessible = $user->peutVoirCourrier($message->courrier);
+            if (!$message->courrier_accessible) {
+                $message->setRelation('courrier', null);
+            }
+        } else {
+            $message->courrier_accessible = true;
+        }
 
         return response()->json([
             'message' => 'Message marqué comme lu.',
-            'data' => $message->fresh(['emetteur', 'destinataire', 'courrier']),
+            'data' => $message,
         ]);
     }
 
@@ -325,15 +355,13 @@ class MessageController extends Controller
         $user = $request->user();
         $terme = trim((string) $request->get('q', ''));
 
-        // Provide a default suggestion list when the field is empty, so the UI
-        // can show recipients without forcing the user to type.
-        if ($terme === '') {
-            $query = User::where('id', '!=', $user->id)
-                ->where('actif', true)
-                ->select('id', 'nom', 'prenom', 'email');
+        $query = User::where('id', '!=', $user->id)
+            ->where('actif', true)
+            ->with(['service:id,libelle,structure_id', 'structure:id,libelle'])
+            ->select('id', 'nom', 'prenom', 'email', 'role', 'service_id', 'structure_id');
 
+        if ($terme === '') {
             if ($user->service_id !== null) {
-                // Prioritize same-service users first, then sort by name/email.
                 $query->orderByRaw('CASE WHEN service_id = ? THEN 0 ELSE 1 END', [$user->service_id]);
             }
 
@@ -341,30 +369,27 @@ class MessageController extends Controller
                 ->orderBy('prenom')
                 ->orderBy('nom')
                 ->orderBy('email')
-                ->limit(10)
+                ->limit(15)
                 ->get();
+        } else {
+            if (strlen($terme) < 2) {
+                return response()->json([
+                    'utilisateurs' => [],
+                ]);
+            }
 
-            return response()->json([
-                'utilisateurs' => $utilisateurs,
-            ]);
-        }
-
-        if (strlen($terme) < 2) {
-            return response()->json([
-                'utilisateurs' => [],
-            ]);
-        }
-
-        $utilisateurs = User::where('id', '!=', $user->id)
-            ->where('actif', true)
-            ->where(function ($query) use ($terme) {
-                $query->where('nom', 'like', '%' . $terme . '%')
+            $query->where(function ($nameQuery) use ($terme) {
+                $nameQuery->where('nom', 'like', '%' . $terme . '%')
                     ->orWhere('prenom', 'like', '%' . $terme . '%')
                     ->orWhere('email', 'like', '%' . $terme . '%');
-            })
-            ->select('id', 'nom', 'prenom', 'email')
-            ->limit(10)
-            ->get();
+            });
+
+            $utilisateurs = $query
+                ->orderBy('prenom')
+                ->orderBy('nom')
+                ->limit(10)
+                ->get();
+        }
 
         return response()->json([
             'utilisateurs' => $utilisateurs,
@@ -386,8 +411,4 @@ class MessageController extends Controller
         ]);
     }
 
-    private function userPeutVoirCourrier(User $user, Courrier $courrier): bool
-    {
-        return $courrier->peutEtreVuEnDetailPar($user);
-    }
 }

@@ -39,6 +39,7 @@ const loadSentCourriers = () => import('./pages/SentCourriers')
 const loadValidation = () => import('./pages/Validation')
 const loadUsersPage = () => import('./pages/Users')
 const loadLogin = () => import('./pages/Login')
+const loadCourrierPreview = () => import('./pages/CourrierPreview')
 
 const Dashboard = lazy(loadDashboard)
 const Messages = lazy(loadMessages)
@@ -48,6 +49,7 @@ const SentCourriers = lazy(loadSentCourriers)
 const Validation = lazy(loadValidation)
 const UsersPage = lazy(loadUsersPage)
 const Login = lazy(loadLogin)
+const CourrierPreview = lazy(loadCourrierPreview)
 
 const routes = [
   {
@@ -172,8 +174,13 @@ function AuthenticatedApp() {
     [canValidateCourriers, user?.permissions?.peut_gerer_utilisateurs],
   )
 
-  const currentRoute =
-    navItems.find((item) => item.path === location.pathname) ?? navItems[0] ?? routes[0]
+  const currentRoute = location.pathname.startsWith('/courriers/')
+    ? {
+        title: 'Aperçu courrier',
+        description: 'Consultation complète du dossier administratif.',
+        icon: FileText,
+      }
+    : navItems.find((item) => item.path === location.pathname) ?? navItems[0] ?? routes[0]
 
   useEffect(() => {
     if (!user) return undefined
@@ -429,6 +436,7 @@ function AuthenticatedApp() {
 
                     return <Route key={route.path} path={route.path} element={<Component />} />
                   })}
+                  <Route path="/courriers/:id" element={<CourrierPreview />} />
                 </Routes>
               </div>
             </Suspense>

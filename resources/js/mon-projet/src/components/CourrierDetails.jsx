@@ -1,18 +1,27 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   Archive,
-  Check,
+  Calendar,
+  CheckCircle2,
   FileText,
+  Globe,
+  Info,
+  Lock,
   MessageCircle,
+  Paperclip,
   Pencil,
-  Plus,
   Send,
+  ShieldCheck,
   Star,
   Trash2,
   X,
 } from 'lucide-react'
+import clsx from 'clsx'
 
-import { formatDate, getStatusLabel } from '../lib/courrier'
+import { courrierApi } from '../api/courrierApi'
+import { formatDate, getStatusLabel, getStatusTone } from '../lib/courrier'
+import Badge from './Badge'
 import SkeletonLoader, { ModalSkeleton } from './SkeletonLoader'
 
 const CourrierTransmitForm = lazy(() => import('./CourrierTransmitForm'))
@@ -27,9 +36,20 @@ export default function CourrierDetails({
   onDelete,
   onTransmit,
   onReply,
+  onClose,
+  showCloseButton = false,
 }) {
+  const navigate = useNavigate()
   const [isTransmitOpen, setIsTransmitOpen] = useState(false)
   const [isAllDetailsOpen, setIsAllDetailsOpen] = useState(false)
+  const [detailsState, setDetailsState] = useState({
+    loading: false,
+    courrier: null,
+    error: '',
+  })
+  const detailsRequestRef = useRef(0)
+
+  const isArchiveRecord = Boolean(courrier?.archive_le || courrier?.statut_original || courrier?.courrier_original_id)
 
   useEffect(() => {
     if (!isAllDetailsOpen) return undefined
@@ -38,9 +58,7 @@ export default function CourrierDetails({
     document.body.style.overflow = 'hidden'
 
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsAllDetailsOpen(false)
-      }
+      if (event.key === 'Escape') setIsAllDetailsOpen(false)
     }
 
     window.addEventListener('keydown', onKeyDown)
@@ -51,167 +69,208 @@ export default function CourrierDetails({
     }
   }, [isAllDetailsOpen])
 
+  useEffect(() => {
+    if (!isAllDetailsOpen || !courrier) return undefined
+
+    if (isArchiveRecord || !courrier.id) return undefined
+
+    const requestId = detailsRequestRef.current + 1
+    detailsRequestRef.current = requestId
+
+    let active = true
+
+    courrierApi.show(courrier.id)
+      .then((res) => {
+        if (!active || detailsRequestRef.current !== requestId) return
+        const nextCourrier = res.data?.courrier || null
+        setDetailsState({
+          loading: false,
+          courrier: nextCourrier,
+          error: nextCourrier ? '' : 'Courrier introuvable.',
+        })
+      })
+      .catch((err) => {
+        if (!active || detailsRequestRef.current !== requestId) return
+        setDetailsState({
+          loading: false,
+          courrier: null,
+          error: getDetailsErrorMessage(err),
+        })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [isAllDetailsOpen, courrier, isArchiveRecord])
+
   if (!courrier) {
     return (
-      <div className="glass-panel-strong rounded-[2rem] p-5">
-        <SkeletonLoader variant="detail" />
+      <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-slate-100/60 min-h-[500px] flex flex-col items-center justify-center text-slate-300">
+        <FileText size={48} className="mb-4 opacity-20" />
+        <p className="text-xs font-black uppercase tracking-widest">Selectionnez un document</p>
       </div>
     )
   }
 
-  const contenuRestreint =
-    courrier.contenu_restreint === true || courrier.peut_voir_details === false
-
+  const contenuRestreint = courrier.contenu_restreint === true || courrier.peut_voir_details === false
   const peutValider = courrier.peut_etre_valide === true
   const peutModifier = courrier.peut_etre_modifie === true
   const peutSupprimer = courrier.peut_etre_supprime === true
   const peutArchiver = !contenuRestreint && courrier.peut_etre_archive === true
   const peutTransmettre = !contenuRestreint && courrier.peut_etre_transmis === true
-  const canReply =
-    !contenuRestreint &&
-    courrier?.peut_repondre === true &&
-    typeof onReply === 'function'
-
+  const canReply = !contenuRestreint && courrier?.peut_repondre === true && typeof onReply === 'function'
   const actionDisabled = actionLoading === true
+  const modalCourrier = detailsState.courrier
+  const modalContenuRestreint = modalCourrier
+    ? modalCourrier.contenu_restreint === true || modalCourrier.peut_voir_details === false
+    : contenuRestreint
+  const currentDetailsLoading = detailsState.loading || (
+    isAllDetailsOpen &&
+    !isArchiveRecord &&
+    !detailsState.error &&
+    (!modalCourrier || modalCourrier.id !== courrier.id)
+  )
 
   const handleDelete = () => {
-    if (!onDelete) return
+    if (!onDelete || !window.confirm('Voulez-vous vraiment supprimer ce courrier ?')) return
+    onDelete(courrier.id)
+  }
 
-    const confirmed = window.confirm('Voulez-vous vraiment supprimer ce courrier ?')
-
-    if (confirmed) {
-      onDelete(courrier.id)
+  const handleOpenDetails = () => {
+    if (!isArchiveRecord && courrier.id) {
+      navigate(`/courriers/${courrier.id}`)
+      return
     }
+
+    setDetailsState(
+      isArchiveRecord || !courrier.id
+        ? { loading: false, courrier, error: '' }
+        : { loading: true, courrier: null, error: '' },
+    )
+    setIsAllDetailsOpen(true)
+  }
+
+  const handleReplyFromDetails = () => {
+    setIsAllDetailsOpen(false)
+    onReply?.(modalCourrier || courrier)
+  }
+
+  const handleTransmitFromDetails = () => {
+    setIsAllDetailsOpen(false)
+    setIsTransmitOpen(true)
+  }
+
+  const handleArchiveFromDetails = () => {
+    setIsAllDetailsOpen(false)
+    onArchive?.(courrier.id)
   }
 
   return (
-    <aside className="glass-panel-strong sticky top-28 rounded-[2rem] p-5">
-      <div className="mb-6 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-950 text-white shadow-lg shadow-slate-900/12">
-            <FileText size={22} />
+    <aside className="bg-white rounded-[2.5rem] p-8 shadow-xl shadow-slate-900/5 border border-slate-100/60 flex max-h-full flex-col gap-8 overflow-y-auto animate-in slide-in-from-right-4 duration-300">
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="h-16 w-16 rounded-[1.5rem] bg-slate-950 text-white flex items-center justify-center shadow-2xl shadow-slate-900/20 shrink-0">
+            <FileText size={28} />
           </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleOpenDetails}
+              className="h-10 w-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-slate-900 hover:text-white transition-all group shadow-sm"
+              title="Apercu complet"
+            >
+              <Info size={18} className="group-hover:scale-110 transition-transform" />
+            </button>
+            <button
+              className="h-10 w-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-300 hover:text-amber-500 transition-all shadow-sm"
+              title="Favoris"
+            >
+              <Star size={18} />
+            </button>
+            {showCloseButton && (
+              <button
+                onClick={onClose}
+                className="h-10 w-10 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-all shadow-sm"
+                title="Fermer"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+        </div>
 
-          <h2 className="break-words text-xl font-semibold tracking-tight text-slate-900">
+        <div className="min-w-0">
+          <h2 className="text-2xl font-black text-slate-900 tracking-tighter leading-none mb-3 truncate" title={courrier.numero}>
             {courrier.numero || '-'}
           </h2>
-
-          <p className="mt-1 max-w-[18rem] break-words text-sm leading-relaxed text-slate-500">
-            {courrier.objet || '-'}
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Badge variant={getStatusTone(courrier.statut || courrier.statut_original)} dot size="xs">
+              {courrier.archive_le ? 'Archive' : getStatusLabel(courrier.statut || courrier.statut_original)}
+            </Badge>
+            <Badge variant="indigo" size="xs">{courrier.type || '-'}</Badge>
+          </div>
+          <p className="text-sm font-bold text-slate-500 leading-relaxed uppercase tracking-tight line-clamp-2">
+            {contenuRestreint ? 'Contenu restreint' : courrier.objet || '-'}
           </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setIsAllDetailsOpen(true)}
-            className="glass-panel flex h-10 w-10 items-center justify-center rounded-2xl text-slate-500 hover:text-slate-900"
-            aria-label="Afficher tous les details"
-            title="Afficher tous les details"
-          >
-            <Plus size={18} />
-          </button>
-
-          <button
-            type="button"
-            className="glass-panel flex h-10 w-10 items-center justify-center rounded-2xl text-slate-400 hover:text-amber-500"
-            aria-label="Favori"
-            title="Favori"
-          >
-            <Star size={18} />
-          </button>
         </div>
       </div>
 
-      <div
-        className={`soft-divider space-y-3 border-y py-5 text-sm ${
-          contenuRestreint ? 'relative overflow-hidden rounded-[1.5rem] bg-slate-50 px-4' : ''
-        }`}
-      >
-        <div className={contenuRestreint ? 'pointer-events-none select-none blur-sm' : ''}>
-          <Detail label="Type" value={courrier.type || '-'} />
-          <Detail label="Source" value={courrier.source?.libelle || courrier.expediteur} />
-          <Detail label="Date de reception" value={formatDate(courrier.date_reception)} />
-          <Detail label="Confidentialite" value={courrier.niveau_confidentialite?.libelle} />
-          <Detail label="Statut" value={getStatusLabel(courrier.statut)} />
-          <Detail label="Reponse attendue" value={courrier.requiert_reponse ? 'Oui' : 'Non'} />
-        </div>
-
-        {contenuRestreint && (
-          <div className="absolute inset-0 flex items-center justify-center rounded-[1.5rem] bg-white/70 backdrop-blur-sm">
-            <div className="rounded-2xl bg-white px-4 py-3 text-center text-sm font-medium text-slate-600 shadow-sm">
-              Contenu non accessible
-            </div>
+      <div className={clsx(
+        'relative rounded-3xl p-6 transition-all border',
+        contenuRestreint ? 'bg-slate-100 border-slate-200' : 'bg-slate-50 border-slate-100',
+      )}>
+        {contenuRestreint ? (
+          <div className="flex flex-col items-center justify-center p-6 text-center">
+            <Lock size={28} className="text-slate-400 mb-2" />
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Contenu restreint</p>
+            <p className="mt-2 text-xs font-medium leading-5 text-slate-500">
+              Vous n'avez pas l'autorisation de consulter ce courrier.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <CompactInfo icon={<Globe size={14} />} label="Source" value={courrier.source?.libelle || courrier.expediteur} />
+            <CompactInfo icon={<Calendar size={14} />} label="Reception" value={formatDate(courrier.date_reception)} />
+            <CompactInfo icon={<ShieldCheck size={14} />} label="Confidentialite" value={courrier.niveau_confidentialite?.libelle} />
+            <CompactInfo icon={<Paperclip size={14} />} label="Annexes" value={`${courrier.attachments?.length || 0} fichier(s)`} />
           </div>
         )}
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3">
+      <div className="space-y-3 pt-2">
         {peutValider && (
-          <ActionButton
-            label={actionLoading ? 'Traitement...' : 'Valider'}
-            icon={<Check size={16} />}
-            disabled={actionDisabled}
-            variant="primary"
+          <MainAction
+            label={actionLoading ? 'Traitement...' : 'Approuver le document'}
+            icon={<CheckCircle2 size={18} />}
+            variant="emerald"
             onClick={() => onValidate?.(courrier.id)}
+            disabled={actionDisabled}
           />
         )}
 
-        {peutModifier && (
-          <ActionButton
-            label="Modifier"
-            icon={<Pencil size={16} />}
-            disabled={actionDisabled}
-            variant="warning"
-            onClick={() => onEdit?.(courrier)}
-          />
-        )}
+        <div className="grid grid-cols-2 gap-3">
+          {peutTransmettre && (
+            <SideAction icon={<Send size={16} />} label="Transmettre" onClick={() => setIsTransmitOpen(true)} disabled={actionDisabled} />
+          )}
+          {canReply && (
+            <SideAction icon={<MessageCircle size={16} />} label="Repondre" onClick={() => onReply(courrier)} disabled={actionDisabled} />
+          )}
+        </div>
 
-        {peutTransmettre && (
-          <ActionButton
-            label="Transmettre"
-            icon={<Send size={16} />}
-            disabled={actionDisabled}
-            variant="outline"
-            onClick={() => setIsTransmitOpen(true)}
-          />
-        )}
-
-        {canReply && (
-          <ActionButton
-            label="Repondre"
-            icon={<MessageCircle size={16} />}
-            disabled={actionDisabled}
-            variant="neutral"
-            onClick={() => onReply(courrier)}
-          />
-        )}
+        <div className="flex flex-col gap-2 pt-2">
+          {peutModifier && (
+            <GhostAction icon={<Pencil size={14} />} label="Modifier les metadonnees" onClick={() => onEdit?.(courrier)} disabled={actionDisabled} />
+          )}
+          {peutArchiver && (
+            <GhostAction icon={<Archive size={14} />} label="Envoyer aux archives" onClick={() => onArchive?.(courrier.id)} disabled={actionDisabled} />
+          )}
+          {peutSupprimer && (
+            <GhostAction icon={<Trash2 size={14} />} label="Supprimer du registre" variant="rose" onClick={handleDelete} disabled={actionDisabled} />
+          )}
+        </div>
       </div>
 
-      {peutArchiver && (
-        <ActionButton
-          label="Archiver"
-          icon={<Archive size={16} />}
-          disabled={actionDisabled}
-          variant="neutral"
-          className="mt-3 w-full"
-          onClick={() => onArchive?.(courrier.id)}
-        />
-      )}
-
-      {peutSupprimer && (
-        <ActionButton
-          label="Supprimer"
-          icon={<Trash2 size={16} />}
-          disabled={actionDisabled}
-          variant="danger"
-          className="mt-3 w-full"
-          onClick={handleDelete}
-        />
-      )}
-
       {isTransmitOpen && (
-        <Suspense fallback={<ModalSkeleton title="Chargement du module de transmission..." />}>
+        <Suspense fallback={<ModalSkeleton title="Initialisation de la transmission..." />}>
           <CourrierTransmitForm
             courrier={courrier}
             onClose={() => setIsTransmitOpen(false)}
@@ -221,39 +280,51 @@ export default function CourrierDetails({
       )}
 
       {isAllDetailsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
-          <button
-            type="button"
-            className="absolute inset-0 cursor-default"
-            onClick={() => setIsAllDetailsOpen(false)}
-            aria-label="Fermer la fenetre"
-          />
-
-          <div className="glass-panel-strong relative z-10 w-full max-w-4xl overflow-hidden rounded-[2rem] shadow-2xl">
-            <div className="soft-divider flex items-center justify-between border-b px-6 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 p-2 animate-in fade-in duration-200 sm:p-4">
+          <div className="absolute inset-0" onClick={() => setIsAllDetailsOpen(false)} />
+          <div className="bg-white relative z-10 flex h-[calc(100dvh-1rem)] min-h-0 w-full max-w-7xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-300 sm:h-[calc(100dvh-2rem)] sm:rounded-[2rem]">
+            <div className="print:hidden flex items-center justify-between border-b border-slate-100 px-4 py-4 bg-white sticky top-0 z-20 sm:px-6">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                  Details du courrier
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400 mb-1">
+                  {modalContenuRestreint ? 'Acces restreint' : 'Apercu complet du courrier'}
                 </p>
-                <p className="truncate text-sm font-semibold text-slate-800">
-                  {courrier.numero || '-'} • {courrier.objet || '-'}
-                </p>
+                <h3 className="truncate text-base font-black text-slate-900 uppercase tracking-tight sm:text-lg">
+                  {modalContenuRestreint
+                    ? 'Consultation non autorisee'
+                    : currentDetailsLoading
+                      ? 'Chargement du dossier'
+                      : 'Dossier administratif'}
+                </h3>
               </div>
-
               <button
-                type="button"
                 onClick={() => setIsAllDetailsOpen(false)}
-                className="glass-panel flex h-10 w-10 items-center justify-center rounded-2xl text-slate-400 hover:text-slate-700"
-                aria-label="Fermer"
-                title="Fermer"
+                className="h-12 w-12 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-400 hover:bg-slate-950 hover:text-white transition-all shadow-sm"
               >
-                <X size={18} />
+                <X size={24} />
               </button>
             </div>
-
-            <div className="max-h-[80vh] overflow-auto px-6 py-5">
+            <div className="min-h-0 flex-1 overflow-y-scroll overscroll-contain bg-slate-100 px-3 py-4 custom-scrollbar sm:px-6 sm:py-6 lg:px-8">
               <Suspense fallback={<SkeletonLoader variant="detail" />}>
-                <AllDetails courrier={courrier} contenuRestreint={contenuRestreint} />
+                {currentDetailsLoading ? (
+                  <SkeletonLoader variant="detail" />
+                ) : detailsState.error ? (
+                  <DetailsError message={detailsState.error} onClose={() => setIsAllDetailsOpen(false)} />
+                ) : (
+                  <AllDetails
+                    courrier={modalCourrier}
+                    contenuRestreint={modalContenuRestreint}
+                    actionDisabled={actionDisabled}
+                    actions={{
+                      canReply,
+                      canTransmit: peutTransmettre,
+                      canArchive: peutArchiver,
+                      onReply: canReply ? handleReplyFromDetails : undefined,
+                      onTransmit: peutTransmettre ? handleTransmitFromDetails : undefined,
+                      onArchive: peutArchiver ? handleArchiveFromDetails : undefined,
+                      onClose: () => setIsAllDetailsOpen(false),
+                    }}
+                  />
+                )}
               </Suspense>
             </div>
           </div>
@@ -263,44 +334,99 @@ export default function CourrierDetails({
   )
 }
 
-function Detail({ label, value }) {
+function getDetailsErrorMessage(err) {
+  if (err.response?.status === 403) {
+    return "Vous n'avez pas l'autorisation de consulter ce courrier."
+  }
+
   return (
-    <div className="flex justify-between gap-4">
-      <span className="text-slate-400">{label}</span>
-      <span className="min-w-0 break-words text-right font-medium text-slate-700">
+    err.response?.data?.message ||
+    err.response?.data?.detail ||
+    err.response?.data?.error ||
+    "Erreur lors du chargement de l'aperçu complet."
+  )
+}
+
+function DetailsError({ message, onClose }) {
+  return (
+    <div className="rounded-[1.75rem] border border-rose-100 bg-white p-8 text-center shadow-sm sm:p-12">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+        <Lock size={26} />
+      </div>
+      <h2 className="mt-5 text-lg font-semibold text-slate-950">{message}</h2>
+      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+        Aucune donnee detaillee n'est affichee tant que l'API ne confirme pas l'autorisation.
+      </p>
+      <button
+        onClick={onClose}
+        className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800"
+      >
+        Fermer
+      </button>
+    </div>
+  )
+}
+
+function CompactInfo({ icon, label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center gap-2.5 text-slate-400">
+        <div className="opacity-60">{icon}</div>
+        <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+      </div>
+      <span className="text-xs font-black text-slate-800 truncate max-w-[150px] uppercase tracking-tight">
         {value || '-'}
       </span>
     </div>
   )
 }
 
-function ActionButton({
-  label,
-  icon,
-  onClick,
-  disabled = false,
-  className = '',
-  variant = 'primary',
-}) {
+function MainAction({ label, icon, onClick, disabled, variant = 'slate' }) {
   const tones = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700',
-    warning: 'bg-amber-500 text-white hover:bg-amber-600',
-    danger: 'bg-rose-600 text-white hover:bg-rose-700',
-    outline: 'border border-blue-200 bg-blue-50/70 text-blue-700 hover:bg-blue-100',
-    neutral: 'border border-slate-200 bg-white/70 text-slate-700 hover:bg-slate-50',
+    emerald: 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20',
+    slate: 'bg-slate-900 hover:bg-slate-800 shadow-slate-900/20',
   }
-
   return (
     <button
-      type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center justify-center gap-2 rounded-[1.25rem] px-4 py-3 text-sm font-medium shadow-sm ${
-        tones[variant]
-      } ${disabled ? 'cursor-not-allowed opacity-60' : ''} ${className}`}
+      className={clsx(
+        'w-full h-14 rounded-2xl text-white text-xs font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-xl disabled:opacity-40 disabled:cursor-not-allowed hover:-translate-y-0.5 active:scale-95',
+        tones[variant],
+      )}
     >
-      {icon}
-      {label}
+      {icon} {label}
+    </button>
+  )
+}
+
+function SideAction({ label, icon, onClick, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="h-12 rounded-2xl border-2 border-slate-100 bg-white text-slate-600 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+    >
+      {icon} {label}
+    </button>
+  )
+}
+
+function GhostAction({ label, icon, onClick, disabled, variant = 'slate' }) {
+  const tones = {
+    slate: 'text-slate-400 hover:text-slate-900 hover:bg-slate-50',
+    rose: 'text-slate-400 hover:text-rose-600 hover:bg-rose-50',
+  }
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={clsx(
+        'w-full px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all disabled:opacity-30 disabled:cursor-not-allowed',
+        tones[variant],
+      )}
+    >
+      {icon} {label}
     </button>
   )
 }

@@ -66,6 +66,7 @@ class StoreMessageRequest extends FormRequest
             }
 
             $courrierId = $this->input('courrier_id');
+            $destinataireId = $this->input('destinataire_id');
 
             if ($courrierId) {
                 $courrier = Courrier::with('niveauConfidentialite', 'createur')->find($courrierId);
@@ -74,25 +75,26 @@ class StoreMessageRequest extends FormRequest
                     return;
                 }
 
-                // Vérifier si l'utilisateur peut voir ce courrier
-                $peutVoirCourrier = $this->userPeutVoirCourrier($user, $courrier);
-
-                if (!$peutVoirCourrier) {
+                // Vérifier si l'expéditeur peut voir ce courrier
+                if (!$user->peutVoirCourrier($courrier)) {
                     $validator->errors()->add(
                         'courrier_id',
                         'Vous n\'avez pas le droit de référencer ce courrier.'
                     );
+                    return;
+                }
+
+                // Vérifier si le destinataire peut voir ce courrier
+                if ($destinataireId) {
+                    $destinataire = User::find($destinataireId);
+                    if ($destinataire && !$destinataire->peutVoirCourrier($courrier)) {
+                        $validator->errors()->add(
+                            'courrier_id',
+                            'Le destinataire n\'a pas l\'autorisation de consulter le courrier référencé.'
+                        );
+                    }
                 }
             }
         });
-    }
-
-    /**
-     * Vérifie si l'utilisateur peut voir le courrier.
-     * Utilise les mêmes règles que pour l'affichage du détail.
-     */
-    private function userPeutVoirCourrier(User $user, Courrier $courrier): bool
-    {
-        return $courrier->peutEtreVuEnDetailPar($user);
     }
 }

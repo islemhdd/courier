@@ -1,0 +1,702 @@
+================================================================================
+  FONCTIONNEMENT DE L'APPLICATION "GESTION DE COURRIER"
+  Système de gestion électronique du courrier pour administrations
+================================================================================
+
+1. APERÇU GENERAL
+--------------------------------------------------------------------------------
+L'application "Gestion de Courrier" est une plateforme web de gestion
+électronique du courrier destinée aux administrations et grandes organisations.
+Elle remplace le registre papier par un workflow numérique complet, permettant
+le suivi, la validation, la transmission et l'archivage du courrier entrant
+et sortant.
+
+Technologies utilisées :
+  - Backend  : Laravel 12 (PHP 8.2+), Eloquent ORM, Sanctum (auth API)
+  - Frontend : React 19 SPA, Tailwind CSS v4, React Router
+  - Base de données : SQLite / MySQL / PostgreSQL
+  - Temps réel : Laravel Reverb (WebSocket) + Laravel Echo
+  - OCR : Tesseract OCR + smalot/pdfparser
+  - File d'attente : Laravel Queue (jobs asynchrones)
+
+
+2. ARCHITECTURE TECHNIQUE
+--------------------------------------------------------------------------------
+
+2.1. Backend (Laravel 12)
+  - API REST JSON avec authentification par tokens Sanctum
+  - 8 contrôleurs : CourrierController, MessageController, UserController,
+    ServiceController, AuthenticatedSessionController, OcrController
+  - 10 modèles Eloquent : User, Courrier, Message, Service, Structure,
+    Archive, CourrierType, CourrierAttachment, CourrierComment,
+    CourrierRecipient, CourrierPerson, Instruction, NiveauConfidentialite,
+    Source
+  - 3 Jobs : ProcessOcrJob (OCR asynchrone)
+  - 3 Notifications broadcast : CourrierReceivedNotification,
+    MessageSentNotification, ValidationRequestedNotification
+  - 1 commande planifiée : courriers:archiver-valides (mensuelle)
+  - 1 Service : OcrService (extraction et résumé automatique)
+
+2.2. Frontend (React 19 SPA)
+  - 6 pages principales : Dashboard, ReceivedCourriers, SentCourriers,
+    Messages, Archives, Validation, Users
+  - 1 page d'authentification : Login
+  - 10 composants : CourrierForm, CourrierDetails, CourrierTable,
+    CourrierTransmitForm, NewCourrierForm, ReplyCourrierForm,
+    AllDetails, Pagination, SkeletonLoader, Badge
+  - Cache localStorage avec TTL (5 min dashboard, 3 min validation)
+  - Lazy loading des pages (code splitting)
+  - Connexion WebSocket via Laravel Echo pour notifications temps réel
+
+2.3. Routage API
+  POST   /api/login                              -> Authentification
+  GET    /api/user                               -> Utilisateur courant
+  POST   /api/logout                             -> Déconnexion
+  GET    /api/courriers                          -> Liste courriers
+  GET    /api/courriers/recus                    -> Courriers reçus
+  GET    /api/courriers/envoyes                  -> Courriers envoyés
+  GET    /api/courriers/archives                 -> Archives
+  GET    /api/courriers/validation               -> File de validation
+  GET    /api/courriers/stats                    -> Statistiques
+  GET    /api/courriers/create                   -> Données formulaire
+  POST   /api/courriers                          -> Création
+  GET    /api/courriers/{id}                     -> Détail
+  POST   /api/courriers/{id}                     -> Modification
+  DELETE /api/courriers/{id}                     -> Suppression
+  PATCH  /api/courriers/{id}/archiver            -> Archiver
+  PATCH  /api/courriers/{id}/transmettre         -> Transmettre
+  PATCH  /api/courriers/{id}/valider             -> Valider
+  PATCH  /api/courriers/{id}/non-valider         -> Non valider
+  PATCH  /api/courriers/{id}/demander-validation -> Demander validation
+  GET    /api/courriers/{id}/ocr                 -> Statut OCR
+  POST   /api/courriers/{id}/ocr/rerun           -> Relancer OCR
+  POST   /api/ocr/preview                        -> Prévisualisation OCR
+  GET    /api/messages                           -> Messages
+  POST   /api/messages                           -> Créer message
+  GET    /api/messages/non-lus                   -> Compteur non lus
+  GET    /api/messages/destinataires             -> Recherche destinataires
+  GET    /api/messages/{id}                      -> Détail message
+  PATCH  /api/messages/{id}                      -> Modifier message
+  DELETE /api/messages/{id}                      -> Supprimer message
+  PATCH  /api/messages/{id}/send                 -> Envoyer brouillon
+  PATCH  /api/messages/{id}/read                 -> Marquer lu
+  GET    /api/utilisateurs                       -> Liste utilisateurs
+  POST   /api/utilisateurs                       -> Créer utilisateur
+  PATCH  /api/utilisateurs/{id}                  -> Modifier utilisateur
+  DELETE /api/utilisateurs/{id}                  -> Supprimer utilisateur
+  GET    /api/services                           -> Liste services
+  POST   /api/services                           -> Créer service
+  PATCH  /api/services/{id}                      -> Modifier service
+  DELETE /api/services/{id}                      -> Supprimer service
+
+
+3. MODELE DE DONNEES
+--------------------------------------------------------------------------------
+
+3.1. Hiérarchie organisationnelle
+  Structure (direction)
+    └── Service (département)
+         └── User (utilisateur)
+              ├── role : admin | chef | secretaire
+              └── role_scope : general | structure | service
+
+3.2. Table centrale : courriers (50+ colonnes)
+  ┌─ Général ──────────────────────────────────────────┐
+  │  sequence_number        (auto-incrément)            │
+  │  numero                 (COUR-000001 auto-généré)   │
+  │  objet                  (sujet du courrier)          │
+  │  type                   (entrant | sortant)          │
+  │  courrier_type_id       (taxonomie)                  │
+  │  resume                 (manuel ou auto-généré)      │
+  │  extracted_text         (texte brut OCR)             │
+  │  ocr_status             (pending/processing/completed│
+  │                         /failed)                    │
+  │  summary_source         (manual | auto_generated)   │
+  ├─ Expéditeur / Destinataire ────────────────────────┤
+  │  expediteur, destinataire (texte libre)             │
+  │  source_id               (provenance)               │
+  │  service_source_id       (service émetteur)         │
+  │  service_destinataire_id (service destinataire)     │
+  │  structure_origine_id    (structure émettrice)      │
+  │  structure_destinataire_id (structure destinataire) │
+  ├─ Dates ────────────────────────────────────────────┤
+  │  date_creation           (auto: now())              │
+  │  date_reception                                     │
+  │  requiert_reponse        (boolean)                  │
+  │  delai_reponse_jours                                │
+  │  date_limite_reponse     (calculée automatiquement) │
+  │  repondu_le              (auto quand réponse créée) │
+  ├─ Workflow ─────────────────────────────────────────┤
+  │  statut                  (CREE/NON_VALIDE/VALIDE/   │
+  │                           TRANSMIS/RECU)           │
+  │  createur_id             (utilisateur créateur)     │
+  │  valideur_id             (utilisateur valideur)     │
+  │  transmis_par_id         (utilisateur transmetteur) │
+  │  transmis_le                                        │
+  │  transmission_demandee   (boolean)                  │
+  │  mode_diffusion          (unicast/multicast/broad-  │
+  │                           cast)                    │
+  │  parent_courrier_id      (pour les réponses)        │
+  └─ Fichier ──────────────────────────────────────────┘
+     chemin_fichier
+     niveau_confidentialite_id
+
+3.3. Tables satellites
+  - courrier_attachments : pièces jointes (nom, chemin, texte OCR, statut)
+  - courrier_recipients : destinataires polymorphes
+    (type: user/service/structure/all)
+  - courrier_comments : commentaires et instructions
+    (avec validation_requise, valide_par_id, valide_le)
+  - courrier_people : personnes concernées (many-to-many users)
+  - messages : messagerie interne (émetteur, destinataire, contenu,
+    lu, statut CREE/ENVOYE, courrier_id optionnel)
+  - archives : snapshot complet des courriers archivés + métadonnées
+    d'archivage (archive_par_id, archive_le, motif)
+
+
+4. ROLES ET PERMISSIONS
+--------------------------------------------------------------------------------
+
+4.1. Définition des rôles
+  ADMIN       = Accès complet à toute l'application
+  CHEF        = Gère et valide le courrier de son périmètre
+  SECRETAIRE  = Crée et suit le courrier
+
+4.2. Scopes (périmètres d'action)
+  GENERAL   = Toute l'organisation
+  STRUCTURE = Une direction spécifique
+  SERVICE   = Un département spécifique
+
+4.3. Matrice des permissions
+
++------------------+--------+--------+--------+--------+--------+---------+
+| Action           | Admin  | Chef   | Chef   | Chef   | Secr.  | Secr.   |
+|                  |        | Général| Struct.| Service| Général| Service |
++------------------+--------+--------+--------+--------+--------+---------+
+| Créer courrier   | Oui    | Oui    | Oui    | Oui    | Oui    | Oui     |
+| Créer entrant    | Oui    | Oui    | Non    | Non    | Non    | Non     |
+| Valider          | Oui    | Oui    | Serv./ | Son    | Non    | Non     |
+|                  |        |        | Struct.| service|        |        |
+| Transmettre      | Oui    | Oui    | Sa     | Son    | Non*   | Non*    |
+|                  |        |        | struct.| service|        |        |
+| Archiver         | Oui    | Oui    | Oui    | Oui    | Oui    | Oui     |
+| Gérer utilisat.  | Tous   | Tous   | Sa     | Son    | Non    | Non     |
+|                  |        |        | struct.| service|        |        |
+| Supprimer        | Oui    | Non    | Non    | Non    | Non    | Non     |
++------------------+--------+--------+--------+--------+--------+---------+
+
+* Le secrétaire peut initier une transmission mais elle nécessite
+  validation d'un chef (transmission_demandee = true)
+
+4.4. Règles de visibilité
+  Un utilisateur voit un courrier si :
+  - Admin ou Chef général → tout
+  - Personne directement concernée (créateur, valideur, transmis par,
+    personne concernée, destinataire direct)
+  - Service source ou créateur du même service
+  - Service destinataire (si chef service)
+  - Structure origine ou destinataire
+  - Destinataire "all" (broadcast)
+
+  Restrictions supplémentaires pour les détails :
+  - Niveau de confidentialité : l'utilisateur doit avoir un rang >=
+    au rang du courrier
+  - Chef service : ne voit pas les détails inter-structures
+  - Chef structure : voit tout pour sa structure
+
+
+5. CYCLE DE VIE D'UN COURRIER (WORKFLOW)
+--------------------------------------------------------------------------------
+
+5.1. Schéma des transitions d'état
+
+                  ┌──────────────────────────┐
+                  │        CREE              │◄──── Création par secrétaire
+                  └─────────┬────────────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+              ▼             ▼             │
+    ┌─────────────────┐  ┌──────────┐     │
+    │  Demander       │  │ NON_     │     │
+    │  validation     │  │ VALIDE   │─────┘ (rejet → retour création)
+    └────────┬────────┘  └──────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │    VALIDE       │◄──── Validation par chef
+    │  (ou RECU si   │
+    │   entrant)      │
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │    TRANSMIS     │◄──── Transmission
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │      RECU       │◄──── Accusé réception
+    └────────┬────────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │    ARCHIVE      │◄──── Archivage (manuel ou automatique)
+    └─────────────────┘
+
+5.2. Étape 1 : Création
+  Acteurs : Secrétaire (sortant) ou Chef général (entrant)
+  Contrôle : User::peutCreerCourrierRecu()
+  Saisie :
+    - Objet, type, type de courrier, résumé
+    - Expéditeur, destinataire, source
+    - Dates (création, réception, réponse)
+    - Niveau de confidentialité
+    - Service source, service destinataire
+    - Mode de diffusion (unicast/multicast/broadcast)
+    - Instructions avec validation requise
+    - Personnes concernées (many-to-many)
+    - Pièces jointes (drag & drop, multiples)
+  Automatisme :
+    - Numérotation : séquence auto-incrémentée (lock pessimiste)
+    - Format : COUR-000001
+    - Résolution structure depuis service
+    - Si requiert_reponse + délai → date_limite_reponse = date_reception + X jours
+    - Dispatch du job OCR asynchrone
+    - Si statut = CREE → notification aux chefs du service
+  Statut initial :
+    - Secrétaire → CREE
+    - Chef (entrant) → RECU
+    - Chef (sortant) → VALIDE
+
+5.3. Étape 2 : Demande de validation
+  Acteur : Secrétaire (créateur)
+  Endpoint : PATCH /api/courriers/{id}/demander-validation
+  Effet : Envoie ValidationRequestedNotification à tous les chefs
+           dont le service correspond ou les chefs généraux
+  Logique de notification :
+    - Chefs du service source
+    - Chefs de la structure du créateur
+    - Chefs de scope général
+
+5.4. Étape 3 : Validation
+  Acteur : Chef (service, structure ou général)
+  Contrôle : Courrier::peutEtreValidePar(User)
+    - Admin ou Chef général → tout
+    - Chef ne peut pas valider son propre courrier
+    - Chef doit appartenir au service source ou être destinataire structure
+  Endpoint VALIDER : PATCH /api/courriers/{id}/valider
+    - Si transmission_demandee = true → statut = TRANSMIS
+    - Si entrant → statut = RECU
+    - Si sortant → statut = VALIDE
+    - Enregistrement de valideur_id
+    - Marquage des commentaires validation_requise comme validés
+  Endpoint NON VALIDER : PATCH /api/courriers/{id}/non-valider
+    - Statut = NON_VALIDE
+    - Le courrier reste accessible pour modification et re-soumission
+
+5.5. Étape 4 : Transmission
+  Acteur : Chef (admin, général, structure, service)
+  Contrôle : Courrier::peutEtreTransmisPar(User)
+    - Statut doit être VALIDE, TRANSMIS ou RECU
+  Endpoint : PATCH /api/courriers/{id}/transmettre
+  Paramètres :
+    - Destinataires (user/service/structure/all)
+      * Un utilisateur spécifique (user)
+      * Un service entier (service)
+      * Une structure entière (structure)
+      * Toute l'organisation (all / broadcast)
+    - Mode de diffusion
+    - Instructions et commentaires
+    - Service destinataire
+  Règles :
+    - Chef structure : transmission limitée aux services de sa structure
+    - Chef structure : pas de mode broadcast
+    - Secrétaire : transmission_demandee = true → statut = CREE
+    - Chef : statut = TRANSMIS, enregistre transmis_par_id et transmis_le
+
+5.6. Étape 5 : Archivage
+  Acteur : Créateur, personne du même service, admin
+  Contrôle : Courrier::peutEtreArchivePar(User)
+    - Statut doit être VALIDE, TRANSMIS ou RECU (estArchivable)
+    - Si requiert_reponse → doit avoir été répondu
+    - Créateur ou même service que le créateur
+  Endpoint : PATCH /api/courriers/{id}/archiver
+  Processus (dans une transaction DB) :
+    1. Création d'un enregistrement dans la table archives avec
+       copie complète des champs (snapshot)
+    2. Ajout des métadonnées d'archivage (archive_par_id, archive_le, motif)
+    3. Suppression du courrier original
+  Archivage automatique :
+    - Commande planifiée : courriers:archiver-valides
+    - Fréquence : mensuelle
+    - Critères : courriers en statut VALIDE, TRANSMIS ou RECU
+      au-delà d'un certain délai (configurable)
+
+5.7. Étape 6 : Réponse
+  Contrôle : Courrier::peutEtreReponduPar(User)
+    - requiert_reponse = true
+    - Pas déjà répondu
+    - Destinataire direct (user/service/structure)
+    - Chef structure : ne peut pas répondre si le courrier a été
+      transmis à un service de sa structure
+  Mécanisme :
+    - Création d'un nouveau courrier avec parent_courrier_id
+    - Reprise automatique du type, source, confidentialité du parent
+    - Inversion service_source/service_destinataire
+    - Définition automatique des destinataires (getReplyRecipients) :
+      1. Chef général et son secrétaire
+      2. Chef de service de l'utilisateur et son secrétaire
+      3. Chef de structure de l'utilisateur et son secrétaire
+    - Mode diffusion forcé à "multicast"
+    - Pas d'instructions dans une réponse
+  Automatisme (saved event sur Courrier) :
+    - Le parent_courrier_id est marqué repondu_le = now()
+    - Se déclenche si parent existe et n'est pas déjà répondu
+
+
+6. FONCTIONNALITES TRANSVERSES DETAILLEES
+--------------------------------------------------------------------------------
+
+6.1. OCR (Reconnaissance Optique de Caractères)
+  Déclenchement :
+    - Automatique à la création/modification (ProcessOcrJob)
+    - Manuel via endpoint POST /api/courriers/{id}/ocr/rerun
+    - Prévisualisation via POST /api/ocr/preview
+  Moteur : Tesseract OCR
+    - Langues : arabe (ara) + français (fra) + anglais (eng)
+    - PSM (Page Segmentation Mode) : 3 (détection automatique)
+  Formats supportés :
+    - PDF (.pdf)
+    - DOCX, DOC (.doc, .docx)
+    - Images : JPG, JPEG, PNG, WebP
+  Pipeline d'extraction :
+    PDF :
+      1. Tentative extraction texte native (smalot/pdfparser)
+      2. Si texte < 50 caractères → conversion en images via Imagick
+         ou Ghostscript → Tesseract OCR
+    DOCX :
+      1. Extraction XML (ZipArchive → word/document.xml)
+      2. Si texte < 20 caractères → Tesseract OCR
+    Images : Tesseract OCR direct
+  Post-traitement :
+    - Nettoyage : suppression retours chariot, espaces multiples,
+      lignes vides répétées
+    - Déduplication inter-fichiers (hash MD5)
+  Génération de résumé automatique :
+    Algorithme de scoring par phrase :
+      - Score de base : 100
+      - Mots-clés d'action (+150) : sollicite, approuve, accord,
+        informe, transmet, décision, rapport, demande, budget, etc.
+      - Position (+5 par phrase depuis la fin) : favorise les phrases
+        du début du document
+      - Longueur idéale (+50 si 40-350 caractères, -50 si >500)
+      - Chiffres (+30)
+    Sélection :
+      - Top 4 phrases maximum
+      - Déduplication : similarité par intersection de mots (>70% exclu)
+      - Réorganisation par ordre d'apparition dans le document
+    Finalisation :
+      - Préfixe avec l'objet si différent
+      - Troncature à 700 caractères
+  Détection de langue :
+    - Arabe : comptage caractères unicode arabes
+    - Français : comptage mots-clés (le, la, les, un, une, des, ...)
+    - Anglais : comptage mots-clés (the, a, an, is, are, was, ...)
+  Suivi :
+    - Par pièce jointe : ocr_text, ocr_status, ocr_confidence
+    - Global : ocr_status sur le courrier (pending/processing/
+      completed/failed)
+    - Statut OCR consultable via GET /api/courriers/{id}/ocr
+
+6.2. Notifications temps réel
+  Infrastructure :
+    - Backend : Laravel Reverb (serveur WebSocket natif) ou Pusher
+    - Frontend : Laravel Echo + Pusher.js
+    - Canal privé : App.Models.User.{id}
+  Types de notifications :
+    1. CourrierReceivedNotification
+       - Déclencheur : réception d'un courrier
+       - Contenu : titre, message, numéro courrier
+       - Redirection : page "/recus"
+    2. ValidationRequestedNotification
+       - Déclencheur : demande de validation
+       - Contenu : titre, message, numéro courrier
+       - Redirection : page "/validation"
+    3. MessageSentNotification
+       - Déclencheur : envoi d'un message interne
+       - Contenu : titre, message
+       - Redirection : page "/messages"
+  Interface utilisateur :
+    - Toast de notification (5 secondes, cliquable)
+    - Panneau latéral avec liste des notifications
+    - Bouton cloche avec compteur (badge rouge)
+    - Marquage individuel ou suppression groupée
+    - Horodatage relatif (à l'instant, X min, X h, date)
+
+6.3. Messagerie interne
+  Fonctionnalités :
+    - Envoi de messages entre utilisateurs
+    - Brouillons (statut CREE)
+    - Messages envoyés (statut ENVOYE)
+    - Référence optionnelle à un courrier
+    - Marquage comme lu
+    - Compteur de messages non lus
+    - Recherche par contenu, émetteur, destinataire
+    - Auto-complétion des destinataires (priorité même service)
+  Sécurité :
+    - Vérification : le destinataire peut voir le courrier référencé
+    - Auto-envoi interdit
+    - Brouillons visibles seulement par l'émetteur
+    - Messages envoyés non modifiables
+    - Suppression limitée aux brouillons
+
+6.4. Cache client (localStorage)
+  Pages mises en cache :
+    - Dashboard : TTL 5 minutes
+    - Validation : TTL 3 minutes
+    - Listes paginées avec leurs paramètres de filtrage
+  Mécanisme :
+    - Cache key = {nom_page}_{paramètres_query_string}
+    - Vérification TTL avant utilisation
+    - Invalidation automatique après action d'écriture (création,
+      modification, validation, etc.)
+    - Revalidation possible sans attendre l'expiration du TTL
+  Structure du cache :
+    - Courriers (tableau)
+    - Pagination (métadonnées)
+    - selectedId (dernier élément sélectionné)
+    - Stats (pour le dashboard)
+    - UnreadMessages (pour le dashboard)
+
+6.5. Filtres et recherche
+  Filtres disponibles sur les listes de courriers :
+    - q (recherche plein texte)
+    - numero (préfixe)
+    - objet (contient)
+    - expediteur (préfixe)
+    - destinataire (préfixe)
+    - statut
+    - type (entrant/sortant)
+    - niveau_confidentialite_id
+    - date_reception (jour/mois/année/plage)
+    - resume (recherche plein texte)
+    - parent_courrier_id
+    - repondu (oui/non)
+    - mois
+    - structure_id
+    - service_id
+  Recherche plein texte (q) :
+    - MySQL : FULLTEXT MATCH AGAINST en mode BOOLEAN
+    - SQLite : LIKE sur numero, objet, resume, expediteur, destinataire
+    - Jointures : type courrier, source, service, structure, destinataires,
+      personnes concernées, commentaires, texte OCR
+
+
+7. FLUX UTILISATEUR COMPLET (SCENARIO TYPIQUE)
+--------------------------------------------------------------------------------
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. CONNEXION                                                        │
+│    └─ Page de login avec email + mot de passe                       │
+│       └─ Authentification via Sanctum (token API)                   │
+│          └─ Redirection vers le Dashboard                           │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 2. DASHBOARD                                                        │
+│    └─ Statistiques en temps réel :                                  │
+│       ├─ Courriers reçus (type entrant)                             │
+│       ├─ Courriers envoyés (type sortant)                           │
+│       ├─ En attente de validation (validables par moi)              │
+│       ├─ Archives                                                   │
+│       └─ En attente de réponse (requiert_reponse + non répondu)     │
+│    └─ Flux d'activité récent (8 derniers courriers modifiés)        │
+│    └─ Bouton "Nouveau courrier"                                     │
+│       └─ Si chef général : sélection entrant/sortant               │
+│       └─ Sinon : sortant uniquement                                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 3. CREATION D'UN COURRIER                                           │
+│    └─ Formulaire complet (NewCourrierForm.jsx) :                    │
+│       ├─ Type de courrier (entrant/sortant)                         │
+│       ├─ Type (taxonomie depuis table courrier_types)               │
+│       ├─ Objet (sujet)                                              │
+│       ├─ Résumé (manuel ou auto-généré par OCR)                     │
+│       ├─ Expéditeur (texte libre)                                   │
+│       ├─ Destinataire (texte libre)                                 │
+│       ├─ Source (depuis table, ou nouvelle si permission)           │
+│       ├─ Dates : réception                                          │
+│       ├─ Service source (liste des services)                        │
+│       ├─ Service destinataire                                       │
+│       ├─ Structure destinataire (auto-résolue)                      │
+│       ├─ Niveau de confidentialité (filtré par rang utilisateur)   │
+│       ├─ Mode de diffusion (unicast/multicast/broadcast)            │
+│       ├─ Requiert réponse + délai en jours                          │
+│       ├─ Personnes concernées (sélection multi utilisateurs)        │
+│       ├─ Instructions (prédéfinies ou libres) avec validation       │
+│       └─ Pièces jointes (drag & drop, fichiers multiples)           │
+│    └─ Soumission :                                                  │
+│       ├─ Validation backend (StoreCourrierRequest)                  │
+│       ├─ Création en transaction DB                                 │
+│       ├─ Dispatch OCR job asynchrone                                │
+│       ├─ Notification aux validateurs si statut = CREE              │
+│       └─ Réponse 201 + courrier enrichi + message succès            │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 4. VALIDATION                                                       │
+│    └─ Page "Validation" (Validation.jsx) :                          │
+│       ├─ File des courriers en attente (CREE ou NON_VALIDE)         │
+│       │  visibles et validables par l'utilisateur courant           │
+│       ├─ Recherche et filtres                                       │
+│       └─ Panneau de détails avec actions :                          │
+│          ├─ Consulter toutes les informations du courrier           │
+│          ├─ Voir les pièces jointes et le texte OCR                 │
+│          ├─ Voir l'historique des commentaires                      │
+│          ├─ Bouton "Valider" ✓                                      │
+│          └─ Bouton "Non valider" ✗                                  │
+│    └─ Action VALIDER :                                              │
+│       ├─ Changement de statut (TRANSMIS/RECU/VALIDE)               │
+│       ├─ Enregistrement du valideur                                 │
+│       ├─ Marquage des instructions comme validées                   │
+│       └─ Notification au créateur                                   │
+│    └─ Action NON VALIDER :                                          │
+│       ├─ Statut → NON_VALIDE                                        │
+│       └─ Courrier retourne dans la file du créateur                 │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 5. TRANSMISSION                                                     │
+│    └─ Accessible depuis les détails du courrier (si permis)         │
+│    └─ Modal CourrierTransmitForm.jsx :                              │
+│       ├─ Sélection des destinataires :                              │
+│       │  ├─ Un service spécifique                                   │
+│       │  ├─ Une structure spécifique                                │
+│       │  ├─ Un utilisateur spécifique                               │
+│       │  └─ Tout le monde (broadcast, pas pour chef structure)      │
+│       ├─ Instructions et commentaires additionnels                  │
+│       └─ Mode de diffusion                                          │
+│    └─ Soumission :                                                  │
+│       ├─ Contrôle chef structure (ne peut transmettre qu'à sa       │
+│       │  propre structure)                                          │
+│       ├─ Si secrétaire : transmission_demandee = true, statut CREE │
+│       │  + notification validateurs                                 │
+│       └─ Si chef : statut TRANSMIS + enregistrement transmis_par/le│
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 6. SUIVI ET RECHERCHE                                               │
+│    └─ Pages "Reçus" et "Envoyés" :                                  │
+│       ├─ Liste paginée avec sélection latérale                      │
+│       ├─ Filtres : statut, type, date, service, structure,          │
+│       │  confidentialité, expéditeur, destinataire                  │
+│       ├─ Recherche plein texte                                      │
+│       └─ Panneau de détails avec actions contextuelles              │
+│    └─ Détails complets (AllDetails.jsx) :                           │
+│       ├─ Toutes les métadonnées du courrier                         │
+│       ├─ Pièces jointes (téléchargement)                            │
+│       ├─ Texte OCR extrait                                          │
+│       ├─ Résumé auto-généré                                         │
+│       ├─ Commentaires et instructions                               │
+│       ├─ Personnes concernées                                       │
+│       ├─ Filaire de réponses (si parent/enfant)                     │
+│       └─ Actions : Valider, Transmettre, Archiver, Répondre,        │
+│          Modifier (admin), Supprimer (admin)                        │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 7. ARCHIVAGE                                                        │
+│    └─ Manuel : bouton "Archiver" dans les détails                   │
+│    └─ Automatique : commande planifiée mensuelle                    │
+│    └─ Page "Archives" :                                             │
+│       ├─ Liste des courriers archivés avec recherche                │
+│       ├─ Snapshot complet des données originales                    │
+│       └─ Information : qui a archivé, quand, motif                  │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 8. MESSAGERIE INTERNE                                               │
+│    └─ Page "Messages" :                                             │
+│       ├─ Boîte de réception (messages reçus)                        │
+│       ├─ Messages envoyés                                           │
+│       ├─ Brouillons                                                 │
+│       ├─ Compteur de non lus                                        │
+│       ├─ Recherche                                                  │
+│       └─ Filtre par courrier associé                                │
+│    └─ Nouveau message :                                             │
+│       ├─ Auto-complétion destinataire                               │
+│       ├─ Référence optionnelle à un courrier                        │
+│       ├─ Contenu du message                                         │
+│       └─ Envoyer ou sauvegarder comme brouillon                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                                                      
+┌─────────────────────────────────────────────────────────────────────┐
+│ 9. GESTION DES UTILISATEURS (admin uniquement)                      │
+│    └─ Page "Utilisateurs" :                                         │
+│       ├─ Liste des utilisateurs                                     │
+│       ├─ Création : nom, prénom, email, mot de passe,               │
+│       │  rôle, scope, service, structure, niveau confidentialité    │
+│       ├─ Modification                                               │
+│       └─ Suppression (admin uniquement)                             │
+│    └─ Contrôle hiérarchique :                                       │
+│       ├─ Admin/Chef général : gère tout                             │
+│       ├─ Chef structure : gère les utilisateurs de sa structure     │
+│       └─ Chef service : gère les utilisateurs de son service        │
+└─────────────────────────────────────────────────────────────────────┘
+
+
+8. REGLES METIER IMPORTANTES
+--------------------------------------------------------------------------------
+
+- Un courrier ne peut pas être validé par son propre créateur
+- Seul le chef général peut créer un courrier entrant
+- Un chef de structure ne peut transmettre qu'aux services de sa
+  propre structure, jamais en broadcast
+- Un courrier nécessitant une réponse doit avoir été répondu avant
+  de pouvoir être archivé
+- Les pièces jointes sont supprimées physiquement du disque quand
+  le courrier est supprimé
+- Le numéro de courrier est auto-généré séquentiellement avec
+  verrouillage pessimiste de la base (lockForUpdate)
+- La structure destinataire est automatiquement résolue à partir
+  du service destinataire ou des destinataires
+- Les notifications sont envoyées en temps réel via WebSocket
+- Le cache client est invalidé après chaque action d'écriture
+
+
+9. DIAGRAMME DE NAVIGATION
+--------------------------------------------------------------------------------
+
+                    ┌───────────┐
+                    │  LOGIN    │
+                    └─────┬─────┘
+                          │
+                    ┌─────▼─────┐
+                    │ DASHBOARD │
+                    └─────┬─────┘
+                          │
+          ┌───────────────┼───────────────┬──────────────┬──────────────┐
+          │               │               │              │              │
+    ┌─────▼──────┐ ┌──────▼──────┐ ┌──────▼──────┐ ┌─────▼──────┐ ┌──────▼──────┐
+    │  RECUS     │ │  ENVOYES   │ │ MESSAGES   │ │ ARCHIVES  │ │VALIDATION  │
+    └─────┬──────┘ └──────┬──────┘ └──────┬──────┘ └─────┬──────┘ └──────┬──────┘
+          │               │               │              │              │
+          └───────┬───────┘               │              │              │
+                  │                       │              │              │
+          ┌───────▼────────┐     ┌────────▼───────┐      │              │
+          │  DETAILLS      │     │ NOUVEAU        │      │              │
+          │  COURRIER      │     │ MESSAGE        │      │              │
+          └───┬───┬───┬────┘     └────────────────┘      │              │
+              │   │   │                                  │              │
+     ┌────────┘   │   └──────────┐                       │              │
+     ▼            ▼              ▼                       │              │
+┌────────┐ ┌──────────┐ ┌──────────────┐                │              │
+│REPONSE │ │TRANSMETTRE│ │ MODIFIER    │                │              │
+└────────┘ └──────────┘ └──────────────┘                │              │
+                                                         │              │
+                                              ┌──────────▼──────┐ ┌─────▼──────────┐
+                                              │ UTILISATEURS    │ │ NOUVEAU        │
+                                              │ (CRUD)          │ │ UTILISATEUR    │
+                                              └─────────────────┘ └────────────────┘
