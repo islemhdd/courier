@@ -91,54 +91,36 @@ class OcrService
         }
 
         $text = $this->cleanText($text);
+        $sentences = $this->extractSentences($text);
 
-        $lines = preg_split('/\n+/', $text);
-        $lines = array_map('trim', $lines);
-        $lines = array_filter($lines, fn($l) => $l !== '');
-        $lines = array_values($lines);
-
-        if (empty($lines)) {
+        if (empty($sentences)) {
             return $objet ?: '';
         }
 
-        $headerKeywords = ['objet', 'object', 'subject', 'réf', 'ref', 'réference', 'reference',
-                            'n°', 'no.', 'numéro', 'numero', 'date', 'direction', 'service',
-                            'ministère', 'destinataire', 'expéditeur', 'expediteur', 'à',
-                            'cc', 'cci', 'bcc', 'pièce jointe', 'piece jointe', 'de la part',
-                            'téléphone', 'telephone', 'fax', 'email', 'site'];
-
-        $skipLines = ['bonjour', 'madame', 'monsieur', 'cher', 'chère', 'dear', 'sir', 'madam',
-                       'cordialement', 'salutations', 'merci', 'sincèrement', 'respectueusement',
-                       'bien à vous', 'best regards', 'sincerely', 'regards', 'thanks',
-                       'veuillez agréer', 'veuillez recevoir', 'je vous prie', 'dans l\'attente',
-                       'mes salutations', 'distinguées', 'distingués'];
-
         $candidates = [];
-        foreach ($lines as $idx => $line) {
-            $lower = mb_strtolower(trim($line));
-            if (mb_strlen($line) < 10) continue;
-            if (preg_match('/^[\d\s\/\-\.:,\;#()%]+$/', $line)) continue;
+        foreach ($sentences as $idx => $sentence) {
+            $lower = mb_strtolower(trim($sentence));
 
+            if (mb_strlen($sentence) < 15) continue;
+            if (preg_match('/^[\d\s\/\-\.:,\;#()%]+$/', $sentence)) continue;
+
+            // Header filter - only skip if it's at the start and the line is relatively short
             $isHeader = false;
-            foreach ($headerKeywords as $kw) {
-                if (mb_strpos($lower, $kw) === 0) {
+            foreach ($this->getHeaderKeywords() as $kw) {
+                if (mb_strpos($lower, $kw) === 0 && mb_strlen($lower) < 60) {
                     $isHeader = true;
                     break;
                 }
             }
             if ($isHeader) continue;
 
-            $isSkip = false;
-            foreach ($skipLines as $sk) {
-                if (mb_strpos($lower, $sk) === 0) {
-                    $isSkip = true;
-                    break;
-                }
+            // Salutation/Closing filter - only skip if it's very short
+            if (preg_match('/^(Madame|Monsieur|Cher|Chère|Bonjour|Cordialement|Salutations|Respectueusement|Merci).{0,25},?$/i', trim($sentence))) {
+                continue;
             }
-            if ($isSkip) continue;
 
             $candidates[] = [
-                'text' => $line,
+                'text' => $sentence,
                 'index' => $idx,
             ];
         }
@@ -147,51 +129,33 @@ class OcrService
             return $objet ?: '';
         }
 
-        $termFreq = [];
-        $totalTerms = 0;
-        foreach ($candidates as $cand) {
-            $words = preg_split('/[\s,;:\-–—()]+/u', $cand['text']);
-            foreach ($words as $w) {
-                $w = mb_strtolower(trim($w, " \t\n\r\0\x0B.,;:!?'\"-–—()«»"));
-                if (mb_strlen($w) < 3) continue;
-                if (preg_match('/^\d+$/', $w)) continue;
-                $sw = $this->getStopWords();
-                if (in_array($w, $sw)) continue;
-                $termFreq[$w] = ($termFreq[$w] ?? 0) + 1;
-                $totalTerms++;
-            }
-        }
-
-        $maxFreq = !empty($termFreq) ? max($termFreq) : 1;
-        $numCandidates = count($candidates);
-
         $scored = [];
         foreach ($candidates as $cand) {
-            $words = preg_split('/[\s,;:\-–—()]+/u', $cand['text']);
-            $score = 0;
-            $wordCount = 0;
+            $score = 100;
+            $lowerText = mb_strtolower($cand['text']);
 
-            foreach ($words as $w) {
-                $w = mb_strtolower(trim($w, " \t\n\r\0\x0B.,;:!?'\"-–—()«»"));
-                if (mb_strlen($w) < 3) continue;
-                $sw = $this->getStopWords();
-                if (in_array($w, $sw)) continue;
-                $tf = ($termFreq[$w] ?? 0) / $maxFreq;
-                $idf = $totalTerms > 0 ? log(1 + $totalTerms / (1 + ($termFreq[$w] ?? 1))) : 1;
-                $score += $tf * $idf;
-                $wordCount++;
+            // Action keywords boost
+            foreach ($this->getActionKeywords() as $akw) {
+                if (mb_strpos($lowerText, $akw) !== false) {
+                    $score += 150;
+                }
             }
 
-            if ($wordCount > 0) {
-                $score /= sqrt($wordCount);
-            }
+            // Position bias: favor earlier sentences in the body
+            $score += (count($sentences) - $cand['index']) * 5;
 
-            $positionBias = 1.0 - 0.3 * ($cand['index'] / max($numCandidates - 1, 1));
-            $score *= $positionBias;
-
+            // Length preference: prefer medium-long sentences over very short/long ones
             $textLen = mb_strlen($cand['text']);
-            if ($textLen > 30 && $textLen < 500) {
-                $score *= 1.2;
+            if ($textLen > 40 && $textLen < 350) {
+                $score += 50;
+            }
+            if ($textLen > 500) {
+                $score -= 50;
+            }
+
+            // Numbers boost
+            if (preg_match('/\d+/', $cand['text'])) {
+                $score += 30;
             }
 
             $scored[] = [
@@ -204,16 +168,14 @@ class OcrService
         usort($scored, fn($a, $b) => $b['score'] <=> $a['score']);
 
         $selected = [];
-        $totalSelected = min(5, $numCandidates);
+        $totalSelected = min(4, count($scored));
 
         for ($i = 0; $i < count($scored) && count($selected) < $totalSelected; $i++) {
             $isDuplicate = false;
             $s1Lower = mb_strtolower($scored[$i]['text']);
             foreach ($selected as $sel) {
                 $s2Lower = mb_strtolower($sel['text']);
-                $shorter = mb_strlen($s1Lower) < mb_strlen($s2Lower) ? $s1Lower : $s2Lower;
-                $longer = $shorter === $s1Lower ? $s2Lower : $s1Lower;
-                if (mb_strlen($shorter) > 10 && mb_strpos($longer, $shorter) !== false) {
+                if ($this->calculateSimilarity($s1Lower, $s2Lower) > 0.7) {
                     $isDuplicate = true;
                     break;
                 }
@@ -225,17 +187,15 @@ class OcrService
 
         usort($selected, fn($a, $b) => $a['index'] <=> $b['index']);
 
-        $summaryText = implode(' ', array_map(fn($s) => $s['text'], $selected));
+        $summaryText = implode(' ', array_map(fn($s) => trim($s['text']), $selected));
         $summaryText = preg_replace('/\s+/', ' ', $summaryText);
         $summaryText = trim($summaryText);
 
         if ($objet && $summaryText) {
             $objetClean = mb_strtolower(trim($objet));
             $summaryLower = mb_strtolower($summaryText);
-            if (mb_strpos($summaryLower, $objetClean) === false) {
-                $first = mb_substr($summaryText, 0, 1);
-                $rest = mb_substr($summaryText, 1);
-                $summary = $objet . ' – ' . mb_strtolower($first) . $rest;
+            if (mb_strpos($summaryLower, mb_substr($objetClean, 0, min(15, mb_strlen($objetClean)))) === false) {
+                $summary = $objet . ' – ' . $summaryText;
             } else {
                 $summary = $summaryText;
             }
@@ -245,27 +205,93 @@ class OcrService
             $summary = $summaryText;
         }
 
-        if (mb_strlen($summary) > 600) {
-            $summary = mb_substr($summary, 0, 597) . '...';
+        if (mb_strlen($summary) > 700) {
+            $summary = mb_substr($summary, 0, 697) . '...';
         }
 
         return $summary ?: $objet ?: '';
     }
 
-    private function splitSentences(string $text): array
+    private function getHeaderKeywords(): array
     {
-        $text = preg_replace('/\n+/', "\n", $text);
-        $text = preg_replace('/([.!?]+)\s*\n\s*/', '$1 ', $text);
-        $text = preg_replace('/\n(?!\s*[A-Za-z0-9«"\'(])/', ' ', $text);
+        return ['objet', 'object', 'subject', 'réf', 'ref', 'réference', 'reference',
+                'n°', 'no.', 'numéro', 'numero', 'date', 'direction', 'service',
+                'ministère', 'destinataire', 'expéditeur', 'expediteur', 'à',
+                'cc', 'cci', 'bcc', 'pièce jointe', 'piece jointe', 'de la part',
+                'téléphone', 'telephone', 'fax', 'email', 'site', 'le :', 'par :'];
+    }
 
-        $sentences = preg_split('/(?<=[.!?])\s+(?=[A-Za-z0-9«"\'(])/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+    private function getActionKeywords(): array
+    {
+        return [
+            'sollicit', 'approuv', 'accord', 'inform', 'notif', 'transmet', 'avis', 'décision',
+            'rapport', 'demand', 'prie', 'honneur', 'autoris', 'financement', 'budget', 'montant',
+            'paiement', 'virement', 'recrut', 'affectation', 'mutation', 'mission', 'ordre',
+            'invitation', 'réunion', 'convoc', 'contrat', 'marché', 'avenant', 'convention',
+            'note', 'circulaire', 'directive', 'instruction', 'annuel', 'exercice',
+            'نرجو', 'يشرفني', 'أحيطكم', 'الموافقة', 'يرجى', 'بموجب', 'طلب', 'قرار', 'تقرير', 'ميزانية',
+            'تبليغ', 'إشعار', 'إرسال', 'مهمة', 'اجتماع', 'دعوة', 'عقد', 'اتفاقية', 'تعليمة', 'منشور'
+        ];
+    }
 
-        if (count($sentences) <= 1) {
-            $sentences = preg_split('/\n+/', $text);
+    private function extractSentences(string $text): array
+    {
+        $lines = explode("\n", $text);
+        $joinedLines = [];
+        $currentLine = '';
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (empty($line)) {
+                if ($currentLine) {
+                    $joinedLines[] = $currentLine;
+                    $currentLine = '';
+                }
+                continue;
+            }
+
+            if ($currentLine) {
+                if (preg_match('/^(Madame|Monsieur|Cher|Chère|Bonjour).{0,30},$/i', $currentLine)) {
+                    $joinedLines[] = $currentLine;
+                    $currentLine = $line;
+                    continue;
+                }
+
+                if (preg_match('/[.!?؟]$|[:]$|[\x{0621}-\x{064A}][.]$/u', $currentLine)) {
+                    $joinedLines[] = $currentLine;
+                    $currentLine = $line;
+                } else {
+                    $currentLine .= ' ' . $line;
+                }
+            } else {
+                $currentLine = $line;
+            }
+        }
+        if ($currentLine) {
+            $joinedLines[] = $currentLine;
         }
 
-        $sentences = array_map('trim', $sentences);
-        return array_values(array_filter($sentences, fn($s) => $s !== ''));
+        $fullText = implode("\n", $joinedLines);
+        $sentences = preg_split('/(?<=[.!?؟])\s+(?=[A-Z\x{0600}-\x{06FF}])|(?<=[.!?؟])\n+/u', $fullText, -1, PREG_SPLIT_NO_EMPTY);
+
+        if (count($sentences) <= 1) {
+            return array_map('trim', $joinedLines);
+        }
+
+        return array_map('trim', $sentences);
+    }
+
+    private function calculateSimilarity(string $str1, string $str2): float
+    {
+        $words1 = explode(' ', $str1);
+        $words2 = explode(' ', $str2);
+        
+        $common = array_intersect($words1, $words2);
+        $count = count($common);
+        
+        if ($count === 0) return 0;
+        
+        return (2.0 * $count) / (count($words1) + count($words2));
     }
 
     private function getStopWords(): array
