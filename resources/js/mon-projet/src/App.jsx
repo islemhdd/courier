@@ -137,6 +137,23 @@ function getNotificationRoute(notification) {
     return '/validation'
   }
 
+  // Handle courier received and courier replied notifications
+  if (
+    rawType === 'courrier_received' ||
+    dataType === 'courrier_received'
+  ) {
+    // Aller directement au détail du courrier reçu
+    return `/courriers/${notification.courrier_id || notification.data?.courrier_id}`
+  }
+
+  if (
+    rawType === 'courrier_repondu' ||
+    dataType === 'courrier_repondu'
+  ) {
+    // Aller au courrier parent (celui qui a été répondu)
+    return `/courriers/${notification.parent_id || notification.data?.parent_id}`
+  }
+
   return '/recus'
 }
 

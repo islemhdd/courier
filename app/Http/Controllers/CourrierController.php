@@ -15,6 +15,7 @@ use App\Models\Service;
 use App\Models\Source;
 use App\Models\Structure;
 use App\Models\User;
+use App\Notifications\CourrierReponduNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -211,6 +212,14 @@ class CourrierController extends Controller
 
         if ($courrier->attachments()->exists()) {
             ProcessOcrJob::dispatch($courrier);
+        }
+
+        if (!$courrier->transmission_demandee && $courrier->statut !== Courrier::STATUT_CREE) {
+            $this->notifyRecipientsOfCourrier($courrier);
+        }
+
+        if ($isReply) {
+            $this->notifyReplyRecipients($courrier);
         }
 
         return response()->json([
@@ -510,6 +519,8 @@ class CourrierController extends Controller
 
             if ($needsChefValidation) {
                 $this->notifyValidators($courrier, $user);
+            } else {
+                $this->notifyRecipientsOfCourrier($courrier);
             }
 
             return $courrier->fresh($this->courrierRelations());
@@ -534,6 +545,8 @@ class CourrierController extends Controller
             return response()->json(['error' => 'Vous n\'avez pas le droit de valider ce courrier.'], 403);
         }
 
+        $wasTransmissionRequested = $courrier->transmission_demandee;
+
         DB::transaction(function () use ($courrier, $user) {
             $newStatus = $courrier->transmission_demandee
                 ? Courrier::STATUT_TRANSMIS
@@ -556,6 +569,10 @@ class CourrierController extends Controller
                     'valide_le' => now(),
                 ]);
         });
+
+        if ($wasTransmissionRequested) {
+            $this->notifyRecipientsOfCourrier($courrier);
+        }
 
         return response()->json([
             'message' => 'Courrier valide avec succes.',
@@ -766,6 +783,117 @@ class CourrierController extends Controller
         if ($validators->isNotEmpty()) {
             Notification::send($validators, new \App\Notifications\ValidationRequestedNotification($courrier));
         }
+    }
+
+    private function notifyRecipientsOfCourrier(Courrier $courrier): void
+    {
+        $users = $this->getUsersReceivingCourrier($courrier);
+
+        if ($users->isNotEmpty()) {
+            Notification::send($users, new \App\Notifications\CourrierReceivedNotification($courrier));
+        }
+    }
+
+    private function notifyReplyRecipients(Courrier $reply): void
+    {
+        if (!$reply->parent) {
+            return;
+        }
+
+        $users = $this->getUsersConcernedByCourrier($reply->parent);
+
+        if ($users->isNotEmpty()) {
+            Notification::send($users, new CourrierReponduNotification($reply));
+        }
+    }
+
+    private function getUsersReceivingCourrier(Courrier $courrier): \Illuminate\Support\Collection
+    {
+        if ($courrier->recipients()->where('recipient_type', 'all')->exists()) {
+            return User::where('actif', true)->get();
+        }
+
+        $recipients = $courrier->recipients()->get();
+        $userIds = $recipients->where('recipient_type', 'user')->pluck('user_id')->filter()->unique()->all();
+        $serviceIds = $recipients->where('recipient_type', 'service')->pluck('service_id')->filter()->unique()->all();
+        $structureIds = $recipients->where('recipient_type', 'structure')->pluck('structure_id')->filter()->unique()->all();
+
+        // REMOVED: Ne pas utiliser les champs service_destinataire_id et structure_destinataire_id
+        // car ils sont utilisés dans le flux externe (à implémenter dans le futur)
+
+        $serviceIds = array_unique(array_filter($serviceIds));
+        $structureIds = array_unique(array_filter($structureIds));
+
+        if (empty($userIds) && empty($serviceIds) && empty($structureIds)) {
+            return collect();
+        }
+
+        return User::where('actif', true)
+            ->where(function ($query) use ($userIds, $serviceIds, $structureIds) {
+                if (!empty($userIds)) {
+                    $query->orWhereIn('id', $userIds);
+                }
+
+                if (!empty($serviceIds)) {
+                    $query->orWhereIn('service_id', $serviceIds);
+                }
+
+                if (!empty($structureIds)) {
+                    $query->orWhereIn('structure_id', $structureIds);
+                }
+            })
+            ->get()
+            ->unique('id')
+            ->values();
+    }
+
+    private function getUsersConcernedByCourrier(Courrier $courrier): \Illuminate\Support\Collection
+    {
+        if ($courrier->recipients()->where('recipient_type', 'all')->exists()) {
+            return User::where('actif', true)->get();
+        }
+
+        $userIds = collect([
+            $courrier->createur_id,
+            $courrier->valideur_id,
+            $courrier->transmis_par_id,
+        ])->filter()->unique()->all();
+
+        $userIds = array_merge($userIds, $courrier->concernedPeople()->pluck('users.id')->filter()->all());
+
+        $recipientRows = $courrier->recipients()->get();
+        $userIds = array_merge($userIds, $recipientRows->where('recipient_type', 'user')->pluck('user_id')->filter()->all());
+        $serviceIds = $recipientRows->where('recipient_type', 'service')->pluck('service_id')->filter()->all();
+        $structureIds = $recipientRows->where('recipient_type', 'structure')->pluck('structure_id')->filter()->all();
+
+        // REMOVED: Ne pas utiliser les champs service_destinataire_id et structure_destinataire_id
+        // car ils sont utilisés dans le flux externe (à implémenter dans le futur)
+
+        $userIds = array_unique(array_filter($userIds));
+        $serviceIds = array_unique(array_filter($serviceIds));
+        $structureIds = array_unique(array_filter($structureIds));
+
+        if (empty($userIds) && empty($serviceIds) && empty($structureIds)) {
+            return collect();
+        }
+
+        return User::where('actif', true)
+            ->where(function ($query) use ($userIds, $serviceIds, $structureIds) {
+                if (!empty($userIds)) {
+                    $query->orWhereIn('id', $userIds);
+                }
+
+                if (!empty($serviceIds)) {
+                    $query->orWhereIn('service_id', $serviceIds);
+                }
+
+                if (!empty($structureIds)) {
+                    $query->orWhereIn('structure_id', $structureIds);
+                }
+            })
+            ->get()
+            ->unique('id')
+            ->values();
     }
 
     private function archiverCourrier(Courrier $courrier, User $user, string $motif): Archive
