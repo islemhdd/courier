@@ -951,6 +951,11 @@ class CourrierController extends Controller
 
         $courrier->resume_auto_genere = $courrier->resume_auto_genere;
 
+        if ($courrier->relationLoaded('parent') && $courrier->parent) {
+            $courrier->parent->peut_voir_details = $user ? $courrier->parent->peutEtreVuEnDetailPar($user) : false;
+            $courrier->parent->peut_voir_existence = $user ? $courrier->parent->peutVoirExistencePar($user) : false;
+        }
+
         return $courrier;
     }
 

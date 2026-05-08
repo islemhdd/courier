@@ -348,7 +348,7 @@ export default function AllDetails({
               subtitle="Relation entre courrier original et reponses."
               icon={<Layers size={18} />}
             >
-              <ThreadSection courrier={courrier} replies={replies} />
+              <ThreadSection courrier={courrier} replies={replies} onViewCourrier={actions.onViewCourrier} />
             </SectionCard>
           )}
         </aside>
@@ -773,8 +773,9 @@ function RecipientCard({ recipient }) {
   )
 }
 
-function ThreadSection({ courrier, replies }) {
+function ThreadSection({ courrier, replies, onViewCourrier }) {
   const hasParent = courrier.parent_courrier_id || courrier.parent
+  const parentData = courrier.parent
   const visibleReplies = Array.isArray(replies) ? replies : []
 
   return (
@@ -783,11 +784,22 @@ function ThreadSection({ courrier, replies }) {
         <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
           <p className="flex items-center gap-2 text-sm font-semibold text-blue-900">
             <Mail size={16} />
-            Courrier parent reference
+            Courrier d'origine (parent)
           </p>
-          <p className="mt-2 text-xs leading-5 text-blue-700">
-            Ce courrier appartient a un fil de reponse. Les donnees du courrier parent ne sont pas exposees ici sauf si l'API les autorise explicitement.
-          </p>
+          {parentData ? (
+            <div
+              className="mt-3 cursor-pointer rounded-xl border border-blue-200 bg-white p-3 transition hover:border-blue-400 hover:shadow-sm"
+              onClick={() => onViewCourrier?.(parentData.id)}
+            >
+              <p className="text-sm font-bold text-blue-950">{parentData.numero || 'Sans numero'}</p>
+              <p className="mt-1 line-clamp-2 text-xs text-slate-600">{parentData.objet || 'Sans objet'}</p>
+              <p className="mt-1 text-[11px] text-slate-400">{parentData.date_reception ? new Date(parentData.date_reception).toLocaleDateString('fr-FR') : ''}</p>
+            </div>
+          ) : (
+            <p className="mt-2 text-xs leading-5 text-blue-700">
+              Courrier parent reference (ID: {courrier.parent_courrier_id})
+            </p>
+          )}
         </div>
       )}
 

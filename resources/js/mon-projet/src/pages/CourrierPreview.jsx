@@ -124,6 +124,7 @@ export default function CourrierPreview() {
             onTransmit: canTransmit ? () => setTransmitOpen(true) : undefined,
             onArchive: canArchive ? handleArchive : undefined,
             onClose: () => navigate(-1),
+            onViewCourrier: (id) => navigate(`/courriers/${id}`),
           }}
         />
       )}

@@ -322,6 +322,10 @@ export default function CourrierDetails({
                       onTransmit: peutTransmettre ? handleTransmitFromDetails : undefined,
                       onArchive: peutArchiver ? handleArchiveFromDetails : undefined,
                       onClose: () => setIsAllDetailsOpen(false),
+                      onViewCourrier: (id) => {
+                        setIsAllDetailsOpen(false)
+                        navigate(`/courriers/${id}`)
+                      },
                     }}
                   />
                 )}
