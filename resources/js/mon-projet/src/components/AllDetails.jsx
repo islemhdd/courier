@@ -28,6 +28,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 
+import { API_ORIGIN } from '../api/api'
 import {
   formatDate,
   getConfidentialityLabel,
@@ -645,7 +646,7 @@ function ExpandableText({
 }
 
 function AttachmentCard({ attachment }) {
-  const url = attachment.chemin ? `/storage/${attachment.chemin}` : attachment.url || attachment.url_fichier
+  const url = attachment.chemin ? `${API_ORIGIN}/storage/${attachment.chemin}` : attachment.url || attachment.url_fichier
   const filename = attachment.nom_original || attachment.name || 'Fichier sans nom'
 
   return (
@@ -873,9 +874,9 @@ function EmptyInline({ message }) {
 
 function getPrimaryDownloadUrl(courrier) {
   if (courrier.url_fichier) return courrier.url_fichier
-  if (courrier.chemin_fichier) return `/storage/${courrier.chemin_fichier}`
+  if (courrier.chemin_fichier) return `${API_ORIGIN}/storage/${courrier.chemin_fichier}`
   if (Array.isArray(courrier.attachments) && courrier.attachments[0]?.chemin) {
-    return `/storage/${courrier.attachments[0].chemin}`
+    return `${API_ORIGIN}/storage/${courrier.attachments[0].chemin}`
   }
   return null
 }
