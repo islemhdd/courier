@@ -1,0 +1,730 @@
+==============================================================================
+  MODULE OCR — DOCUMENTATION DÉTAILLÉE
+  Architecture, flux et séquence du système d'extraction de texte
+==============================================================================
+
+1. APERÇU
+------------------------------------------------------------------------------
+Le module OCR permet l'extraction automatique de texte depuis les pièces
+jointes des courriers (PDF, DOC/DOCX, images). Il fonctionne de manière
+asynchrone via une file d'attente Laravel, avec une option de prévisualisation
+synchrone pendant la création d'un courrier.
+
+Moteurs utilisés :
+  - Tesseract OCR 5+ (tesseract-ocr) — reconnaissance de caractères
+  - smalot/pdfparser — extraction native de texte PDF
+  - ZipArchive + XML — extraction native de texte DOCX
+  - Imagick (PHP) ou Ghostscript — conversion PDF → images (fallback OCR)
+  - Laravel Queue — traitement asynchrone
+
+Langues supportées : arabe (ara) + français (fra) + anglais (eng)
+
+
+2. COMPOSANTS DU MODULE
+------------------------------------------------------------------------------
+
+2.1. Services (logique métier)
+┌──────────────────────────────────────────────────────────────────────────┐
+│ App\Services\OcrService                                                 │
+│                                                                          │
+│ Méthodes publiques :                                                     │
+│   extractText(UploadedFile|string $file) : array                         │
+│     → Extrait le texte d'un fichier (image, PDF, DOC/DOCX)              │
+│                                                                          │
+│   processAttachment(string $storagePath) : array                          │
+│     → Wrapper pour extractText() depuis le stockage Laravel              │
+│                                                                          │
+│   generateSummary(string $text, string $objet) : string                  │
+│     → Génère un résumé automatique par scoring de phrases                │
+│                                                                          │
+│   cleanText(string $text) : string                                       │
+│     → Nettoie le texte (retours chariot, espaces, lignes vides)         │
+│                                                                          │
+│   combineAttachmentTexts(array $texts) : string                          │
+│     → Agrège les textes multi-pièces avec déduplication (hash MD5)      │
+│                                                                          │
+│   detectLanguage(string $text) : string                                   │
+│     → Détecte la langue : 'ara' | 'fra' | 'eng'                         │
+│                                                                          │
+│   isSupported(string $extension) : bool                                  │
+│     → Vérifie si l'extension est supportée                               │
+│                                                                          │
+│ Méthodes privées :                                                       │
+│   extractFromDocument(path, extension) → PDF/DOCX native                │
+│   extractFromPdf(path) → smalot/pdfparser, fallback ocrImage()          │
+│   extractFromDoc(path) → ZipArchive+XML, fallback ocrImage()            │
+│   extractFromImage(path) → ocrImage()                                   │
+│   ocrImage(path) → Tesseract OCR via exec()                              │
+│   runTesseract(path) → exécute Tesseract, retourne texte + confiance     │
+│   findTesseract() → cherche l'exécutable Tesseract sur le système       │
+│   convertPdfToImages(path) → Imagick ou Ghostscript                      │
+│   convertPdfWithGhostscript(path, outputDir) → gs → PNG                 │
+│   findGhostscript() → cherche l'exécutable Ghostscript                   │
+│   estimateConfidence(text) → score 0-100 basé sur ratio alpha + longueur │
+│   extractKeyInformation(text) → dates, références, organisations, noms   │
+│   extractSentences(text) → segmentation en phrases                       │
+│   calculateSimilarity(str1, str2) → intersection de mots / union         │
+│   getHeaderKeywords() → mots-clés d'en-tête à filtrer                   │
+│   getActionKeywords() → mots-clés d'action pour scoring                  │
+│   getStopWords() → mots vides (fr/en)                                    │
+└──────────────────────────────────────────────────────────────────────────┘
+
+2.2. Contrôleur API (points d'entrée REST)
+┌──────────────────────────────────────────────────────────────────────────┐
+│ App\Http\Controllers\Api\OcrController                                  │
+│                                                                          │
+│ Constructeur :                                                           │
+│   __construct(OcrService $ocrService)   ← injection de dépendance       │
+│                                                                          │
+│ Endpoints :                                                              │
+│   preview(Request)        → POST /api/ocr/preview                       │
+│   status(Courrier)        → GET  /api/courriers/{id}/ocr                │
+│   rerun(Courrier)         → POST /api/courriers/{id}/ocr/rerun          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+2.3. Job asynchrone (file d'attente)
+┌──────────────────────────────────────────────────────────────────────────┐
+│ App\Jobs\ProcessOcrJob implements ShouldQueue                           │
+│                                                                          │
+│ Constructeur :                                                           │
+│   __construct(Courrier $courrier)                                        │
+│                                                                          │
+│ handle(OcrService $ocrService) : void                                    │
+│   1. Marque le courrier ocr_status = 'processing'                       │
+│   2. Itère sur chaque pièce jointe                                       │
+│      → processAttachment(ocrService, attachment)                         │
+│   3. Agrège les textes (combineAttachmentTexts)                          │
+│   4. Met à jour extracted_text, ocr_status, summary_source, resume       │
+│                                                                          │
+│ processAttachment(OcrService, CourrierAttachment) : array                │
+│   1. Marque la pièce jointe ocr_status = 'processing'                   │
+│   2. Appelle ocrService.processAttachment(chemin)                        │
+│   3. Si succès → enregistre ocr_text, ocr_language, ocr_confidence      │
+│      ocr_status = 'completed', ocr_processed_at = now()                  │
+│   4. Si échec  → enregistre ocr_error, ocr_status = 'failed'            │
+└──────────────────────────────────────────────────────────────────────────┘
+
+2.4. Modèles (couche données)
+┌──────────────────────────────────────────────────────────────────────────┐
+│ App\Models\Courrier                                                     │
+│   extracted_text   → longText (texte agrégé de toutes les PJ)           │
+│   ocr_status       → pending | processing | completed | failed          │
+│   summary_source   → manual | auto_generated | null                     │
+│   resume           → résumé (manuel ou auto-généré)                     │
+│                                                                          │
+│ Méthodes :                                                               │
+│   ocrEstTermine()    → ocr_status === 'completed'                        │
+│   ocrAEchoue()       → ocr_status === 'failed'                          │
+│   ocrEstEnCours()    → ocr_status === 'processing'                      │
+│   ocrEstEnAttente()  → ocr_status === 'pending' || null                 │
+│   getResumeAutoGenereAttribute() → resume si auto_generated sinon null  │
+│                                                                          │
+│ App\Models\CourrierAttachment                                           │
+│   ocr_text          → longText (texte extrait de cette PJ)              │
+│   ocr_language      → ara | fra | eng                                   │
+│   ocr_status        → pending | processing | completed | failed          │
+│   ocr_confidence    → decimal 0-100                                     │
+│   ocr_error         → message d'erreur                                  │
+│   ocr_processed_at  → datetime                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+2.5. Frontend (React)
+┌──────────────────────────────────────────────────────────────────────────┐
+│ resources/js/mon-projet/src/api/courrierApi.js                          │
+│   ocrPreview(file)    → POST /api/ocr/preview (FormData avec le fichier)│
+│   ocrStatus(id)       → GET  /api/courriers/{id}/ocr                    │
+│   ocrRerun(id)        → POST /api/courriers/{id}/ocr/rerun              │
+│                                                                          │
+│ NewCourrierForm.jsx                                                      │
+│   - Appelle ocrPreview() lors du dépôt de fichier                       │
+│   - Affiche une icône OCR par fichier (getOcrIcon)                      │
+│   - Affiche le texte extrait dans la zone de résumé                     │
+│   - Auto-remplit le champ résumé avec le résumé OCR                    │
+│                                                                          │
+│ AllDetails.jsx                                                           │
+│   - Affiche le badge OCR (OcrStatusBadge)                               │
+│   - Affiche le texte extrait avec bouton copier                         │
+│   - Affiche le statut OCR par pièce jointe + message d'erreur           │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+3. DIAGRAMME DE SÉQUENCE — CRÉATION D'UN COURRIER AVEC OCR
+------------------------------------------------------------------------------
+
+Utilisateur    NewCourrierForm    CourrierController    ProcessOcrJob    OcrService    Tesseract
+    │                │                   │                   │               │            │
+    │   Dépose       │                   │                   │               │            │
+    │   fichier      │                   │                   │               │            │
+    │───────────────>│                   │                   │               │            │
+    │                │   POST /api/ocr/preview               │               │            │
+    │                │  ─────────────────> OcrController     │               │            │
+    │                │                      │                │               │            │
+    │                │                      │ extractText()  │               │            │
+    │                │                      │───────────────>│               │            │
+    │                │                      │                │  (selon type) │            │
+    │                │                      │                │── si image ──>│──────────> │
+    │                │                      │                │── si PDF ───>│ smalot/    │
+    │                │                      │                │              │ pdfparser  │
+    │                │                      │                │── si DOCX ──>│ ZipArchive │
+    │                │                      │                │              │  + XML     │
+    │                │                      │                │              │            │
+    │                │                      │                │  (fallback)  │            │
+    │                │                      │                │<─ texte < 50 │──────────> │
+    │                │                      │                │  → Tesseract │ Tesseract  │
+    │                │                      │                │              │ exec()     │
+    │                │                      │<─ texte + lang │               │            │
+    │                │                      │   + confiance   │               │            │
+    │                │                      │                │               │            │
+    │                │<── {text, summary,   │                │               │            │
+    │                │     language, conf}  │                │               │            │
+    │   Aperçu       │                      │                │               │            │
+    │   texte OCR    │                      │                │               │            │
+    │<───────────────│                      │                │               │            │
+    │                │                      │                │               │            │
+    │                │                      │                │               │            │
+    │   Soumet       │                      │                │               │            │
+    │   formulaire   │                      │                │               │            │
+    │───────────────>│                      │                │               │            │
+    │                │   POST /api/courriers                 │               │            │
+    │                │  ─────────────────> CourrierController│               │            │
+    │                │                      │                │               │            │
+    │                │                      │  Transaction DB │              │            │
+    │                │                      │  (création      │              │            │
+    │                │                      │   courrier + PJ)│              │            │
+    │                │                      │────────────────>              │            │
+    │                │                      │  Dispatch ProcessOcrJob       │            │
+    │                │                      │────────────────>              │            │
+    │                │                      │                │               │            │
+    │   201 +       │                      │                │               │            │
+    │   courrier    │                      │                │               │            │
+    │<───────────────│                      │                │               │            │
+    │                │                      │                │               │            │
+    │                │                      │   [Temps passe]                 │            │
+    │                │                      │                │               │            │
+    │                │                      │                │  handle()     │            │
+    │                │                      │                │───────────────>            │
+    │                │                      │                │  ocr_status = 'processing' │
+    │                │                      │                │── pour chaque PJ ──────────>│
+    │                │                      │                │  processAttachment()        │
+    │                │                      │                │───────────────>            │
+    │                │                      │                │  extractText() │            │
+    │                │                      │                │───────────────>            │
+    │                │                      │                │    (selon type) │            │
+    │                │                      │                │── image ──────>│──────────> │
+    │                │                      │                │── PDF ────────>│ pdfparser  │
+    │                │                      │                │── DOCX ──────>│ ZipArchive  │
+    │                │                      │                │    si texte<seuil          │
+    │                │                      │                │    → Tesseract │──────────> │
+    │                │                      │                │<─ resultat ───│            │
+    │                │                      │                │               │            │
+    │                │                      │                │  MAJ DB :     │            │
+    │                │                      │                │  ocr_text      │            │
+    │                │                      │                │  ocr_status    │            │
+    │                │                      │                │  ocr_language  │            │
+    │                │                      │                │  ocr_confidence│            │
+    │                │                      │                │  ocr_processed_at          │
+    │                │                      │                │───────────────>            │
+    │                │                      │                │               │            │
+    │                │                      │                │  combineAttachmentTexts()  │
+    │                │                      │                │  generateSummary()         │
+    │                │                      │                │  MAJ Courrier :            │
+    │                │                      │                │  extracted_text            │
+    │                │                      │                │  ocr_status = 'completed'  │
+    │                │                      │                │  resume = auto_summary     │
+    │                │                      │                │  summary_source = 'auto'   │
+    │                │                      │                │───────────────>            │
+    │                │                      │                │               │            │
+    │                │                      │                │               │            │
+    │   Consulte     │                      │                │               │            │
+    │   détails      │                      │                │               │            │
+    │───────────────>│                      │                │               │            │
+    │                │   GET /api/courriers/{id}            │               │            │
+    │                │  ──────────────────>                 │               │            │
+    │                │<── {extracted_text, ocr_status, ...} │               │            │
+    │  Affiche       │                      │                │               │            │
+    │  texte OCR    │                      │                │               │            │
+    │<───────────────│                      │                │               │            │
+    │                │                      │                │               │            │
+
+
+4. DIAGRAMME DE SÉQUENCE — RELANCE MANUELLE DE L'OCR
+------------------------------------------------------------------------------
+
+Utilisateur    AllDetails    OcrController    CourrierAttachment    ProcessOcrJob    OcrService
+    │               │              │                  │                  │               │
+    │  Clic         │              │                  │                  │               │
+    │  "Relancer    │              │                  │                  │               │
+    │   OCR"        │              │                  │                  │               │
+    │──────────────>│              │                  │                  │               │
+    │               │  POST /api/courriers/{id}/ocr/rerun                 │               │
+    │               │─────────────>│                  │                  │               │
+    │               │              │  Vérification     │                  │               │
+    │               │              │  permission       │                  │               │
+    │               │              │  peutEtreVuEnDetailPar()            │               │
+    │               │              │────────────>     │                  │               │
+    │               │              │                  │                  │               │
+    │               │              │  Reset toutes les PJ :              │               │
+    │               │              │  ocr_status = 'pending'              │               │
+    │               │              │  ocr_text = null                     │               │
+    │               │              │  ocr_language = null                 │               │
+    │               │              │  ocr_confidence = null               │               │
+    │               │              │  ocr_error = null                    │               │
+    │               │              │  ocr_processed_at = null             │               │
+    │               │              │  (updateQuietly)                     │               │
+    │               │              │────────────>     │                  │               │
+    │               │              │                  │                  │               │
+    │               │              │  Reset courrier :                    │               │
+    │               │              │  ocr_status = 'pending'              │               │
+    │               │              │  extracted_text = null               │               │
+    │               │              │  (updateQuietly)                     │               │
+    │               │              │────────────>     │                  │               │
+    │               │              │                  │                  │               │
+    │               │              │  Dispatch ProcessOcrJob             │               │
+    │               │              │────────────────────────────────────>│               │
+    │               │              │                  │                  │  handle()     │
+    │               │              │<── {message,     │                  │──────────────>│
+    │               │              │     ocr_status   │                  │  (même flux    │
+    │               │              │    = pending}    │                  │   que création)│
+    │               │<─────────────│                  │                  │               │
+    │<──────────────│              │                  │                  │               │
+
+
+5. DIAGRAMME D'EXTRACTION — PIPELINE COMPLET
+------------------------------------------------------------------------------
+
+                    ┌─────────────────────────────────────┐
+                    │         extractText($file)          │
+                    └──────────────┬──────────────────────┘
+                                   │
+                    ┌──────────────▼──────────────────────┐
+                    │    Type supporté ?                  │
+                    │    isSupported($extension)          │
+                    └───────┬──────────────────┬──────────┘
+                            │ NON              │ OUI
+                            ▼                  ▼
+                    ┌──────────────┐   ┌──────────────────┐
+                    │  Erreur :    │   │  in_array(DOC) ?  │
+                    │  type non    │   └───┬──────────┬───┘
+                    │  supporté    │       │ OUI      │ NON (image)
+                    └──────────────┘       │          │
+                                           ▼          ▼
+                                  ┌────────────┐  ┌──────────────┐
+                                  │extractFrom │  │extractFrom   │
+                                  │Document()  │  │Image()       │
+                                  └─────┬──────┘  └──────┬───────┘
+                                        │                 │
+                    ┌───────────────────┼─────────────────┼──────┐
+                    │                   │                 │      │
+                    ▼                   ▼                 ▼      │
+            ┌──────────────┐  ┌─────────────────┐  ┌─────────┐  │
+            │  pdf ?       │  │  doc/docx ?     │  │         │  │
+            │  OUI    NON  │  │  OUI        NON │  │         │  │
+            ▼              │  ▼              │  │  Image    │  │
+    ┌──────────────┐      │  ┌──────────┐    │  │  direct  │  │
+    │  smalot/     │      │  │ZipArchive│    │  │          │  │
+    │  pdfparser   │      │  │+ XML     │    │  │          │  │
+    └──────┬───────┘      │  └────┬─────┘    │  │          │  │
+           │              │       │          │  │          │  │
+           ▼              │       ▼          │  │          │  │
+    ┌──────────────┐      │  ┌──────────┐    │  │          │  │
+    │  texte > 50  │      │  │ texte<20│    │  │          │  │
+    │  chars ?     │      │  │  chars ? │    │  │          │  │
+    │  OUI     NON │      │  │ OUI  NON │    │  │          │  │
+    │   │       │  │      │  │   │    │      │  │          │  │
+    │   │  ┌────▼──┴──────┴──┴───┘    │      │  │          │  │
+    │   │  │  ┌───────────────────┐    │      │  │          │  │
+    │   │  │  │  ocrImage(path)   │◄──┴──────┴──┴──────────┘  │
+    │   │  │  │                  │                            │
+    │   │  │  │  findTesseract() │                            │
+    │   │  │  │       │          │                            │
+    │   │  │  │       ▼          │                            │
+    │   │  │  │  Trouvé ?        │                            │
+    │   │  │  │  OUI       NON   │                            │
+    │   │  │  │   │          │    │                            │
+    │   │  │  │   │  ┌──────────┐ │                            │
+    │   │  │  │   │  │ Erreur :  │ │                            │
+    │   │  │  │   │  │ Tesseract │ │                            │
+    │   │  │  │   │  │ non       │ │                            │
+    │   │  │  │   │  │ installé  │ │                            │
+    │   │  │  │   │  └──────────┘ │                            │
+    │   │  │  │   │               │                            │
+    │   │  │  │   ▼               │                            │
+    │   │  │  │  PDF source ?     │                            │
+    │   │  │  │  OUI       NON    │                            │
+    │   │  │  │   │          │     │                            │
+    │   │  │  │   ▼          │     │                            │
+    │   │  │  │convertPdfTo  │     │                            │
+    │   │  │  │Images()      │     │                            │
+    │   │  │  │  │           │     │                            │
+    │   │  │  │  ▼           ▼     │                            │
+    │   │  │  │  runTesseract()    │                            │
+    │   │  │  │  (exec avec        │                            │
+    │   │  │  │   -l ara+fra+eng   │                            │
+    │   │  │  │   --psm 3)         │                            │
+    │   │  │  └────────────────────┘                            │
+    │   │  │                                                  │
+    │   │  │  cleanText()                                      │
+    │   │  │  detectLanguage()                                  │
+    │   │  │  estimateConfidence()                              │
+    └───┴──┴───────────────────────────────────────────────────┘
+                        │
+                        ▼
+               ┌─────────────────┐
+               │  Résultat final  │
+               │  success: bool   │
+               │  text: string    │
+               │  language: ara/  │
+               │    fra/eng       │
+               │  confidence: 0-  │
+               │    100           │
+               │  error: ?string  │
+               └─────────────────┘
+
+
+6. DIAGRAMME DE SÉQUENCE — PRÉVISUALISATION SYNCHRONE
+------------------------------------------------------------------------------
+
+NewCourrierForm          OcrController           OcrService            Tesseract
+      │                       │                      │                    │
+      │  POST /api/ocr/preview                       │                    │
+      │  (multipart: file)    │                      │                    │
+      │──────────────────────>│                      │                    │
+      │                       │                      │                    │
+      │                       │  Validation          │                    │
+      │                       │  mimes:jpg,jpeg,png, │                    │
+      │                       │  pdf,doc,docx,webp   │                    │
+      │                       │  max:10240           │                    │
+      │                       │                      │                    │
+      │                       │  isSupported()       │                    │
+      │                       │───────────────>      │                    │
+      │                       │<── true/false ───────│                    │
+      │                       │                      │                    │
+      │                       │  extractText($file)  │                    │
+      │                       │───────────────>      │                    │
+      │                       │                      │  (selon type)      │
+      │                       │                      │──────────────────> │
+      │                       │                      │<── texte ──────────│
+      │                       │<── {text, lang,      │                    │
+      │                       │      conf, success}  │                    │
+      │                       │                      │                    │
+      │                       │  generateSummary()   │                    │
+      │                       │    (si success)      │                    │
+      │                       │───────────────>      │                    │
+      │                       │<── summary ─────────│                    │
+      │                       │                      │                    │
+      │<── {success, text,    │                      │                    │
+      │      summary, lang,   │                      │                    │
+      │      confidence}      │                      │                    │
+      │                       │                      │                    │
+      │  Affiche texte        │                      │                    │
+      │  extrait + résumé     │                      │                    │
+      │  dans le formulaire   │                      │                    │
+
+
+7. MACHINE À ÉTATS — STATUT OCR
+------------------------------------------------------------------------------
+
+    ┌──────────┐
+    │  PENDING │  ← état initial (création du courrier ou reset)
+    └─────┬────┘
+          │
+          │  ProcessOcrJob::handle()
+          ▼
+    ┌────────────┐
+    │ PROCESSING │  ← OCR en cours
+    └─────┬──────┘
+          │
+    ┌─────┴──────┐
+    │            │
+    ▼            ▼
+┌───────────┐ ┌────────┐
+│ COMPLETED │ │ FAILED │
+│ (succès)  │ │ (erreur)│
+└───────────┘ └────────┘
+
+Transitions possibles :
+  - PENDING  → PROCESSING  (début du job)
+  - PROCESSING → COMPLETED (succès, texte extrait)
+  - PROCESSING → FAILED    (échec : fichier introuvable, Tesseract absent, etc.)
+  - (tout état) → PENDING  (relance manuelle via rerun)
+
+
+8. GÉNÉRATION DU RÉSUMÉ AUTOMATIQUE
+------------------------------------------------------------------------------
+
+Étape 1 : NETTOYAGE (cleanText)
+  - \r\n → \n
+  - tabs/espaces multiples → espace simple
+  - 3+ lignes vides → 2 lignes vides
+  - Trim whitespace
+
+Étape 2 : SEGMENTATION (extractSentences)
+  - Join lines (sauf si la ligne se termine par .!?] ou est une salutation)
+  - Split sur .!? + espace + majuscule/caractère arabe
+  - Si une seule phrase résultat → retourne les lignes jointes
+
+Étape 3 : FILTRAGE DES CANDIDATS
+  - Ignore : phrases < 15 caractères
+  - Ignore : que des chiffres/ponctuation
+  - Ignore : en-têtes (Objet, Réf, Date, etc. si début et < 60 chars)
+  - Ignore : salutations/formules de politesse courtes
+
+Étape 4 : SCORING (chaque phrase reçoit un score)
+  - Score de base : 100
+  - Mots-clés d'action (+150) : sollicite, approuve, accord, informe, etc.
+  - Position (+5 × position depuis la fin) : favorise début du document
+  - Longueur idéale (+50 si 40-350 caractères, -50 si > 500)
+  - Présence de chiffres (+30)
+
+Étape 5 : SÉLECTION
+  - Top 4 phrases max
+  - Déduplication : similarité par intersection de mots > 70% → exclu
+  - Réorganisation par ordre d'apparition
+
+Étape 6 : FINALISATION
+  - Joindre les phrases sélectionnées
+  - Si objet différent du début du résumé → préfixer par "Objet – résumé"
+  - Troncature à 700 caractères
+
+
+9. DÉTECTION DE LANGUE
+------------------------------------------------------------------------------
+
+  Entrée : texte extrait
+  ─────────────────────────────────────────────────────────────────────
+  1. Compter les caractères arabes Unicode
+     (blocs 0600-06FF, 0750-077F, 08A0-08FF, FB50-FDFF, FE70-FEFF)
+  2. Compter les mots-clés français
+     (le, la, les, un, une, des, du, de, et, est, sont, dans...)
+  3. Compter les mots-clés anglais
+     (the, a, an, is, are, was, were, be, been, have...)
+  ─────────────────────────────────────────────────────────────────────
+  Si caractères arabes > 10 ET > max(fr, en) → 'ara'
+  Si mots français > mots anglais                   → 'fra'
+  Si mots anglais > mots français                   → 'eng'
+  Défaut                                            → 'fra'
+
+
+10. ESTIMATION DE CONFIANCE
+------------------------------------------------------------------------------
+
+  Score de base : 50
+  +20 si ratio caractères alphabétiques > 50%
+  +15 si ratio caractères alphabétiques > 70%
+  +10 si longueur moyenne des mots entre 2 et 20
+  + 5 si texte > 50 caractères
+  ─────────────────
+  Maximum : 100
+
+
+11. SCHÉMA BDD — COLONNES OCR
+------------------------------------------------------------------------------
+
+Table: courrier_attachments
+┌──────────────────┬─────────────┬──────────┬──────────────────────────┐
+│ Colonne          │ Type        │ Défaut   │ Description              │
+├──────────────────┼─────────────┼──────────┼──────────────────────────┤
+│ ocr_text         │ longtext    │ NULL     │ Texte extrait             │
+│ ocr_language     │ varchar(50) │ NULL     │ Langue détectée           │
+│ ocr_status       │ varchar(20) │ pending  │ pending/processing/       │
+│                  │             │          │ completed/failed          │
+│ ocr_confidence   │ decimal(5,2)│ NULL     │ Score de confiance 0-100  │
+│ ocr_error        │ text        │ NULL     │ Message d'erreur          │
+│ ocr_processed_at │ datetime    │ NULL     │ Date de traitement        │
+└──────────────────┴─────────────┴──────────┴──────────────────────────┘
+
+Table: courriers
+┌──────────────────┬─────────────┬──────────┬──────────────────────────┐
+│ Colonne          │ Type        │ Défaut   │ Description              │
+├──────────────────┼─────────────┼──────────┼──────────────────────────┤
+│ extracted_text   │ longtext    │ NULL     │ Texte agrégé des PJ       │
+│ ocr_status       │ varchar(20) │ pending  │ Statut global             │
+│ summary_source   │ varchar(20) │ NULL     │ manual | auto_generated   │
+└──────────────────┴─────────────┴──────────┴──────────────────────────┘
+
+
+12. API ENDPOINTS — RÉFÉRENCE COMPLÈTE
+------------------------------------------------------------------------------
+
+POST /api/ocr/preview
+────────────────────────────────────────────────────────────────────────
+  Content-Type: multipart/form-data
+  Body:        file (UploadedFile, max 10MB)
+  Validation:  mimes:jpg,jpeg,png,pdf,doc,docx,webp
+
+  Succès 200 :
+  {
+    "success": true,
+    "text": "texte extrait...",
+    "summary": "résumé automatique...",
+    "language": "fra",
+    "confidence": 85.5
+  }
+
+  Erreur 422 :
+  {
+    "success": false,
+    "error": "Type de fichier non supporté : ..."
+  }
+
+  Notes : Appelé pendant la création d'un courrier pour prévisualiser
+  le texte avant enregistrement. Synchrone (pas de job).
+
+────────────────────────────────────────────────────────────────────────
+
+GET /api/courriers/{courrier}/ocr
+────────────────────────────────────────────────────────────────────────
+  Auth:        Sanctum token
+  Permission:  peutVoirExistencePar($user) → 403 si refusé
+
+  Succès 200 :
+  {
+    "ocr_status": "completed",
+    "summary_source": "auto_generated",
+    "extracted_text": "texte...",           // null si pas détail
+    "attachments": [
+      {
+        "id": 1,
+        "nom_original": "doc.pdf",
+        "ocr_status": "completed",
+        "ocr_language": "fra",
+        "ocr_confidence": 95.0,
+        "ocr_error": null,
+        "ocr_processed_at": "2026-05-08T10:00:00Z",
+        "ocr_text": "texte..."              // null si pas détail
+      }
+    ]
+  }
+
+  Notes : Le champ extracted_text et ocr_text ne sont retournés que
+  si peutEtreVuEnDetailPar($user) → true.
+
+────────────────────────────────────────────────────────────────────────
+
+POST /api/courriers/{courrier}/ocr/rerun
+────────────────────────────────────────────────────────────────────────
+  Auth:        Sanctum token
+  Permission:  peutEtreVuEnDetailPar($user) → 403 si refusé
+
+  Succès 200 :
+  {
+    "message": "OCR relancé avec succès.",
+    "ocr_status": "pending"
+  }
+
+  Effet :
+    1. Reset toutes les PJ : ocr_status=pending, textes=null, erreurs=null
+    2. Reset courrier : ocr_status=pending, extracted_text=null
+    3. Dispatch ProcessOcrJob
+
+  Notes : Utile pour réessayer après un échec, ou pour forcer
+  un nouveau traitement.
+
+
+13. SÉCURITÉ ET PERMISSIONS
+------------------------------------------------------------------------------
+
+  preview :   Accessible à tout utilisateur authentifié (sans vérification
+              de permission spécifique — le fichier n'est pas stocké)
+
+  status  :   Vérifie peutVoirExistencePar($user)
+              extracted_text/ocr_text filtré par peutEtreVuEnDetailPar($user)
+
+  rerun   :   Vérifie peutEtreVuEnDetailPar($user)
+              Utilise updateQuietly pour éviter les boucles de events
+
+  Contrôle d'accès sur les routes :
+    Tous les endpoints OCR sont protégés par le middleware auth:sanctum
+    et sont dans le groupe 'api' (préfixe /api)
+
+
+14. EXTRACTION D'INFORMATIONS CLÉS
+------------------------------------------------------------------------------
+
+  extractKeyInformation(text) : array  (méthode privée, non exposée via API)
+
+  Retourne :
+  {
+    "references": ["N°2026-001", "COUR-2026-0001"],
+    "dates": ["2026-05-08", "01/01/2026"],
+    "organizations": ["Ministère des Finances", "Direction Générale"],
+    "persons": ["Jean Dupont", "Mohamed Ali"]
+  }
+
+  Logique :
+    - Dates : regex \d{2,4}[-/]\d{2}[-/]\d{2,4}
+    - Références : motifs N°, n°, numéro, # suivi de chiffres
+    - Références courrier : COUR-XXXXXX ou COUR-XXXX-XXXX
+    - Organisations : mots-clés (Ministère, Direction, Service, SARL, SPA...)
+    - Personnes : mots avec majuscules (filtre stop words : Objet, Réf, etc.)
+
+
+15. DÉPENDANCES SYSTÈME
+------------------------------------------------------------------------------
+
+  Obligatoires (selon type de fichier) :
+  ┌──────────────────────┬────────────────────┬─────────────────────────┐
+  │ Logiciel             │ Installation        │ Utilisation             │
+  ├──────────────────────┼────────────────────┼─────────────────────────┤
+  │ Tesseract OCR        │ tesseract-ocr      │ OCR images + fallback   │
+  │ + lang packs         │ tesseract-ocr-ara  │ PDF/DOCX sans texte     │
+  │                      │ tesseract-ocr-fra  │                         │
+  │                      │ tesseract-ocr-eng  │                         │
+  ├──────────────────────┼────────────────────┼─────────────────────────┤
+  │ smalot/pdfparser     │ composer require   │ Extraction texte PDF    │
+  │                      │ smalot/pdfparser   │ (native, pas d'OCR)     │
+  ├──────────────────────┼────────────────────┼─────────────────────────┤
+  │ PHP ZipArchive       │ php-zip            │ Extraction DOCX         │
+  ├──────────────────────┼────────────────────┼─────────────────────────┤
+  │ PHP Imagick (opt.)   │ php-imagick        │ Conversion PDF → PNG    │
+  ├──────────────────────┼────────────────────┼─────────────────────────┤
+  │ Ghostscript (opt.)   │ gs / gswin64c     │ Fallback PDF → PNG      │
+  │                      │                    │ (si Imagick absent)     │
+  └──────────────────────┴────────────────────┴─────────────────────────┘
+
+  Chemins de recherche Tesseract :
+    Windows : C:\Program Files\Tesseract-OCR\tesseract.exe
+              C:\Program Files (x86)\Tesseract-OCR\tesseract.exe
+              %TESSERACT_HOME%\tesseract.exe
+    Linux   : /usr/bin/tesseract, /usr/local/bin/tesseract
+    macOS   : /opt/homebrew/bin/tesseract
+
+
+16. GESTION DES ERREURS
+------------------------------------------------------------------------------
+
+  Type d'erreur                    Cause                             Comportement
+  ─────────────────────────────────────────────────────────────────────────────────
+  Type non supporté                 .txt, .xls, etc.                  Retour erreur 422
+  Fichier introuvable               Fichier supprimé du disque       Statut failed + message
+  Tesseract non installé            Tesseract manquant                Message d'installation
+  PDF unconvertible                 Imagick + Ghostscript absents     Erreur conversion
+  smalot/pdfparser manquant         Composer non installé             Erreur runtime
+  DOCX invalide                     ZipArchive impossible             Erreur lecture
+  Exception générale                Toute autre erreur                Log + failed
+  Aucun texte extrait               Image vide, PDF scanné vide      failed avec message
+
+  Comportement du job (ProcessOcrJob) :
+    - Chaque pièce jointe est traitée indépendamment
+    - Si AU MOINS UNE PJ réussit → le courrier est marqué completed
+    - Si AUCUNE PJ ne réussit → le courrier est marqué failed
+    - Les pièces échouées ont ocr_status='failed' avec ocr_error
+    - Les pièces réussies ont ocr_text, ocr_language, ocr_confidence
+
+
+17. DÉDUPLICATION DES TEXTES (combineAttachmentTexts)
+------------------------------------------------------------------------------
+
+  Entrée : tableau de textes (un par pièce jointe)
+  Processus :
+    1. Normaliser chaque texte (suppression whitespace, trim)
+    2. Calculer hash MD5 du texte normalisé
+    3. Si hash déjà vu → ignorer (duplicate)
+    4. Si texte < 20 caractères → ignorer
+    5. Concaténer les textes uniques avec séparateur "\n\n---\n\n"
+  Sortie : texte agrégé dédupliqué
+
+
+==============================================================================
+  FIN DE LA DOCUMENTATION
+==============================================================================

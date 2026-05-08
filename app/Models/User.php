@@ -197,6 +197,30 @@ class User extends Authenticatable
         return $this->estChefService() && $this->service_id !== null;
     }
 
+    public function peutGererUtilisateur(self $autre): bool
+    {
+        if ($this->estAdmin()) {
+            return true;
+        }
+
+        if ($this->estChefGeneral()) {
+            return $this->id !== $autre->id;
+        }
+
+        if ($this->estChefStructure() && $this->structure_id !== null) {
+            return $autre->structure_id === $this->structure_id
+                && !$autre->estAdmin()
+                && !$autre->estChefGeneral();
+        }
+
+        if ($this->peutGererUtilisateursDuService()) {
+            return $autre->service_id === $this->service_id
+                && !$autre->estAdmin();
+        }
+
+        return false;
+    }
+
     /**
      * Logique de gestion hiérarchique : un chef peut gérer les agents
      * de sa structure ou de son service uniquement.

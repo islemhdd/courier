@@ -1,0 +1,332 @@
+===============================================================================
+MODULE MESSAGERIE - Documentation technique
+===============================================================================
+
+1. PRESENTATION GENERALE
+------------------------------------------------------------------------------
+Le module de messagerie permet aux utilisateurs de s'echanger des messages
+internes, avec un lien optionnel vers un courrier. C'est une messagerie
+individuelle (pas de conversations groupees), asynchrone, avec support des
+brouillons et notification en temps reel via Laravel Reverb (WebSocket).
+
+
+2. ENTITES ET RELATIONS
+------------------------------------------------------------------------------
+                    Message (id)
+  ┌────────────────────────────────────────────────────────────────┐
+  │ contenu (TEXT)         │ date_envoi (DATETIME)                │
+  │ lu (BOOLEAN, FALSE)    │ statut (VARCHAR: CREE | ENVOYE)     │
+  │ emetteur_id (FK->users)│ destinataire_id (FK->users)          │
+  │ courrier_id (FK->courriers, NULLABLE)                         │
+  └────────────────────────────────────────────────────────────────┘
+         │                        │                         │
+         v                        v                         v
+    ┌─────────┐            ┌──────────┐            ┌──────────┐
+    │  User   │<-----------│  User    │<-----------│ Courrier │
+    │(Emetteur)│           │(Destinataire)│         │(optionnel)│
+    └─────────┘            └──────────┘            └──────────┘
+
+- Message -> User (emetteur_id) : l'expediteur
+- Message -> User (destinataire_id) : le destinataire
+- Message -> Courrier (courrier_id, nullable) : le courrier reference
+
+Colonnes de la table messages :
+  id                BIGINT PK, auto-increment
+  contenu           TEXT, corps du message
+  date_envoi        DATETIME, date d'envoi
+  lu                BOOLEAN, default false
+  statut            VARCHAR(20), default 'ENVOYE' (CREE | ENVOYE)
+  emetteur_id       BIGINT FK -> users.id
+  destinataire_id   BIGINT FK -> users.id
+  courrier_id       BIGINT FK -> courriers.id, nullable
+  created_at        TIMESTAMP
+  updated_at        TIMESTAMP
+
+Constantes du modele Message :
+  STATUT_CREE    = 'CREE'    (brouillon)
+  STATUT_ENVOYE  = 'ENVOYE'  (envoye)
+
+
+3. ARCHITECTURE TECHNIQUE
+------------------------------------------------------------------------------
+Couche       | Technologie        | Fichiers cles
+-------------+--------------------+-------------------------------------------
+Frontend     | React 19, Tailwind | Messages.jsx, messageApi.js
+API          | Laravel 11 (REST)  | MessageController.php
+Base donnees | MySQL              | 2 migrations (messages + statut)
+Temps reel   | Laravel Reverb     | MessageSentNotification.php, echo.js
+Securite     | Sanctum + Policy   | MessagePolicy.php, StoreMessageRequest.php
+
+Fichiers du module :
+  Frontend :
+    resources/js/mon-projet/src/api/messageApi.js
+    resources/js/mon-projet/src/pages/Messages.jsx
+    resources/js/mon-projet/src/App.jsx
+    resources/js/mon-projet/src/lib/echo.js
+
+  Backend :
+    app/Http/Controllers/MessageController.php
+    app/Models/Message.php
+    app/Http/Requests/StoreMessageRequest.php
+    app/Http/Requests/UpdateMessageRequest.php
+    app/Policies/MessagePolicy.php
+    app/Notifications/MessageSentNotification.php
+    routes/api.php
+    routes/channels.php
+    database/migrations/2026_04_27_204221_create_messages_table.php
+    database/migrations/2026_04_30_120000_add_statut_to_messages_table.php
+
+  Tests :
+    tests/Feature/MessageTest.php
+    tests/Feature/MessageCrossServiceTest.php
+    tests/Feature/MessageConfidentialityTest.php
+
+
+4. ENDPOINTS API
+------------------------------------------------------------------------------
+ Methode  | URL                                | Controller              | Description
+----------+------------------------------------+-------------------------+-----------------------------------
+ GET      | /api/messages                      | @index                  | Liste paginee (type, q, lu)
+ POST     | /api/messages                      | @store                  | Creer (envoyer ou brouillon)
+ GET      | /api/messages/non-lus              | @nombreNonLus           | Compteur non lus
+ GET      | /api/messages/destinataires        | @rechercherDestinataires| Autocomplete utilisateurs
+ GET      | /api/messages/{message}            | @show                   | Detail d'un message
+ PATCH    | /api/messages/{message}            | @update                 | Modifier un brouillon
+ DELETE   | /api/messages/{message}            | @destroy                | Supprimer un brouillon
+ PATCH    | /api/messages/{message}/send       | @sendDraft              | Envoyer un brouillon
+ PATCH    | /api/messages/{message}/read       | @markRead               | Marquer comme lu
+
+Tous les endpoints sont proteges par le middleware auth:sanctum.
+
+
+5. DIAGRAMMES DE SEQUENCE
+------------------------------------------------------------------------------
+
+5.1 Envoi d'un message (avec notification temps reel)
+------------------------------------------------------------------------------
+Utilisateur    Frontend            API              BD         Notification  WS       Destinataire
+    |            |                  |                |             |          |           |
+    |-- Remplit ->|                 |                |             |          |           |
+    |   formulaire |                |                |             |          |           |
+    |              |                |                |             |          |           |
+    |-- Clique --->|                |                |             |          |           |
+    |   "Envoyer"  |                |                |             |          |           |
+    |              |-- POST ------->|                |             |          |           |
+    |              |   /api/messages|                |             |          |           |
+    |              |   {dest_id,    |                |             |          |           |
+    |              |    contenu,    |                |             |          |           |
+    |              |    envoyer:T}  |                |             |          |           |
+    |              |                |-- Valider ---->|             |          |           |
+    |              |                |   (self-send,  |             |          |           |
+    |              |                |    acces cour.)|             |          |           |
+    |              |                |                |             |          |           |
+    |              |                |-- CREATE ----->|             |          |           |
+    |              |                |   Message      |             |          |           |
+    |              |                |   statut='ENV' |             |          |           |
+    |              |                |   date=now()   |             |          |           |
+    |              |                |<--- OK --------|             |          |           |
+    |              |                |                |             |          |           |
+    |              |                |-- notify() --->|             |          |           |
+    |              |                |  (MessageSent) |             |          |           |
+    |              |                |                |             |--Broadcast->|         |
+    |              |                |                |             |  canal     |         |
+    |              |                |                |             |  prive     |         |
+    |              |<-- 201 + msg --|                |             |  User.X    |         |
+    |              |                |                |             |          |-- Toast --|
+    |<-- Affiche --|                |                |             |          |   + panel |
+    |   "Envoyes"  |                |                |             |          |           |
+
+
+5.2 Reception et lecture d'un message
+------------------------------------------------------------------------------
+Destinataire    Frontend            API              BD
+    |              |                  |                |
+    |-- Ouvre ---->|                  |                |
+    |   onglet     |-- GET ---------->|                |
+    |   "Boite"    |   /api/messages  |                |
+    |              |   ?type=recu     |                |
+    |              |                  |-- Verifier --->|
+    |              |                  |   Policy       |
+    |              |                  |                |
+    |              |                  |-- SELECT ----->|
+    |              |                  |   recuPar()    |
+    |              |                  |   paginate(15) |
+    |              |                  |<--- liste -----|
+    |              |<-- 200 + msgs ---|                |
+    |<-- Affiche --|                  |                |
+    |   liste      |                  |                |
+    |              |                  |                |
+    |-- Clique --->|                  |                |
+    |   message    |-- GET ---------->|                |
+    |              |   /api/messages/ |                |
+    |              |   {id}           |                |
+    |              |                  |-- Verifier --->|
+    |              |                  |   proprietaire |
+    |              |                  |                |
+    |              |                  |-- UPDATE ----->|
+    |              |                  |   lu=true      |
+    |              |                  |   (si destin.) |
+    |              |                  |<--- OK --------|
+    |              |                  |                |
+    |              |                  |-- LOAD ------->|
+    |              |                  |   relations    |
+    |              |                  |<--- data ------|
+    |              |                  |                |
+    |              |<-- 200 + msg ----|                |
+    |              |   + courrier_    |                |
+    |              |   accessible     |                |
+    |<-- Affiche --|                  |                |
+    |   detail     |                  |                |
+
+
+5.3 Creation et envoi d'un brouillon
+------------------------------------------------------------------------------
+Utilisateur    Frontend            API              BD         Destinataire
+    |              |                  |                |             |
+    |-- "Nouveau" ->|                 |                |             |
+    |-- Remplir --->|                  |                |             |
+    |   formulaire  |                  |                |             |
+    |              |                  |                |             |
+    |-- Clique --->|                  |                |             |
+    |  "Enregistrer"|-- POST -------->|                |             |
+    |              |   /api/messages  |                |             |
+    |              |   envoyer:false  |                |             |
+    |              |                  |-- CREATE ----->|             |
+    |              |                  |   Message      |             |
+    |              |                  |   statut='CREE'|             |
+    |              |                  |<--- OK --------|             |
+    |              |<-- 201 ---------|                |             |
+    |<-- Affiche --|                  |                |             |
+    |   brouillon  |                  |                |             |
+    |              |                  |                |             |
+    |   ... plus tard ...            |                |             |
+    |              |                  |                |             |
+    |-- Ouvre ---->|                  |                |             |
+    |   "Brouillons"|                 |                |             |
+    |-- Clique --->|                  |                |             |
+    |   "Envoyer"  |-- PATCH ------->|                |             |
+    |              |   /{id}/send    |                |             |
+    |              |                  |-- Verifier -->|             |
+    |              |                  |   emetteur    |             |
+    |              |                  |   statut=CREE |             |
+    |              |                  |                |             |
+    |              |                  |-- UPDATE ---->|             |
+    |              |                  |   statut='ENV'|             |
+    |              |                  |   date=now()  |             |
+    |              |                  |<--- OK -------|             |
+    |              |                  |                |             |
+    |              |                  |-- notify() ---|------------->
+    |              |                  |   (MessageSent)|             |
+    |              |<-- 200 ---------|                |             |
+    |<-- Affiche --|                  |                |             |
+    |   "Envoyes"  |                  |                |             |
+
+
+6. SECURITE ET CONTROLES D'ACCES
+------------------------------------------------------------------------------
+Authentification : Sanctum (token-based)
+Tous les endpoints sont proteges par auth:sanctum.
+
+MessagePolicy :
+  viewAny   : tout utilisateur authentifie
+  view      : seul l'emetteur OU le destinataire peut voir le message
+  create    : tout utilisateur authentifie (self-send interdit)
+  delete    : seul l'emetteur, uniquement si statut = 'CREE'
+  markRead  : seul le destinataire
+
+Regles de validation (StoreMessageRequest) :
+  - destinataire_id : requis, existe dans users, != emetteur_id
+  - contenu : requis, string
+  - courrier_id : optionnel, existe dans courriers
+  - envoyer : boolean (true = envoyer directement, false = brouillon)
+  - Si courrier_id fourni : verifie que l'emetteur ET le destinataire
+    ont le droit de voir ce courrier
+
+Pour les messages avec courrier reference :
+  - Le controller verifie que le destinataire peut voir le courrier
+    via $message->destinatairePeutVoirCourrier()
+  - Le frontend recoit un flag courrier_accessible
+  - Si false, les details du courrier sont masques
+
+
+7. TEMPS REEL (NOTIFICATIONS)
+------------------------------------------------------------------------------
+MessageController@store ou @sendDraft
+        |
+        v
+$destinataire->notify(MessageSentNotification)
+        |
+        v
+Broadcast sur le channel prive
+App.Models.User.{destinataire_id}
+        |
+        v
+Echo cote frontend (dans App.jsx)
+  echo.private(`App.Models.User.${user.id}`)
+    .notification((notification) => {
+        // 1. Ajout au panneau de notifications (icone cloche)
+        // 2. Toast popup (duree 5 secondes)
+    })
+
+Payload de la notification broadcast :
+  {
+    "type": "message_sent",
+    "titre": "Nouveau message",
+    "message": "Vous avez recu un nouveau message de {nom_expediteur}",
+    "message_id": {id},
+    "emetteur": "{nom_expediteur}"
+  }
+
+
+8. FLUX DE NAVIGATION (FRONTEND)
+------------------------------------------------------------------------------
+App.jsx (/messages)
+    |
+    +-- Messages.jsx
+          |
+          +-- Barre de navigation (onglets)
+          |     Boite | Envoyes | Brouillons
+          |
+          +-- Barre de recherche
+          |     filtre par contenu, emetteur, destinataire
+          |
+          +-- Panneau gauche : Liste des messages
+          |     paginee (15 messages/page)
+          |     triee par date_envoi DESC
+          |     +-- Pagination.jsx
+          |
+          +-- Panneau droit : Detail du message selectionne
+          |     +-- En-tete : Date, De, Pour
+          |     +-- Reference courrier (visible ou restreint)
+          |     +-- Contenu du message
+          |
+          +-- Modal : ComposerModal
+                +-- Champ destinataire (autocomplete via API)
+                +-- Champ courrier (recherche, optionnel)
+                +-- Textarea contenu
+                +-- Boutons : Envoyer | Enregistrer brouillon | Annuler
+
+
+9. RESUME DES FLUX
+------------------------------------------------------------------------------
+ENVOI :
+  Frontend -> POST /api/messages -> Controller cree le message
+  -> si envoye : notification broadcast vers le destinataire via Reverb
+
+LECTURE :
+  Frontend -> GET /api/messages/{id} -> Controller verifie les droits
+  -> marque comme lu (si destinataire) -> retourne les donnees
+
+BROUILLON :
+  Frontend -> POST avec envoyer:false -> statut = 'CREE'
+  -> PATCH /{id}/send plus tard -> statut passe a 'ENVOYE'
+  -> notification envoyee a ce moment
+
+RECHERCHE DESTINATAIRES :
+  Frontend -> GET /api/messages/destinataires?q=xxx
+  -> recherche par nom/prenom/email, exclut soi-meme
+  -> meme service prioritaire si requete vide
+
+COMPTEUR NON LUS :
+  Frontend -> GET /api/messages/non-lus (avec cache 45s)
+  -> affiche un badge dans la sidebar
