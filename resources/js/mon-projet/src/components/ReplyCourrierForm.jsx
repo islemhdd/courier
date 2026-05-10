@@ -107,6 +107,9 @@ export default function ReplyCourrierForm({
                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
                  Réponse simplifiée
                </p>
+               <p className="text-[10px] text-slate-400 mt-2">
+                 <span className="font-semibold">Type de courrier :</span> {type === 'entrant' ? 'Entrant' : 'Sortant'} • <span className="font-semibold">Date de création :</span> {new Date().toISOString().slice(0, 10)}
+               </p>
              </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors p-2"><X size={20} /></button>
@@ -132,7 +135,7 @@ export default function ReplyCourrierForm({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date de réception</label>
-                  <input type="date" value={form.date_reception} onChange={e => setForm({...form, date_reception: e.target.value})} className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm outline-none" />
+                  <input type="date" value={form.date_reception} onChange={e => setForm({...form, date_reception: e.target.value})} readOnly className="w-full h-10 px-3 border border-slate-200 rounded-lg text-sm outline-none cursor-not-allowed opacity-60" />
                 </div>
               </div>
 

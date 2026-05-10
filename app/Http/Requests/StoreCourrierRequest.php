@@ -16,10 +16,20 @@ class StoreCourrierRequest extends FormRequest
             return false;
         }
 
+        // Les réponses sont toujours autorisées (via parent_courrier_id)
         if ($this->filled('parent_courrier_id')) {
             return true;
         }
 
+        // Pour les courriers sortants, seul le chef général ou secrétaire général (et admin) peuvent créer
+        $type = $this->input('type');
+        if ($type === Courrier::TYPE_SORTANT) {
+            // Toute personne autorisée à créer un courrier peut soumettre un courrier sortant.
+            // Le statut de validation est ensuite défini dans le contrôleur.
+            return $user->peutCreerCourrier();
+        }
+
+        // Pour les autres types, utiliser la vérification générale
         return $user->peutCreerCourrier();
     }
 
@@ -36,7 +46,7 @@ class StoreCourrierRequest extends FormRequest
             'destinataire' => ['nullable', 'string', 'max:100'],
             'date_reception' => ['required', 'date'],
             'niveau_confidentialite_id' => [$isReply ? 'sometimes' : 'required', 'integer', 'exists:niveau_confidentialites,id'],
-            'source_id' => [$isReply ? 'sometimes' : 'nullable', 'integer', 'exists:sources,id'],
+            'source_id' => [$isReply ? 'sometimes' : ($this->input('type') === Courrier::TYPE_SORTANT ? 'required' : 'nullable'), 'integer', 'exists:sources,id'],
             'source_libelle' => ['nullable', 'string', 'max:160'],
             'parent_courrier_id' => ['nullable', 'integer', 'exists:courriers,id'],
             'requiert_reponse' => ['sometimes', 'boolean'],
@@ -68,6 +78,7 @@ class StoreCourrierRequest extends FormRequest
         $validator->after(function ($validator) {
             $user = $this->user();
             $isReply = $this->filled('parent_courrier_id');
+            $type = $this->input('type');
 
             if (!$user) {
                 return;
@@ -135,13 +146,18 @@ class StoreCourrierRequest extends FormRequest
                 );
             }
 
-            // Pour les réponses, les destinataires sont automatiquement définis, pas besoin de les valider
-            if (!$isReply && $this->input('mode_diffusion') !== 'broadcast' && empty($this->input('recipients')) && !$this->filled('destinataire') && !$this->filled('service_destinataire_id')) {
+            // Pour les courriers entrants, il faut au moins un destinataire
+            if (!$isReply && $this->input('type') === Courrier::TYPE_ENTRANT && $this->input('mode_diffusion') !== 'broadcast' && empty($this->input('recipients')) && !$this->filled('destinataire') && !$this->filled('service_destinataire_id')) {
                 $validator->errors()->add('recipients', 'Au moins un destinataire est obligatoire.');
             }
 
+            // Pour les courriers sortants, pas de destinataire interne (pas de diffusion)
+            if ($this->input('type') === Courrier::TYPE_SORTANT && !empty($this->input('recipients'))) {
+                $validator->errors()->add('recipients', 'Un courrier sortant n\'a pas de destinataires internes.');
+            }
+
             // Pour les réponses, pas de validation des destinataires (automatiques)
-            if (!$isReply) {
+            if (!$isReply && $type === Courrier::TYPE_ENTRANT) {
                 if (
                     $this->input('mode_diffusion') === 'unicast'
                     && empty($this->input('recipients'))
@@ -163,7 +179,7 @@ class StoreCourrierRequest extends FormRequest
             $modeDiffusion = $this->input('mode_diffusion');
 
             // Pour les réponses, pas de validation des modes de diffusion (toujours unicast automatique)
-            if (!$isReply) {
+            if (!$isReply && $type === Courrier::TYPE_ENTRANT) {
                 if ($modeDiffusion === 'broadcast' && !empty($recipients)) {
                     $invalidBroadcastRecipients = collect($recipients)->filter(fn($recipient) => ($recipient['recipient_type'] ?? null) !== 'all')->isNotEmpty();
                     if ($invalidBroadcastRecipients) {
@@ -176,11 +192,46 @@ class StoreCourrierRequest extends FormRequest
                 }
             }
 
+            if ($type !== Courrier::TYPE_SORTANT) {
+                foreach ($this->input('recipients', []) as $index => $recipient) {
+                    $typeRecipient = $recipient['recipient_type'] ?? null;
+
+                    if ($typeRecipient === 'structure' && empty($recipient['structure_id'])) {
+                        $validator->errors()->add("recipients.$index.structure_id", 'La structure destinataire est obligatoire.');
+                    }
+
+                    if ($typeRecipient === 'service' && empty($recipient['service_id'])) {
+                        $validator->errors()->add("recipients.$index.service_id", 'Le service destinataire est obligatoire.');
+                    }
+
+                    if ($typeRecipient === 'user' && empty($recipient['user_id'])) {
+                        $validator->errors()->add("recipients.$index.user_id", 'La personne destinataire est obligatoire.');
+                    }
+                }
+            }
+
             if ($this->filled('source_libelle') && !$user->peutAjouterSource()) {
                 $validator->errors()->add(
                     'source_libelle',
                     'Seul le chef general ou son secretaire peut ajouter une nouvelle source.'
                 );
+            }
+
+            // Pour les courriers sortants, source_id doit être obligatoire et source_libelle interdit
+            if ($this->input('type') === Courrier::TYPE_SORTANT && !$isReply) {
+                if (!$this->filled('source_id')) {
+                    $validator->errors()->add(
+                        'source_id',
+                        'Une source existante est obligatoire pour un courrier sortant.'
+                    );
+                }
+
+                // if ($this->filled('source_libelle')) {
+                //     $validator->errors()->add(
+                //         'source_libelle',
+                //         'Impossible de creer une nouvelle source pour un courrier sortant. Choisissez une source existante.'
+                //     );
+                // }
             }
 
             foreach ($this->input('instructions', []) as $index => $instruction) {
@@ -229,7 +280,9 @@ class StoreCourrierRequest extends FormRequest
         if (!$this->filled('mode_diffusion')) {
             $mode = 'broadcast';
 
-            if ($this->filled('destinataire') || $this->filled('service_destinataire_id') || !empty($this->input('recipients'))) {
+            if ($this->input('type') === Courrier::TYPE_SORTANT) {
+                $mode = 'unicast';
+            } elseif ($this->filled('destinataire') || $this->filled('service_destinataire_id') || !empty($this->input('recipients'))) {
                 $count = count($this->input('recipients', []));
                 $mode = $count > 1 ? 'multicast' : 'unicast';
             }

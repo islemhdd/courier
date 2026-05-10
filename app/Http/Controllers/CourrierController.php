@@ -153,7 +153,8 @@ class CourrierController extends Controller
             $data['mode_diffusion'] = 'multicast'; // Plusieurs destinataires
 
             // Pour les réponses : forcer certains champs depuis le parent
-            $data['type'] = $parent->type; // Même type que le parent
+            // Les réponses sont TOUJOURS de type sortant
+            $data['type'] = Courrier::TYPE_SORTANT;
             $data['source_id'] = $parent->source_id ? (int) $parent->source_id : null; // Même source que le parent
             $data['niveau_confidentialite_id'] = $parent->niveau_confidentialite_id ? (int) $parent->niveau_confidentialite_id : null; // Même confidentialité
             $data['service_destinataire_id'] = $parent->service_source_id ? (int) $parent->service_source_id : null; // Destination = service source du parent
@@ -173,7 +174,17 @@ class CourrierController extends Controller
 
         $courrier = DB::transaction(function () use ($request, $user, $data) {
             $source = $this->resolveOrCreateSource($user, $data);
-            $status = $user->estSecretaire() ? Courrier::STATUT_CREE : ($data['type'] === Courrier::TYPE_ENTRANT ? Courrier::STATUT_RECU : Courrier::STATUT_VALIDE);
+
+            // Déterminer le statut du courrier
+            // Les courriers sortants créés par tout utilisateur autre que le chef général ou l'admin
+            // sont enregistrés en statut CREE pour validation par le chef général.
+            if ($data['type'] === Courrier::TYPE_SORTANT && !$user->estChefGeneral() && !$user->estAdmin()) {
+                $status = Courrier::STATUT_CREE;
+            } elseif ($data['type'] === Courrier::TYPE_ENTRANT) {
+                $status = Courrier::STATUT_RECU;
+            } else {
+                $status = Courrier::STATUT_VALIDE;
+            }
 
             $courrier = Courrier::create([
                 'objet' => $data['objet'],
@@ -691,6 +702,12 @@ class CourrierController extends Controller
             return Source::find($data['source_id']);
         }
 
+        // Pour les courriers sortants, on ne crée pas de nouvelle source
+        // source_id doit être obligatoire (validé en StoreCourrierRequest)
+        if ($data['type'] === Courrier::TYPE_SORTANT) {
+            return null;
+        }
+
         if (!empty($data['source_libelle']) && $user->peutAjouterSource()) {
             return Source::firstOrCreate(['libelle' => $data['source_libelle']]);
         }
@@ -701,6 +718,12 @@ class CourrierController extends Controller
     private function syncRecipients(Courrier $courrier, array $data): void
     {
         $courrier->recipients()->delete();
+
+        // Pour les courriers sortants, ne pas synchroniser les destinataires
+        // (la destination est la source externe, pas un destinataire interne)
+        if ($courrier->type === Courrier::TYPE_SORTANT) {
+            return;
+        }
 
         if (($data['mode_diffusion'] ?? $courrier->mode_diffusion) === 'broadcast') {
             $courrier->recipients()->create(['recipient_type' => 'all']);
@@ -942,7 +965,12 @@ class CourrierController extends Controller
             ? ($courrier->peut_voir_details && $courrier->peut_etre_repondu === true)
             : false;
         $courrier->contenu_restreint = !$courrier->peut_voir_details;
-        $courrier->chaine_reponses = $courrier->reponses;
+        $courrier->chaine_reponses = $courrier->reponses->map(function ($reply) use ($user) {
+            $reply->peut_voir_details = $user ? $reply->peutEtreVuEnDetailPar($user) : false;
+            $reply->peut_voir_existence = $user ? $reply->peutVoirExistencePar($user) : false;
+            $reply->est_accessible = $reply->peut_voir_details;
+            return $reply;
+        })->all();
 
         if (!$courrier->peut_voir_details) {
             $courrier->chemin_fichier = null;
@@ -954,6 +982,7 @@ class CourrierController extends Controller
         if ($courrier->relationLoaded('parent') && $courrier->parent) {
             $courrier->parent->peut_voir_details = $user ? $courrier->parent->peutEtreVuEnDetailPar($user) : false;
             $courrier->parent->peut_voir_existence = $user ? $courrier->parent->peutVoirExistencePar($user) : false;
+            $courrier->parent->est_accessible = $courrier->parent->peut_voir_details;
         }
 
         return $courrier;

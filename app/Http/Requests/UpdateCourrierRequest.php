@@ -85,30 +85,37 @@ class UpdateCourrierRequest extends FormRequest
                 );
             }
 
+            $type = $this->input('type') ?? $this->route('courrier')->type;
             $recipients = $this->input('recipients', []);
             $modeDiffusion = $this->input('mode_diffusion');
 
-            if ($modeDiffusion === 'unicast' && count($recipients) > 1) {
-                $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
-            }
-
-            if ($modeDiffusion === 'multicast' && count($recipients) < 2) {
-                $validator->errors()->add('recipients', 'Le mode multicast exige plusieurs destinataires.');
-            }
-
-            foreach ($recipients as $index => $recipient) {
-                $type = $recipient['recipient_type'] ?? null;
-
-                if ($type === 'structure' && empty($recipient['structure_id'])) {
-                    $validator->errors()->add("recipients.$index.structure_id", 'La structure destinataire est obligatoire.');
+            if ($type !== Courrier::TYPE_SORTANT) {
+                if ($modeDiffusion === 'unicast' && count($recipients) > 1) {
+                    $validator->errors()->add('recipients', 'Le mode unicast exige un seul destinataire.');
                 }
 
-                if ($type === 'service' && empty($recipient['service_id'])) {
-                    $validator->errors()->add("recipients.$index.service_id", 'Le service destinataire est obligatoire.');
+                if ($modeDiffusion === 'multicast' && count($recipients) < 2) {
+                    $validator->errors()->add('recipients', 'Le mode multicast exige plusieurs destinataires.');
                 }
 
-                if ($type === 'user' && empty($recipient['user_id'])) {
-                    $validator->errors()->add("recipients.$index.user_id", 'La personne destinataire est obligatoire.');
+                foreach ($recipients as $index => $recipient) {
+                    $typeRecipient = $recipient['recipient_type'] ?? null;
+
+                    if ($typeRecipient === 'structure' && empty($recipient['structure_id'])) {
+                        $validator->errors()->add("recipients.$index.structure_id", 'La structure destinataire est obligatoire.');
+                    }
+
+                    if ($typeRecipient === 'service' && empty($recipient['service_id'])) {
+                        $validator->errors()->add("recipients.$index.service_id", 'Le service destinataire est obligatoire.');
+                    }
+
+                    if ($typeRecipient === 'user' && empty($recipient['user_id'])) {
+                        $validator->errors()->add("recipients.$index.user_id", 'La personne destinataire est obligatoire.');
+                    }
+                }
+            } else {
+                if (!empty($recipients)) {
+                    $validator->errors()->add('recipients', 'Un courrier sortant n\'a pas de destinataires internes.');
                 }
             }
         });
@@ -117,9 +124,12 @@ class UpdateCourrierRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         if ($this->has('mode_diffusion') && !$this->filled('mode_diffusion')) {
+            $type = $this->input('type') ?? $this->route('courrier')->type;
             $recipients = $this->input('recipients', []);
+            $mode = $type === Courrier::TYPE_SORTANT ? 'unicast' : (count($recipients) > 1 ? 'multicast' : 'unicast');
+
             $this->merge([
-                'mode_diffusion' => count($recipients) > 1 ? 'multicast' : 'unicast',
+                'mode_diffusion' => $mode,
             ]);
         }
     }

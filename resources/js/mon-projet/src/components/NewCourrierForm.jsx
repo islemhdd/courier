@@ -32,6 +32,8 @@ export default function NewCourrierForm({
 }) {
   const { user } = useAuth()
   const peutAjouterSource = user?.role_scope === 'general'
+  // Pour les courriers sortants, interdire la création de nouvelle source
+  const canAddNewSource = peutAjouterSource && type !== 'sortant'
   const [showNewSourceInput, setShowNewSourceInput] = useState(false)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -49,7 +51,8 @@ export default function NewCourrierForm({
     types: [],
     sources: [],
     instructions: [],
-    modes_diffusion: ['unicast', 'multicast', 'broadcast']
+    modes_diffusion: ['unicast', 'multicast', 'broadcast'],
+    courriers_recus: []
   })
 
   // État du formulaire
@@ -58,6 +61,7 @@ export default function NewCourrierForm({
     resume: '',
     type: type,
     courrier_type_id: '',
+    date_creation: new Date().toISOString().slice(0, 10),
     date_reception: new Date().toISOString().slice(0, 10),
     niveau_confidentialite_id: '',
     source_id: '',
@@ -111,19 +115,31 @@ export default function NewCourrierForm({
     async function fetchMeta() {
       try {
         const res = await courrierApi.getCreateData()
-        setMeta(res.data)
+        const newMeta = { ...res.data, courriers_recus: [] }
+
+        // Charger les courriers reçus si c'est un courrier sortant (pour réponses)
+        if (type === 'sortant') {
+          try {
+            const receivedRes = await courrierApi.recus({ q: '', page: 1 })
+            newMeta.courriers_recus = receivedRes.data.courriers || []
+          } catch {
+            // Ignore error for received courriers
+          }
+        }
+
+        setMeta(newMeta)
         if (!initialData) {
           setForm(prev => ({
             ...prev,
-            niveau_confidentialite_id: res.data.niveaux_confidentialite[0]?.id || '',
-            courrier_type_id: res.data.types[0]?.id || ''
+            niveau_confidentialite_id: newMeta.niveaux_confidentialite[0]?.id || '',
+            courrier_type_id: newMeta.types[0]?.id || ''
           }))
         } else {
           setForm(prev => ({
             ...prev,
             ...initialData,
-            niveau_confidentialite_id: initialData.niveau_confidentialite_id || res.data.niveaux_confidentialite[0]?.id || '',
-            courrier_type_id: initialData.courrier_type_id || res.data.types[0]?.id || ''
+            niveau_confidentialite_id: initialData.niveau_confidentialite_id || newMeta.niveaux_confidentialite[0]?.id || '',
+            courrier_type_id: initialData.courrier_type_id || newMeta.types[0]?.id || ''
           }))
         }
       } catch {
@@ -133,7 +149,7 @@ export default function NewCourrierForm({
       }
     }
     fetchMeta()
-  }, [initialData])
+  }, [initialData, type])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -146,7 +162,7 @@ export default function NewCourrierForm({
       Object.keys(form).forEach(key => {
         if (key === 'documents') {
           form.documents.forEach(file => formData.append('documents[]', file))
-        } else if (!['recipients', 'instructions', 'concerned_user_ids'].includes(key)) {
+        } else if (!['recipients', 'instructions', 'concerned_user_ids', 'date_creation'].includes(key)) {
           if (form[key] !== null && form[key] !== undefined) {
             let value = form[key]
             if (typeof value === 'boolean') {
@@ -157,12 +173,18 @@ export default function NewCourrierForm({
         }
       })
 
-      form.recipients.forEach((r, i) => {
-        formData.append(`recipients[${i}][recipient_type]`, r.recipient_type)
-        if (r.structure_id) formData.append(`recipients[${i}][structure_id]`, r.structure_id)
-        if (r.service_id) formData.append(`recipients[${i}][service_id]`, r.service_id)
-        if (r.user_id) formData.append(`recipients[${i}][user_id]`, r.user_id)
-      })
+      // Pour les courriers sortants, ne pas envoyer de destinataires (pas de diffusion interne)
+      if (type === 'entrant') {
+        form.recipients.forEach((r, i) => {
+          formData.append(`recipients[${i}][recipient_type]`, r.recipient_type)
+          if (r.structure_id) formData.append(`recipients[${i}][structure_id]`, r.structure_id)
+          if (r.service_id) formData.append(`recipients[${i}][service_id]`, r.service_id)
+          if (r.user_id) formData.append(`recipients[${i}][user_id]`, r.user_id)
+        })
+      } else {
+        // Pour les sortants, mode unicast sans destinataires
+        formData.set('mode_diffusion', 'unicast')
+      }
 
       form.instructions.forEach((inst, i) => {
         if (inst.instruction_id) formData.append(`instructions[${i}][instruction_id]`, inst.instruction_id)
@@ -229,7 +251,7 @@ export default function NewCourrierForm({
     setForm(p => ({ ...p, recipients: nr }))
   }
 
-  const addInstruction = () => setForm(p => ({ ...p, instructions: [...p.instructions, { instruction_id: '', commentaire: '', validation_requise: false }] }))
+  const addInstruction = () => setForm(p => ({ ...p, instructions: [...p.instructions, { instruction_id: '', commentaire: '', validation_requise: true }] }))
   const removeInstruction = (index) => setForm(p => ({ ...p, instructions: p.instructions.filter((_, i) => i !== index) }))
   const updateInstruction = (index, field, value) => {
     const ni = [...form.instructions]
@@ -290,13 +312,16 @@ export default function NewCourrierForm({
           Informations & Fichiers
           {activeTab === 'infos' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />}
         </button>
-        <button
-          onClick={() => setActiveTab('circuit')}
-          className={`px-5 py-3.5 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'circuit' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-        >
-          Destinataires & Circuit
-          {activeTab === 'circuit' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />}
-        </button>
+        {/* Affiche le tab destinataires uniquement pour les courriers entrants */}
+        {type === 'entrant' && (
+          <button
+            onClick={() => setActiveTab('circuit')}
+            className={`px-5 py-3.5 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'circuit' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+          >
+            Destinataires & Circuit
+            {activeTab === 'circuit' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-t-full" />}
+          </button>
+        )}
       </div>
 
       <form id="courrier-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
@@ -309,6 +334,19 @@ export default function NewCourrierForm({
                     <Info size={15} className="text-indigo-500" />
                     Détails de l'envoi
                   </h3>
+                  <p className="text-xs text-slate-500">
+                    <strong>Type de courrier :</strong> {type === 'entrant' ? 'Entrant' : 'Sortant'} •
+                    <strong className="ml-1">Date de création :</strong> {form.date_creation}
+                  </p>
+
+                  {/* Info pour les courriers sortants */}
+                  {type === 'sortant' && (
+                    <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-xs text-blue-700">
+                        <strong>ℹ️ Courrier Sortant :</strong> Le destinataire est la source externe que vous avez spécifiée ci-dessus. Pas de diffusion interne.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-semibold text-slate-500">Objet du courrier</label>
@@ -339,10 +377,11 @@ export default function NewCourrierForm({
                         <Layers size={12} /> Type
                       </label>
                       <select
+                        disabled
                         required
-                        value={form.courrier_type_id}
-                        onChange={e => setForm({...form, courrier_type_id: e.target.value})}
-                        className="w-full h-11 px-4 bg-slate-50 border-0 rounded-xl text-sm font-medium outline-none cursor-pointer"
+                        value={type === 'entrant'?1:2}
+                        // onChange={e => setForm({...form, courrier_type_id: e.target.value})}
+                        className="w-full h-11 px-4 bg-slate-50 border-0 rounded-xl text-sm font-medium outline-none cursor-not-allowed opacity-60"
                       >
                         {meta.types.map(t => <option key={t.id} value={t.id}>{t.libelle}</option>)}
                       </select>
@@ -365,13 +404,14 @@ export default function NewCourrierForm({
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
-                        <Calendar size={12} /> Date
+                        <Calendar size={12} /> {type === 'sortant' ? 'Date de création' : 'Date de réception'}
                       </label>
-                      <input
+                      <input disabled
                         type="date"
                         value={form.date_reception}
                         onChange={e => setForm({...form, date_reception: e.target.value})}
-                        className="w-full h-11 px-4 bg-slate-50 border-0 rounded-xl text-sm font-medium outline-none"
+                        readOnly={type === 'sortant'}
+                        className="w-full h-11 px-4 bg-slate-50 border-0 rounded-xl text-sm font-medium outline-none cursor-not-allowed opacity-60  "
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -393,7 +433,7 @@ export default function NewCourrierForm({
                         >
                           <option value="">Choisir la source...</option>
                           {meta.sources.map(s => <option key={s.id} value={s.id}>{s.libelle}</option>)}
-                          {peutAjouterSource && <option value="NEW" className="text-indigo-600 font-bold">+ Créer nouvelle source</option>}
+                          {canAddNewSource && <option value="NEW" className="text-indigo-600 font-bold">+ Créer nouvelle source</option>}
                         </select>
                       ) : (
                         <div className="flex gap-2">
@@ -416,6 +456,20 @@ export default function NewCourrierForm({
                       )}
                     </div>
                   </div>
+
+                  {type === 'sortant' && (
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold text-slate-500">Courrier  Réponse à</label>
+                      <select
+                        value={form.parent_courrier_id}
+                        onChange={e => setForm({...form, parent_courrier_id: e.target.value})}
+                        className="w-full h-11 px-4 bg-slate-50 border-0 rounded-xl text-sm font-medium outline-none cursor-pointer"
+                      >
+                        <option value="">Aucun (Nouveau courrier)</option>
+                        {meta.courriers_recus.map(c => <option key={c.id} value={c.id}>{c.numero ? `${c.numero} - ` : ''}{c.objet}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
 
                 <div className={`p-5 rounded-xl transition-all border ${form.requiert_reponse ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
@@ -711,18 +765,14 @@ export default function NewCourrierForm({
                           />
                         </div>
 
-                        <label className="flex items-center gap-2.5 cursor-pointer group w-fit">
-                          <div className={`w-9 h-5 rounded-full relative transition-colors ${inst.validation_requise ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-                            <input
-                              type="checkbox"
-                              checked={inst.validation_requise}
-                              onChange={e => updateInstruction(i, 'validation_requise', e.target.checked)}
-                              className="absolute inset-0 opacity-0 cursor-pointer z-10"
-                            />
-                            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${inst.validation_requise ? 'right-1' : 'left-1'}`} />
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Validation hiérarchique</span>
-                        </label>
+                      <label className="flex items-center gap-2.5 w-fit">
+  <div className="w-9 h-5 rounded-full relative bg-emerald-500">
+    <div className="absolute top-1 right-1 w-3 h-3 bg-white rounded-full" />
+  </div>
+  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+    Validation hiérarchique requise
+  </span>
+</label>
                       </div>
                     ))}
 

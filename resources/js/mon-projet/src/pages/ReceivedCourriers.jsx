@@ -38,27 +38,6 @@ function Select({ items, value, onChange, allLabel = 'Tous' }) {
   )
 }
 
-function DetailSection({ title, children }) {
-  return (
-    <div>
-      <h4 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2.5">{title}</h4>
-      {children}
-    </div>
-  )
-}
-
-function DetailRow({ icon, label, value }) {
-  return (
-    <div className="flex items-start gap-2.5">
-      <span className="text-slate-400 shrink-0 mt-0.5">{icon}</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[11px] font-medium text-slate-400">{label}</p>
-        <p className="text-sm font-medium text-slate-800 mt-0.5 break-words">{value || '-'}</p>
-      </div>
-    </div>
-  )
-}
-
 export default function ReceivedCourriers() {
   const { user } = useAuth()
   const [courriers, setCourriers] = useState([])
@@ -112,6 +91,17 @@ export default function ReceivedCourriers() {
         setCourriers(items)
         setPagination(res.data.courriers)
         setPageCache(cacheKey, { courriers: items, pagination: res.data.courriers }, CACHE_TTL)
+
+        setSelectedCourrier((prev) => {
+          if (!prev) {
+            return prev
+          }
+          const matching = items.find((item) => item.id === prev.id)
+          if (!matching) {
+            setShowMobileDetail(false)
+          }
+          return matching || null
+        })
       } catch (err) {
         setError(getApiErrorMessage(err) || 'Erreur lors du chargement.')
       } finally {
@@ -127,7 +117,7 @@ export default function ReceivedCourriers() {
     if (!mountedRef.current) {
       loadData({ page: 1 })
     }
-  }, [])
+  }, [loadData])
 
   const handleAction = async (action, id, data = {}) => {
     setActionLoading(true)

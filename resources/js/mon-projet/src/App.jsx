@@ -140,7 +140,8 @@ function getNotificationRoute(notification) {
   // Handle courier received and courier replied notifications
   if (
     rawType === 'courrier_received' ||
-    dataType === 'courrier_received'
+    dataType === 'courrier_received' ||
+    rawType.includes('CourrierReceivedNotification')
   ) {
     // Aller directement au détail du courrier reçu
     return `/courriers/${notification.courrier_id || notification.data?.courrier_id}`
@@ -148,10 +149,11 @@ function getNotificationRoute(notification) {
 
   if (
     rawType === 'courrier_repondu' ||
-    dataType === 'courrier_repondu'
+    dataType === 'courrier_repondu' ||
+    rawType.includes('CourrierReponduNotification')
   ) {
-    // Aller au courrier parent (celui qui a été répondu)
-    return `/courriers/${notification.parent_id || notification.data?.parent_id}`
+    // Aller a la reponse elle-meme quand elle est disponible, sinon a son parent
+    return `/courriers/${notification.reply_id || notification.data?.reply_id || notification.parent_id || notification.data?.parent_id}`
   }
 
   // Handle message received notifications

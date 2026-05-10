@@ -4,12 +4,8 @@ import api from '../api/api';
 
 window.Pusher = Pusher;
 
-const isDev = import.meta.env.DEV === true
-// In dev we default to disabled to avoid noisy WS errors when Reverb isn't running.
-// Enable explicitly with VITE_REVERB_ENABLED=true.
-const reverbEnabled = isDev
-  ? import.meta.env.VITE_REVERB_ENABLED === 'true'
-  : (import.meta.env.VITE_REVERB_ENABLED ?? 'true') !== 'false'
+// In dev we default to enabled when the Reverb vars are set, only disabling when VITE_REVERB_ENABLED=false.
+const reverbEnabled = import.meta.env.VITE_REVERB_ENABLED !== 'false'
 const reverbKey = import.meta.env.VITE_REVERB_APP_KEY
 const reverbHost = import.meta.env.VITE_REVERB_HOST
 const reverbPort = import.meta.env.VITE_REVERB_PORT

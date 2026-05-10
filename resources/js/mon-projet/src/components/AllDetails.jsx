@@ -796,9 +796,14 @@ function ThreadSection({ courrier, replies, onViewCourrier }) {
               <p className="mt-1 text-[11px] text-slate-400">{parentData.date_reception ? new Date(parentData.date_reception).toLocaleDateString('fr-FR') : ''}</p>
             </div>
           ) : (
-            <p className="mt-2 text-xs leading-5 text-blue-700">
-              Courrier parent reference (ID: {courrier.parent_courrier_id})
-            </p>
+            <button
+              type="button"
+              onClick={() => onViewCourrier?.(courrier.parent_courrier_id)}
+              className="mt-3 w-full rounded-xl border border-blue-200 bg-white p-3 text-left transition hover:border-blue-400 hover:shadow-sm"
+            >
+              <p className="text-sm font-semibold text-blue-950">Voir le courrier parent</p>
+              <p className="mt-1 text-[11px] text-slate-500">ID : {courrier.parent_courrier_id}</p>
+            </button>
           )}
         </div>
       )}
@@ -814,7 +819,13 @@ function ThreadSection({ courrier, replies, onViewCourrier }) {
               {visibleReplies.map((reply) => {
                 const canShowReply = reply.peut_voir_details === true || reply.est_accessible === true
                 return (
-                  <div key={reply.id || reply.numero} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <button
+                    type="button"
+                    key={reply.id || reply.numero}
+                    onClick={canShowReply ? () => onViewCourrier?.(reply.id) : undefined}
+                    className={`w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition ${canShowReply ? 'hover:border-slate-300 hover:bg-slate-100' : ''}`}
+                    disabled={!canShowReply}
+                  >
                     {canShowReply ? (
                       <>
                         <p className="text-sm font-semibold text-slate-900">{reply.numero || 'Reponse'}</p>
@@ -823,7 +834,7 @@ function ThreadSection({ courrier, replies, onViewCourrier }) {
                     ) : (
                       <p className="text-sm font-semibold text-slate-700">Reponse referencee</p>
                     )}
-                  </div>
+                  </button>
                 )
               })}
             </div>

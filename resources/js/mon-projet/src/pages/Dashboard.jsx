@@ -38,6 +38,15 @@ export default function Dashboard() {
   const [showTypeSelector, setShowTypeSelector] = useState(false)
   const [error, setError] = useState('')
   const canCreateIncoming = user?.permissions?.peut_creer_courrier_recu === true
+  const canCreateOutgoing = (() => {
+    if (!user) return false
+    const role = String(user.role || '').trim().toLowerCase()
+    const scope = String(user.role_scope || '').trim().toLowerCase()
+
+    if (role === 'admin') return true
+    return scope === 'general' && (role === 'chef' || role === 'secretaire')
+  })()
+  const canCreateAnyCourrier = canCreateIncoming || canCreateOutgoing
 
   const getApiErrorMessage = (err) =>
     err.response?.data?.message ||
@@ -169,17 +178,19 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button
-              onMouseEnter={() => import('../components/CourrierForm')}
-              onFocus={() => import('../components/CourrierForm')}
-              onClick={() => setShowTypeSelector(true)}
-              className="rounded-[1.25rem] bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 hover:-translate-y-0.5 hover:bg-slate-800"
-            >
-              <span className="flex items-center gap-2">
-                <Plus size={18} />
-                Nouveau courrier
-              </span>
-            </button>
+            {canCreateAnyCourrier && (
+              <button
+                onMouseEnter={() => import('../components/CourrierForm')}
+                onFocus={() => import('../components/CourrierForm')}
+                onClick={() => setShowTypeSelector(true)}
+                className="rounded-[1.25rem] bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 hover:-translate-y-0.5 hover:bg-slate-800"
+              >
+                <span className="flex items-center gap-2">
+                  <Plus size={18} />
+                  Nouveau courrier
+                </span>
+              </button>
+            )}
             <button
               onClick={() => navigate('/messages')}
               className="glass-panel rounded-[1.25rem] px-5 py-3 text-sm font-semibold text-slate-700 hover:-translate-y-0.5 hover:text-slate-950"
@@ -277,17 +288,19 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-3 p-6">
-              <TypeCard
-                title="Courrier sortant"
-                description="Creer un nouveau courrier de depart."
-                icon={<Send size={20} />}
-                tone="blue"
-                onClick={() => {
-                  setFormType('sortant')
-                  setShowTypeSelector(false)
-                  setFormOpen(true)
-                }}
-              />
+              {canCreateOutgoing && (
+                <TypeCard
+                  title="Courrier sortant"
+                  description="Creer un nouveau courrier de depart."
+                  icon={<Send size={20} />}
+                  tone="blue"
+                  onClick={() => {
+                    setFormType('sortant')
+                    setShowTypeSelector(false)
+                    setFormOpen(true)
+                  }}
+                />
+              )}
 
               {canCreateIncoming && (
                 <TypeCard

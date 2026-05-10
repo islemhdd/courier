@@ -258,11 +258,9 @@ class Courrier extends Model
                             $sub->where('recipient_type', 'user')->where('user_id', $user->id);
                         });
 
-                    if ($user->estChefService()) {
-                        $q->orWhere(function (Builder $sub) use ($user) {
-                            $sub->where('recipient_type', 'service')->where('service_id', $user->service_id);
-                        });
-                    }
+                    $q->orWhere(function (Builder $sub) use ($user) {
+                        $sub->where('recipient_type', 'service')->where('service_id', $user->service_id);
+                    });
 
                     $q->orWhere(function (Builder $sub) use ($user) {
                         $sub->where('recipient_type', 'structure')->where('structure_id', $user->structure_id);

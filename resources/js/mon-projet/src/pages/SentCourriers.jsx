@@ -3,6 +3,7 @@ import { AlertCircle, Plus, Search, Send } from 'lucide-react'
 
 import { courrierApi } from '../api/courrierApi'
 import { buildPageCacheKey, invalidatePageCache, getPageCache, setPageCache } from '../lib/pageCache'
+import { useAuth } from '../context/auth-context'
 import CourrierDetails from '../components/CourrierDetails'
 import CourrierTable from '../components/CourrierTable'
 import Pagination from '../components/Pagination'
@@ -12,6 +13,7 @@ const CourrierForm = lazy(() => import('../components/CourrierForm'))
 const SENT_CACHE_TTL = 5 * 60 * 1000
 
 export default function SentCourriers() {
+  const { user } = useAuth()
   const [courriers, setCourriers] = useState([])
   const [selectedCourrier, setSelectedCourrier] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -20,6 +22,21 @@ export default function SentCourriers() {
   const [search, setSearch] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [error, setError] = useState('')
+
+  // Vérifier si l'utilisateur peut créer un courrier sortant
+  const canCreateOutgoingCourrier = () => {
+    if (!user) return false
+    const role = String(user.role || '').trim().toLowerCase()
+    const scope = String(user.role_scope || '').trim().toLowerCase()
+
+    // Admin peut toujours créer
+    if (role === 'admin') return true
+
+    // Chef général ou Secrétaire général peuvent créer
+    if (scope === 'general' && (role === 'chef' || role === 'secretaire')) return true
+
+    return false
+  }
 
   const getApiErrorMessage = (err) =>
     err.response?.data?.message ||
@@ -143,17 +160,19 @@ export default function SentCourriers() {
               />
             </div>
 
-            <button
-              onMouseEnter={() => import('../components/CourrierForm')}
-              onFocus={() => import('../components/CourrierForm')}
-              onClick={() => setFormOpen(true)}
-              className="rounded-[1.25rem] bg-slate-950 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 hover:-translate-y-0.5 hover:bg-slate-800"
-            >
-              <span className="flex items-center justify-center gap-2">
-                <Plus size={16} />
-                Nouveau depart
-              </span>
-            </button>
+            {canCreateOutgoingCourrier() && (
+              <button
+                onMouseEnter={() => import('../components/CourrierForm')}
+                onFocus={() => import('../components/CourrierForm')}
+                onClick={() => setFormOpen(true)}
+                className="rounded-[1.25rem] px-4 py-3 text-sm font-semibold bg-slate-950 text-white shadow-lg shadow-slate-900/15 hover:-translate-y-0.5 hover:bg-slate-800"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <Plus size={16} />
+                  Nouveau depart
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </section>
