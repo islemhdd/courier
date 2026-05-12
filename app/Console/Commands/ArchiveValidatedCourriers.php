@@ -52,7 +52,7 @@ class ArchiveValidatedCourriers extends Command
                 }
             });
 
-        $this->info("{$count} courrier(s) valide(s) archive(s).");
+        $this->info("{$count} courrier(s) validé(s) archivé(s).");
 
         return self::SUCCESS;
     }

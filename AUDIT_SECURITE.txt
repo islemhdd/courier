@@ -1,0 +1,376 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                 AUDIT DE SÉCURITÉ ET VULNÉRABILITÉS                        ║
+║                    Système de Gestion de Courrier                           ║
+║                     Date: 10 Mai 2026                                      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+TABLE DES MATIÈRES
+══════════════════════════════════════════════════════════════════════════════
+1.  Résumé Exécutif
+2.  Vulnérabilités CRITIQUES (2)
+3.  Vulnérabilités HAUTES (3)
+4.  Vulnérabilités MOYENNES (8)
+5.  Vulnérabilités FAIBLES (9)
+6.  Observations Informatives
+7.  Score de Risque Global
+8.  Plan de Correction Prioritaire
+══════════════════════════════════════════════════════════════════════════════
+
+
+1. RÉSUMÉ EXÉCUTIF
+══════════════════════════════════════════════════════════════════════════════
+
+Niveau de risque global:                    ÉLEVÉ
+Vulnérabilités CRITIQUES:                   2
+Vulnérabilités HAUTES:                      3
+Vulnérabilités MOYENNES:                    8
+Vulnérabilités FAIBLES:                     9
+Total:                                      22
+
+L'application présente 2 vulnérabilités CRITIQUES permettant une escalade de
+privilèges et un contournement d'authentification. La correction de ces deux
+points est URGENTE avant toute mise en production.
+
+Les vulnérabilités HAUTES concernent la sécurité des tokens API (jamais
+expirés), le stockage des fichiers (publique sans contrôle d'accès), et le
+chiffrement des sessions (désactivé).
+
+══════════════════════════════════════════════════════════════════════════════
+
+2. VULNÉRABILITÉS CRITIQUES
+══════════════════════════════════════════════════════════════════════════════
+
+CRITIQUE-1: Escalade de privilèges — Chef de Structure peut créer un Chef Général
+─────────────────────────────────────────────────────────────────────────────
+
+Fichier:  app/Http/Controllers/UserController.php
+Lignes:   181-198 (méthode canAssignRoleAndOrg)
+CVE:      Non applicable
+CVSS:     9.1 (Critique)
+
+Description:
+  La méthode canAssignRoleAndOrg() vérifie uniquement que le rôle attribué
+  n'est pas "admin", mais ne vérifie PAS le role_scope. Ainsi un utilisateur
+  avec le rôle "chef" et scope "structure" peut créer un utilisateur avec
+  le rôle "chef" et scope "general", ce qui lui donne tous les droits de
+  Chef Général.
+
+  Code problématique:
+    if ($role === User::ROLE_ADMIN) return false;
+    // ❌ Aucune vérification de role_scope
+
+  Scénario d'attaque:
+    1. Chef de Structure (role=chef, role_scope=structure) se connecte
+    2. Envoie POST /api/utilisateurs avec:
+       { "role": "chef", "role_scope": "general", ... }
+    3. Un Chef Général est créé avec tous les privilèges
+    4. L'attaquant se connecte avec ce nouveau compte
+
+Impact:
+  - Escalade de privilèges complète
+  - Contournement de la hiérarchie organisationnelle
+  - Accès à tous les courriers, validation, gestion des utilisateurs
+
+Correctif:
+  Ajouter une validation stricte du role_scope dans canAssignRoleAndOrg().
+  Exemple:
+    if ($role === User::ROLE_ADMIN) return false;
+    if ($user->role_scope === 'structure' && $scope !== 'structure') return false;
+    if ($user->role_scope === 'service' && !in_array($scope, ['service', 'structure'])) return false;
+
+───
+
+CRITIQUE-2: Contournement d'autorisation — Tout utilisateur peut répondre à n'importe quel courrier
+─────────────────────────────────────────────────────────────────────────────
+
+Fichiers: app/Http/Requests/StoreCourrierRequest.php (lignes 20-22)
+          app/Http/Controllers/CourrierController.php (lignes 212-219)
+CVE:      Non applicable
+CVSS:     8.7 (Critique)
+
+Description:
+  StoreCourrierRequest::authorize() retourne true inconditionnellement quand
+  parent_courrier_id est présent (ligne 21). Le contrôleur ne vérifie la
+  permission peutEtreReponduPar() que SI le parent a requiert_reponse=true.
+  Si requiert_reponse=false, aucun check n'est fait.
+
+  De plus, la réponse est maintenant forcée en TYPE_ENTRANT (via la correction
+  précédente), ce qui signifie qu'un utilisateur non-authorisé peut créer un
+  courrier entrant (normalement réservé au Chef Général) en référençant un
+  courrier parent qui ne nécessite pas de réponse.
+
+  Code problématique (StoreCourrierRequest.php:20-22):
+    if ($this->filled('parent_courrier_id')) {
+        return true;  // ← Retourne true sans aucun check!
+    }
+
+  Code problématique (CourrierController.php:212-219):
+    if (!empty($data['parent_courrier_id'])) {
+        $parent = Courrier::find($data['parent_courrier_id']);
+        if ($parent && $parent->requiert_reponse && !$parent->peutEtreReponduPar($user)) {
+            return response()->json([...], 403);  // ← Check seulement si requiert_reponse
+        }
+        // ← Pas de else! Si requiert_reponse=false, on continue sans vérification
+    }
+
+Impact:
+  - Tout utilisateur peut créer une réponse à n'importe quel courrier
+  - Contournement de la restriction de création de courriers entrants
+  - Création de courriers non autorisés dans le système
+
+Correctif:
+  StoreCourrierRequest.php:
+    if ($this->filled('parent_courrier_id')) {
+        $parent = Courrier::find($this->input('parent_courrier_id'));
+        return $parent && $parent->peutEtreReponduPar($this->user());
+    }
+
+  CourrierController.php:
+    Supprimer la condition $parent->requiert_reponse, toujours vérifier.
+
+══════════════════════════════════════════════════════════════════════════════
+
+3. VULNÉRABILITÉS HAUTES
+══════════════════════════════════════════════════════════════════════════════
+
+HAUTE-1: Tokens API Sanctum sans expiration
+─────────────────────────────────────────────────────────────────────────────
+
+Fichier:  config/sanctum.php (ligne 50)
+CVSS:     7.5
+
+  'expiration' => null
+
+  Les tokens API Sanctum n'expirent jamais. Si un token est volé (via XSS,
+  MITM, journalisation, etc.), il reste valide indéfiniment.
+
+  Correctif: Définir 'expiration' => 525600 (1 an) ou moins selon les besoins.
+
+───
+
+HAUTE-2: Fichiers stockés sur le disque public (accessibles sans authentification)
+─────────────────────────────────────────────────────────────────────────────
+
+Fichiers: config/filesystems.php (lignes 40-46)
+          CourrierController.php (ligne 850)
+CVSS:     7.5
+
+  $file->store('courriers', 'public');
+
+  Tous les fichiers uploadés (pièces jointes, documents) sont stockés sur le
+  disque 'public' et accessibles via /storage/courriers/<hash>.
+  L'application cache l'URL dans les réponses, mais quiconque connaît le
+  hash du fichier peut y accéder directement sans authentification.
+
+  Correctif: Stocker sur le disque 'local' (private) et servir via un
+  contrôleur qui vérifie les permissions, ou utiliser des URLs signées.
+
+───
+
+HAUTE-3: Chiffrement des sessions désactivé
+─────────────────────────────────────────────────────────────────────────────
+
+Fichier:  config/session.php (ligne 50) / .env.example (ligne 34)
+CVSS:     7.5
+
+  SESSION_ENCRYPT=false
+
+  Les sessions stockées en base de données ne sont pas chiffrées.
+  Une brèche dans la base de données exposerait toutes les données de session.
+
+  Correctif: Définir SESSION_ENCRYPT=true dans le .env de production.
+
+══════════════════════════════════════════════════════════════════════════════
+
+4. VULNÉRABILITÉS MOYENNES
+══════════════════════════════════════════════════════════════════════════════
+
+MOYENNE-1: Aucune restriction sur l'envoi de messages
+─────────────────────────────────────────────────────────────────────────────
+Fichiers: StoreMessageRequest.php, MessagePolicy.php
+Tout utilisateur authentifié peut envoyer un message à n'importe qui
+(spam, phishing, harcèlement).
+⇒ Ajouter un rate limiting (throttle:10,1).
+
+MOYENNE-2: Noms de fichiers originaux non nettoyés (XSS potentiel)
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  CourrierController.php (ligne 852)
+getClientOriginalName() stocké sans sanitization. Un nom comme
+<script>alert(1)</script>.pdf pourrait causer une XSS.
+⇒ Nettoyer avec preg_replace('/[^a-zA-Z0-9._-]/', '', $name).
+
+MOYENNE-3: Notifications broadcast divulguent des informations sensibles
+─────────────────────────────────────────────────────────────────────────────
+Fichiers: Notifications/*.php (6 fichiers)
+Les notifications broadcast exposent numeros, noms, expéditeurs via WebSocket.
+Si l'autorisation de canal est mal configurée, ces données fuient.
+⇒ Réduire les données exposées et vérifier routes/channels.php.
+
+MOYENNE-4: CORS trop permissif
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  config/cors.php
+Origines multiples autorisées en dev. Risque de fuite si oublié en prod.
+⇒ Restreindre aux domaines de production.
+
+MOYENNE-5: Validation MIME des fichiers contournable
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  StoreCourrierRequest.php (lignes 71-72)
+La validation mimes peut être contournée par des fichiers polyglottes.
+Les fichiers doc/docx peuvent contenir des macros.
+⇒ Ajouter mimetypes et envisager PDF-only.
+
+MOYENNE-6: Endpoint update accepte POST et PATCH
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  routes/api.php (ligne 31)
+Route::match(['post', 'patch']) peut causer des incohérences sémantiques.
+⇒ Utiliser uniquement PATCH.
+
+MOYENNE-7: Transmission Chef de Structure potentiellement contournable
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  CourrierController.php (lignes 1134-1186)
+Les chemins de fallback dans la transmission pourraient bypasser les
+vérifications de structure.
+⇒ S'assurer que tous les chemins de code sont couverts.
+
+MOYENNE-8: Aucun rate limiting sur les endpoints critiques
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  routes/api.php (fichier entier)
+Aucun middleware throttle sur login, création, upload, messages.
+⇒ Ajouter throttle:60,1 sur toutes les routes API, et throttle:5,1 sur login.
+
+══════════════════════════════════════════════════════════════════════════════
+
+5. VULNÉRABILITÉS FAIBLES
+══════════════════════════════════════════════════════════════════════════════
+
+FAIBLE-1: APP_DEBUG=true dans .env.example
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  .env.example (ligne 4)
+Si copié en prod, expose les traces de débogage complètes.
+⇒ S'assurer APP_DEBUG=false en production.
+
+FAIBLE-2: Énumération d'utilisateurs via recherche de destinataires
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  MessageController.php (lignes 354-398)
+L'endpoint /messages/destinataires permet d'énumérer les utilisateurs.
+⇒ Limiter la recherche à 3 caractères min + rate limiting.
+
+FAIBLE-3: Pas de vérification d'autorisation par destinataire de message
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  StoreMessageRequest.php (lignes 18-22)
+Aucune restriction sur qui peut envoyer un message à qui.
+⇒ Ajouter des checks basés sur la hiérarchie si nécessaire.
+
+FAIBLE-4: Filtres utilisateur renvoyés dans les réponses API
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  CourrierController.php (lignes 123-124, 763-764)
+Les filtres saisis par l'utilisateur sont retournés dans la réponse JSON.
+⇒ Supprimer des réponses ou appliquer htmlspecialchars.
+
+FAIBLE-5: IDOR via le model binding — révélation d'existence de ressources
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  routes/api.php (multiples lignes)
+Retourne 404 (n'existe pas) vs 403 (existe mais non accessible).
+⇒ Retourner 404 dans les deux cas.
+
+FAIBLE-6: Numéro de courrier fillable avec race condition
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  Courrier.php (lignes 34, 493)
+numero dans $fillable + setter sans lockForUpdate() → race condition.
+⇒ Retirer numero de $fillable.
+
+FAIBLE-7: Fichiers orphelins après archivage
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  CourrierController.php (lignes 993-1013)
+Les fichiers ne sont pas supprimés après archivage.
+⇒ Ajouter une tâche de nettoyage.
+
+FAIBLE-8: Validation mimetypes manquante sur les uploads
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  StoreCourrierRequest.php (lignes 71-72)
+Utilise mimes mais pas mimetypes.
+⇒ Ajouter mimetypes pour une validation plus stricte.
+
+FAIBLE-9: Modèle User complet partagé avec le frontend
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  HandleInertiaRequests.php (ligne 46)
+Tous les attributs User sont envoyés à chaque requête.
+⇒ Utiliser $user->only(['id', 'nom', 'prenom', 'email', 'role', 'role_scope']).
+
+══════════════════════════════════════════════════════════════════════════════
+
+6. OBSERVATIONS INFORMATIVES
+══════════════════════════════════════════════════════════════════════════════
+
+INFO-1: Aucune limite sur le nombre de fichiers uploadés
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  StoreCourrierRequest.php (lignes 71-72)
+Seulement une limite de taille (10 Mo/fichier). Pas de limite de nombre.
+⇒ Ajouter 'documents' => ['array', 'max:5'].
+
+INFO-2: Password reset révèle l'existence des emails
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  routes/auth.php
+Les messages de réinitialisation diffèrent selon que l'email existe ou non.
+⇒ Uniformiser les messages de réponse.
+
+INFO-3: getClientOriginalName() falsifiable
+─────────────────────────────────────────────────────────────────────────────
+Fichier:  CourrierController.php (ligne 852)
+Le nom de fichier original est fourni par le client HTTP.
+⇒ Régénérer le nom côté serveur pour les en-têtes Content-Disposition.
+
+INFO-4: routes/channels.php non audité
+─────────────────────────────────────────────────────────────────────────────
+L'autorisation des canaux broadcast privés doit être vérifiée.
+
+══════════════════════════════════════════════════════════════════════════════
+
+7. SCORE DE RISQUE GLOBAL
+══════════════════════════════════════════════════════════════════════════════
+
+Score CVSS moyen pondéré:   7.8 / 10  (ÉLEVÉ)
+
+Répartition des risques:
+  CRITIQUE:  ████████████████████  2  (Correction immédiate)
+  HAUTE:     ████████████████      3  (Correction urgente)
+  MOYENNE:   ████████████████████  8  (Correction planifiée)
+  FAIBLE:    ████████████████████  9  (Correction souhaitable)
+
+══════════════════════════════════════════════════════════════════════════════
+
+8. PLAN DE CORRECTION PRIORITAIRE
+══════════════════════════════════════════════════════════════════════════════
+
+PHASE 1 — URGENT (À faire immédiatement)
+─────────────────────────────────────────
+  [CRITIQUE-1]  UserController: Ajouter validation role_scope dans
+                canAssignRoleAndOrg()
+  [CRITIQUE-2]  StoreCourrierRequest + CourrierController: Vérifier
+                peutEtreReponduPar() dans tous les cas
+
+PHASE 2 — HAUTE PRIORITÉ (À faire dans la semaine)
+───────────────────────────────────────────────────
+  [HAUTE-1]  config/sanctum.php: Définir une expiration des tokens
+  [HAUTE-2]  Changer le disque de stockage en 'local' et servir via
+             un contrôleur avec vérification de permission
+  [HAUTE-3]  Activer SESSION_ENCRYPT=true
+
+PHASE 3 — PRIORITÉ MOYENNE (À faire dans le mois)
+───────────────────────────────────────────────────
+  [MOYENNE-1] Ajouter rate limiting sur les messages
+  [MOYENNE-2] Nettoyer les noms de fichiers originaux
+  [MOYENNE-3] Réduire les données dans les notifications broadcast
+  [MOYENNE-4] Restreindre CORS en production
+  [MOYENNE-5] Renforcer la validation des fichiers uploadés
+  [MOYENNE-6] Nettoyer les routes API
+  [MOYENNE-7] Revoir les vérifications de transmission
+  [MOYENNE-8] Ajouter throttle sur toutes les routes API
+
+PHASE 4 — AMÉLIORATION CONTINUE
+─────────────────────────────────
+  Toutes les vulnérabilités FAIBLES et observations informatives.
+
+══════════════════════════════════════════════════════════════════════════════
+Fin du rapport d'audit de sécurité
+══════════════════════════════════════════════════════════════════════════════

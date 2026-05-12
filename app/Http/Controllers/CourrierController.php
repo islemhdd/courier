@@ -17,10 +17,14 @@ use App\Models\Structure;
 use App\Models\User;
 use App\Notifications\CourrierReponduNotification;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CourrierController extends Controller
 {
@@ -52,35 +56,123 @@ class CourrierController extends Controller
 
     public function envoyes(Request $request): JsonResponse
     {
-        return $this->respondWithCourriers($request, false, ['type' => Courrier::TYPE_SORTANT]);
+        $user = $request->user();
+
+        $filters = array_merge($request->only([
+            'q',
+            'numero',
+            'objet',
+            'expediteur',
+            'destinataire',
+            'statut',
+            'niveau_confidentialite_id',
+            'date_reception',
+            'resume',
+            'parent_courrier_id',
+            'repondu',
+            'mois',
+            'structure_id',
+            'service_id',
+        ]));
+
+        $query = Courrier::query()
+            ->with($this->courrierListRelations())
+            ->visiblePourUser($user)
+            ->where(function ($builder) use ($user) {
+                $builder->where('type', Courrier::TYPE_SORTANT)
+                    ->orWhere('createur_id', $user->id);
+            })
+            ->searchAnyField($filters['q'] ?? null)
+            ->numero($filters['numero'] ?? null)
+            ->objet($filters['objet'] ?? null)
+            ->expediteur($filters['expediteur'] ?? null)
+            ->destinataire($filters['destinataire'] ?? null)
+            ->type($filters['type'] ?? null)
+            ->niveauConfidentialite($filters['niveau_confidentialite_id'] ?? null)
+            ->dateReception($filters['date_reception'] ?? null)
+            ->resumeFullText($filters['resume'] ?? null)
+            ->when(!empty($filters['parent_courrier_id']), fn($builder) => $builder->where('parent_courrier_id', $filters['parent_courrier_id']))
+            ->when(!empty($filters['mois']), fn($builder) => $builder->dateReception($filters['mois']))
+            ->when(!empty($filters['service_id']), function ($builder) use ($filters) {
+                $builder->where(function ($sub) use ($filters) {
+                    $sub->where('service_source_id', $filters['service_id'])
+                        ->orWhere('service_destinataire_id', $filters['service_id'])
+                        ->orWhereHas('recipients', fn($q) => $q->where('recipient_type', 'service')->where('service_id', $filters['service_id']));
+                });
+            })
+            ->when(!empty($filters['structure_id']), function ($builder) use ($filters) {
+                $builder->where(function ($sub) use ($filters) {
+                    $sub->where('structure_origine_id', $filters['structure_id'])
+                        ->orWhere('structure_destinataire_id', $filters['structure_id'])
+                        ->orWhereHas('recipients', fn($q) => $q->where('recipient_type', 'structure')->where('structure_id', $filters['structure_id']));
+                });
+            })
+            ->when(isset($filters['repondu']), function ($builder) use ($filters) {
+                $value = filter_var($filters['repondu'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($value === true) {
+                    $builder->where(function ($sub) {
+                        $sub->whereNotNull('repondu_le')->orWhereHas('reponses');
+                    });
+                } elseif ($value === false) {
+                    $builder->where('requiert_reponse', true)->whereNull('repondu_le')->whereDoesntHave('reponses');
+                }
+            })
+            ->when(!empty($filters['statut']), fn($builder) => $builder->statut($filters['statut']))
+            ->orderByDesc('date_creation');
+
+        $courriers = $query->paginate(15);
+        $courriers->getCollection()->transform(fn(Courrier $courrier) => $this->enrichCourrier($courrier, $user));
+
+        return response()->json([
+            'courriers' => $courriers,
+            'filtres' => $filters,
+        ]);
     }
 
     public function archives(Request $request): JsonResponse
     {
         $user = $request->user();
-        $search = trim((string) $request->get('q', ''));
+        $filters = $this->archiveFilters($request);
 
-        $archives = Archive::query()
+        $query = Archive::query()
             ->with($this->archiveRelations())
-            ->visiblePourUser($user)
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($subQuery) use ($search) {
-                    $subQuery->where('numero', 'like', $search . '%')
-                        ->orWhere('objet', 'like', '%' . $search . '%')
-                        ->orWhere('expediteur', 'like', $search . '%')
-                        ->orWhere('destinataire', 'like', $search . '%');
-                });
-            })
-            ->when($request->filled('date_reception'), fn($query) => $this->applyDateReceptionFilter($query, (string) $request->date_reception))
-            ->when($request->filled('numero'), fn($query) => $query->where('numero', 'like', $request->numero . '%'))
-            ->orderByDesc('archive_le')
-            ->paginate(15);
+            ->visiblePourUser($user);
+
+        $this->applyArchiveFilters($query, $filters);
+
+        $archives = $filters['q'] === ''
+            ? $query->orderByDesc('archive_le')->paginate(15)
+            : $this->paginateArchiveSearch($query, $filters['q'], $request);
 
         $archives->getCollection()->transform(fn(Archive $archive) => $this->enrichArchive($archive, $user));
 
         return response()->json([
             'archives' => $archives,
             'courriers' => $archives,
+            'filtres' => $filters,
+        ]);
+    }
+
+    public function showArchive(Archive $archive, Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $archive->load($this->archiveRelations());
+
+        if (!$archive->peutVoirExistencePar($user)) {
+            return response()->json(['error' => 'Archive introuvable.'], 404);
+        }
+
+        $search = trim((string) $request->get('q', ''));
+        if ($search !== '') {
+            $this->applyArchiveSearchMetadata($archive, $search);
+        }
+
+        $archive = $this->enrichArchive($archive, $user);
+
+        return response()->json([
+            'archive' => $archive,
+            'courrier' => $archive,
         ]);
     }
 
@@ -141,7 +233,7 @@ class CourrierController extends Controller
 
         if (!empty($data['parent_courrier_id'])) {
             $parent = Courrier::find($data['parent_courrier_id']);
-            if ($parent && $parent->requiert_reponse && !$parent->peutEtreReponduPar($user)) {
+            if (!$parent || !$parent->peutEtreReponduPar($user)) {
                 return response()->json([
                     'message' => 'Vous n\'avez pas le droit de répondre à ce courrier.',
                     'error' => 'unauthorized',
@@ -153,8 +245,7 @@ class CourrierController extends Controller
             $data['mode_diffusion'] = 'multicast'; // Plusieurs destinataires
 
             // Pour les réponses : forcer certains champs depuis le parent
-            // Les réponses sont TOUJOURS de type sortant
-            $data['type'] = Courrier::TYPE_SORTANT;
+            $data['type'] = Courrier::TYPE_ENTRANT;
             $data['source_id'] = $parent->source_id ? (int) $parent->source_id : null; // Même source que le parent
             $data['niveau_confidentialite_id'] = $parent->niveau_confidentialite_id ? (int) $parent->niveau_confidentialite_id : null; // Même confidentialité
             $data['service_destinataire_id'] = $parent->service_source_id ? (int) $parent->service_source_id : null; // Destination = service source du parent
@@ -167,7 +258,7 @@ class CourrierController extends Controller
         $isReply = !empty($data['parent_courrier_id']);
         if (!$isReply && ($data['type'] ?? Courrier::TYPE_ENTRANT) === Courrier::TYPE_ENTRANT && !$user->peutCreerCourrierRecu()) {
             return response()->json([
-                'message' => 'Seul le chef général peut créer un courrier reçu.',
+                'message' => 'Seul le chef général ou le secrétaire général peut créer un courrier reçu.',
                 'error' => 'unauthorized',
             ], 403);
         }
@@ -176,9 +267,9 @@ class CourrierController extends Controller
             $source = $this->resolveOrCreateSource($user, $data);
 
             // Déterminer le statut du courrier
-            // Les courriers sortants créés par tout utilisateur autre que le chef général ou l'admin
+            // Les courriers créés par un utilisateur autre que le chef général ou l'admin
             // sont enregistrés en statut CREE pour validation par le chef général.
-            if ($data['type'] === Courrier::TYPE_SORTANT && !$user->estChefGeneral() && !$user->estAdmin()) {
+            if (!$user->estChefGeneral() && !$user->estAdmin()) {
                 $status = Courrier::STATUT_CREE;
             } elseif ($data['type'] === Courrier::TYPE_ENTRANT) {
                 $status = Courrier::STATUT_RECU;
@@ -234,7 +325,7 @@ class CourrierController extends Controller
         }
 
         return response()->json([
-            'message' => 'Courrier cree avec succes.',
+            'message' => 'Courrier créé avec succès.',
             'courrier' => $this->enrichCourrier($courrier, $user),
         ], 201);
     }
@@ -245,7 +336,7 @@ class CourrierController extends Controller
         $courrier->load($this->courrierRelations());
 
         if (!$courrier->peutVoirExistencePar($user)) {
-            return response()->json(['error' => 'Vous n\'avez pas le droit de voir ce courrier.'], 403);
+            return response()->json(['error' => 'Courrier introuvable.'], 404);
         }
 
         return response()->json([
@@ -303,7 +394,7 @@ class CourrierController extends Controller
         }
 
         return response()->json([
-            'message' => 'Courrier modifie avec succes.',
+            'message' => 'Courrier modifié avec succès.',
             'courrier' => $this->enrichCourrier($courrier->fresh($this->courrierRelations()), $user),
         ]);
     }
@@ -315,17 +406,9 @@ class CourrierController extends Controller
             return response()->json(['error' => 'Vous n\'avez pas le droit de supprimer ce courrier.'], 403);
         }
 
-        foreach ($courrier->attachments as $attachment) {
-            Storage::disk('public')->delete($attachment->chemin);
-        }
-
-        if ($courrier->chemin_fichier) {
-            Storage::disk('public')->delete($courrier->chemin_fichier);
-        }
-
         $courrier->delete();
 
-        return response()->json(['message' => 'Courrier supprime avec succes.']);
+        return response()->json(['message' => 'Courrier supprimé avec succès.']);
     }
 
     /**
@@ -421,6 +504,38 @@ class CourrierController extends Controller
         return $recipients;
     }
 
+    public function downloadAttachment(Courrier $courrier, int $attachmentId, Request $request): StreamedResponse|JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$courrier->peutEtreConsultePar($user)) {
+            return response()->json(['error' => 'Vous n\'avez pas le droit de télécharger ce fichier.'], 403);
+        }
+
+        $attachment = $courrier->attachments()->find($attachmentId);
+
+        if (!$attachment || !Storage::disk('local')->exists($attachment->chemin)) {
+            return response()->json(['error' => 'Fichier introuvable.'], 404);
+        }
+
+        return Storage::disk('local')->download($attachment->chemin, $attachment->nom_original);
+    }
+
+    public function downloadCourrierFile(Courrier $courrier, Request $request): StreamedResponse|JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$courrier->peutEtreConsultePar($user)) {
+            return response()->json(['error' => 'Vous n\'avez pas le droit de télécharger ce fichier.'], 403);
+        }
+
+        if (!$courrier->chemin_fichier || !Storage::disk('local')->exists($courrier->chemin_fichier)) {
+            return response()->json(['error' => 'Fichier introuvable.'], 404);
+        }
+
+        return Storage::disk('local')->download($courrier->chemin_fichier);
+    }
+
     public function destroyArchive(Archive $archive, Request $request): JsonResponse
     {
         if (!$archive->peutEtreSupprimePar($request->user())) {
@@ -428,25 +543,25 @@ class CourrierController extends Controller
         }
 
         if ($archive->chemin_fichier) {
-            Storage::disk('public')->delete($archive->chemin_fichier);
+            Storage::disk('local')->delete($archive->chemin_fichier);
         }
 
         $archive->delete();
 
-        return response()->json(['message' => 'Archive supprimee avec succes.']);
+        return response()->json(['message' => 'Archive supprimée avec succès.']);
     }
 
     public function archiver(Courrier $courrier, Request $request): JsonResponse
     {
         $user = $request->user();
         if (!$courrier->peutEtreArchivePar($user)) {
-            return response()->json(['error' => 'Ce courrier ne peut pas etre archive.'], 403);
+            return response()->json(['error' => 'Ce courrier ne peut pas être archivé.'], 403);
         }
 
         $archive = DB::transaction(fn() => $this->archiverCourrier($courrier, $user, 'Archivage manuel'));
 
         return response()->json([
-            'message' => 'Courrier archive avec succes.',
+            'message' => 'Courrier archivé avec succès.',
             'archive' => $this->enrichArchive($archive, $user),
         ]);
     }
@@ -539,8 +654,8 @@ class CourrierController extends Controller
 
         return response()->json([
             'message' => $user->estSecretaire()
-                ? 'Transmission enregistree et envoyee pour validation du chef.'
-                : 'Courrier transmis avec succes.',
+                ? 'Transmission enregistrée et envoyée pour validation du chef.'
+                : 'Courrier transmis avec succès.',
             'courrier' => $this->enrichCourrier($courrier, $user),
         ]);
     }
@@ -549,7 +664,7 @@ class CourrierController extends Controller
     {
         $user = $request->user();
         if (!$courrier->estValidable()) {
-            return response()->json(['error' => 'Ce courrier ne peut plus etre valide.'], 422);
+            return response()->json(['error' => 'Ce courrier ne peut plus être validé.'], 422);
         }
 
         if (!$courrier->peutEtreValidePar($user)) {
@@ -586,7 +701,7 @@ class CourrierController extends Controller
         }
 
         return response()->json([
-            'message' => 'Courrier valide avec succes.',
+            'message' => 'Courrier validé avec succès.',
             'courrier' => $this->enrichCourrier($courrier->fresh($this->courrierRelations()), $user),
         ]);
     }
@@ -604,7 +719,7 @@ class CourrierController extends Controller
         ]);
 
         return response()->json([
-            'message' => 'Courrier marque comme non valide.',
+            'message' => 'Courrier marqué comme non valide.',
             'courrier' => $this->enrichCourrier($courrier->fresh($this->courrierRelations()), $user),
         ]);
     }
@@ -618,13 +733,13 @@ class CourrierController extends Controller
 
         $this->notifyValidators($courrier, $user);
 
-        return response()->json(['message' => 'Demande de validation envoyee.']);
+        return response()->json(['message' => 'Demande de validation envoyée.']);
     }
 
     private function respondWithCourriers(Request $request, bool $onlyValidation = false, array $forcedFilters = []): JsonResponse
     {
         $user = $request->user();
-        $filters = array_merge($request->only([
+        $filters = collect(array_merge($request->only([
             'q',
             'numero',
             'objet',
@@ -640,7 +755,7 @@ class CourrierController extends Controller
             'mois',
             'structure_id',
             'service_id',
-        ]), $forcedFilters);
+        ]), $forcedFilters))->map(fn($value) => is_string($value) ? htmlspecialchars($value, ENT_QUOTES, 'UTF-8') : $value)->toArray();
 
         $query = Courrier::query()
             ->with($this->courrierListRelations())
@@ -719,9 +834,8 @@ class CourrierController extends Controller
     {
         $courrier->recipients()->delete();
 
-        // Pour les courriers sortants, ne pas synchroniser les destinataires
-        // (la destination est la source externe, pas un destinataire interne)
-        if ($courrier->type === Courrier::TYPE_SORTANT) {
+        // Pour les courriers sortants sans parent (pas des réponses), ne pas synchroniser les destinataires
+        if ($courrier->type === Courrier::TYPE_SORTANT && !$courrier->parent_courrier_id) {
             return;
         }
 
@@ -779,9 +893,10 @@ class CourrierController extends Controller
         }
 
         foreach ($files as $file) {
-            $path = $file->store('courriers', 'public');
+            $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
+            $path = $file->storeAs('courriers', uniqid() . '_' . $safeName, 'local');
             $courrier->attachments()->create([
-                'nom_original' => $file->getClientOriginalName(),
+                'nom_original' => $safeName,
                 'chemin' => $path,
             ]);
 
@@ -921,32 +1036,99 @@ class CourrierController extends Controller
 
     private function archiverCourrier(Courrier $courrier, User $user, string $motif): Archive
     {
+        $courrier->loadMissing([
+            'attachments',
+            'comments.user',
+            'comments.instruction',
+            'comments.validePar',
+        ]);
+
         $archive = Archive::create([
             'courrier_original_id' => $courrier->id,
             'numero' => $courrier->numero,
             'objet' => $courrier->objet,
             'type' => $courrier->type,
+            'courrier_type_id' => $courrier->courrier_type_id,
+            'resume' => $courrier->resume,
+            'extracted_text' => $courrier->extracted_text,
+            'ocr_status' => $courrier->ocr_status,
+            'summary_source' => $courrier->summary_source,
             'chemin_fichier' => $courrier->chemin_fichier,
             'date_creation' => $courrier->date_creation,
             'date_reception' => $courrier->date_reception,
+            'date_limite_reponse' => $courrier->date_limite_reponse,
+            'repondu_le' => $courrier->repondu_le,
             'expediteur' => $courrier->expediteur,
             'destinataire' => $courrier->destinataire,
+            'source_id' => $courrier->source_id,
             'statut_original' => $courrier->statut,
             'niveau_confidentialite_id' => $courrier->niveau_confidentialite_id,
             'createur_id' => $courrier->createur_id,
             'valideur_id' => $courrier->valideur_id,
             'service_source_id' => $courrier->service_source_id,
             'service_destinataire_id' => $courrier->service_destinataire_id,
+            'structure_origine_id' => $courrier->structure_origine_id,
+            'structure_destinataire_id' => $courrier->structure_destinataire_id,
             'transmis_par_id' => $courrier->transmis_par_id,
             'transmis_le' => $courrier->transmis_le,
             'archive_par_id' => $user->id,
             'archive_le' => now(),
             'motif' => $motif,
+            'attachments_snapshot' => $this->archiveAttachmentSnapshot($courrier),
+            'comments_snapshot' => $this->archiveCommentSnapshot($courrier),
         ]);
 
         $courrier->delete();
 
         return $archive->load($this->archiveRelations());
+    }
+
+    private function archiveAttachmentSnapshot(Courrier $courrier): array
+    {
+        return $courrier->attachments
+            ->map(fn($attachment) => [
+                'id' => $attachment->id,
+                'nom_original' => $attachment->nom_original,
+                'chemin' => $attachment->chemin,
+                'ocr_text' => $attachment->ocr_text,
+                'ocr_language' => $attachment->ocr_language,
+                'ocr_status' => $attachment->ocr_status,
+                'ocr_confidence' => $attachment->ocr_confidence,
+                'ocr_error' => $attachment->ocr_error,
+                'ocr_processed_at' => $attachment->ocr_processed_at,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function archiveCommentSnapshot(Courrier $courrier): array
+    {
+        return $courrier->comments
+            ->map(fn($comment) => [
+                'id' => $comment->id,
+                'commentaire' => $comment->commentaire,
+                'validation_requise' => $comment->validation_requise,
+                'valide_le' => $comment->valide_le,
+                'user' => $comment->user ? [
+                    'id' => $comment->user->id,
+                    'nom' => $comment->user->nom,
+                    'prenom' => $comment->user->prenom,
+                    'nom_complet' => $comment->user->nom_complet,
+                    'email' => $comment->user->email,
+                ] : null,
+                'instruction' => $comment->instruction ? [
+                    'id' => $comment->instruction->id,
+                    'libelle' => $comment->instruction->libelle,
+                ] : null,
+                'valide_par' => $comment->validePar ? [
+                    'id' => $comment->validePar->id,
+                    'nom' => $comment->validePar->nom,
+                    'prenom' => $comment->validePar->prenom,
+                    'nom_complet' => $comment->validePar->nom_complet,
+                ] : null,
+            ])
+            ->values()
+            ->all();
     }
 
     private function enrichCourrier(Courrier $courrier, ?User $user): Courrier
@@ -995,12 +1177,413 @@ class CourrierController extends Controller
         $archive->est_accessible = $archive->peut_voir_details;
         $archive->peut_etre_supprime = $user ? $archive->peutEtreSupprimePar($user) : false;
         $archive->contenu_restreint = !$archive->peut_voir_details;
+        $archive->attachments = $archive->attachments_snapshot ?? [];
+        $archive->comments = $archive->comments_snapshot ?? [];
 
         if (!$archive->peut_voir_details) {
             $archive->chemin_fichier = null;
+            $archive->resume = null;
+            $archive->extracted_text = null;
+            $archive->attachments = [];
+            $archive->comments = [];
         }
 
         return $archive;
+    }
+
+    private function archiveFilters(Request $request): array
+    {
+        $filters = [];
+
+        foreach ([
+            'q',
+            'numero',
+            'objet',
+            'titre',
+            'contenu',
+            'expediteur',
+            'destinataire',
+            'type',
+            'statut_original',
+            'date_from',
+            'date_to',
+            'date_reception',
+            'date_reception_from',
+            'date_reception_to',
+            'archive_from',
+            'archive_to',
+            'service_id',
+            'structure_id',
+            'niveau_confidentialite_id',
+        ] as $key) {
+            $value = $request->get($key);
+            $filters[$key] = is_string($value) ? trim($value) : $value;
+        }
+
+        $filters['q'] = (string) ($filters['q'] ?? '');
+
+        return $filters;
+    }
+
+    private function applyArchiveFilters(Builder $query, array $filters): void
+    {
+        $query
+            ->when(filled($filters['numero'] ?? null), fn(Builder $builder) => $builder->where('numero', 'like', $filters['numero'] . '%'))
+            ->when(filled($filters['objet'] ?? null) || filled($filters['titre'] ?? null), function (Builder $builder) use ($filters) {
+                $term = filled($filters['objet'] ?? null) ? $filters['objet'] : $filters['titre'];
+                $builder->where('objet', 'like', '%' . $term . '%');
+            })
+            ->when(filled($filters['contenu'] ?? null), fn(Builder $builder) => $this->applyArchiveContentSearch($builder, $filters['contenu']))
+            ->when(filled($filters['expediteur'] ?? null), fn(Builder $builder) => $builder->where('expediteur', 'like', '%' . $filters['expediteur'] . '%'))
+            ->when(filled($filters['destinataire'] ?? null), fn(Builder $builder) => $builder->where('destinataire', 'like', '%' . $filters['destinataire'] . '%'))
+            ->when(filled($filters['type'] ?? null), fn(Builder $builder) => $builder->where('type', $filters['type']))
+            ->when(filled($filters['statut_original'] ?? null), fn(Builder $builder) => $builder->where('statut_original', $filters['statut_original']))
+            ->when(filled($filters['niveau_confidentialite_id'] ?? null), fn(Builder $builder) => $builder->where('niveau_confidentialite_id', $filters['niveau_confidentialite_id']))
+            ->when($filters['service_id'] ?? null, function (Builder $builder, $serviceId) {
+                $builder->where(function (Builder $subQuery) use ($serviceId) {
+                    $subQuery->where('service_source_id', $serviceId)
+                        ->orWhere('service_destinataire_id', $serviceId);
+                });
+            })
+            ->when($filters['structure_id'] ?? null, function (Builder $builder, $structureId) {
+                $builder->where(function (Builder $subQuery) use ($structureId) {
+                    $subQuery->where('structure_origine_id', $structureId)
+                        ->orWhere('structure_destinataire_id', $structureId)
+                        ->orWhereHas('serviceSource', fn(Builder $serviceQuery) => $serviceQuery->where('structure_id', $structureId))
+                        ->orWhereHas('serviceDestinataire', fn(Builder $serviceQuery) => $serviceQuery->where('structure_id', $structureId));
+                });
+            });
+
+        if (!empty($filters['date_reception'])) {
+            $this->applyArchiveExactDateFilter($query, 'date_reception', (string) $filters['date_reception']);
+        }
+
+        $this->applyArchiveDateRangeFilter(
+            $query,
+            'date_reception',
+            $filters['date_reception_from'] ?: $filters['date_from'],
+            $filters['date_reception_to'] ?: $filters['date_to'],
+        );
+
+        $this->applyArchiveDateRangeFilter($query, 'archive_le', $filters['archive_from'], $filters['archive_to']);
+    }
+
+    private function applyArchiveContentSearch(Builder $query, string $term): void
+    {
+        $query->where(function (Builder $subQuery) use ($term) {
+            $like = '%' . $term . '%';
+
+            $subQuery->where('resume', 'like', $like)
+                ->orWhere('extracted_text', 'like', $like)
+                ->orWhere('attachments_snapshot', 'like', $like)
+                ->orWhere('comments_snapshot', 'like', $like);
+        });
+    }
+
+    private function applyArchiveGeneralSearch(Builder $query, string $term): void
+    {
+        $query->where(function (Builder $subQuery) use ($term) {
+            $like = '%' . $term . '%';
+            $prefixLike = $term . '%';
+
+            $subQuery->where('numero', 'like', $prefixLike)
+                ->orWhere('objet', 'like', $like)
+                ->orWhere('resume', 'like', $like)
+                ->orWhere('extracted_text', 'like', $like)
+                ->orWhere('expediteur', 'like', $like)
+                ->orWhere('destinataire', 'like', $like)
+                ->orWhere('motif', 'like', $like)
+                ->orWhere('attachments_snapshot', 'like', $like)
+                ->orWhere('comments_snapshot', 'like', $like)
+                ->orWhereHas('serviceSource', fn(Builder $relationQuery) => $relationQuery->where('libelle', 'like', $like))
+                ->orWhereHas('serviceDestinataire', fn(Builder $relationQuery) => $relationQuery->where('libelle', 'like', $like))
+                ->orWhereHas('structureOrigine', fn(Builder $relationQuery) => $relationQuery->where('libelle', 'like', $like))
+                ->orWhereHas('structureDestinataire', fn(Builder $relationQuery) => $relationQuery->where('libelle', 'like', $like))
+                ->orWhereHas('courrierType', fn(Builder $relationQuery) => $relationQuery->where('libelle', 'like', $like))
+                ->orWhereHas('source', fn(Builder $relationQuery) => $relationQuery->where('libelle', 'like', $like));
+        });
+    }
+
+    private function paginateArchiveSearch(Builder $query, string $search, Request $request): LengthAwarePaginator
+    {
+        $candidates = (clone $query)->orderByDesc('archive_le')->get();
+
+        $matches = $candidates
+            ->map(function (Archive $archive) use ($search) {
+                return $this->applyArchiveSearchMetadata($archive, $search) ? $archive : null;
+            })
+            ->filter()
+            ->sort(function (Archive $left, Archive $right) {
+                $scoreComparison = ($left->match_score ?? 999) <=> ($right->match_score ?? 999);
+
+                if ($scoreComparison !== 0) {
+                    return $scoreComparison;
+                }
+
+                $dateComparison = ($right->archive_le?->getTimestamp() ?? 0) <=> ($left->archive_le?->getTimestamp() ?? 0);
+
+                return $dateComparison !== 0 ? $dateComparison : $left->id <=> $right->id;
+            })
+            ->values();
+
+        $perPage = 15;
+        $page = max(1, $request->integer('page', 1));
+
+        return new LengthAwarePaginator(
+            $matches->forPage($page, $perPage)->values(),
+            $matches->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ],
+        );
+    }
+
+    private function applyArchiveSearchMetadata(Archive $archive, string $search): bool
+    {
+        $normalizedSearch = $this->normalizeArchiveSearchText($search);
+
+        if ($normalizedSearch === '') {
+            return false;
+        }
+
+        $maxDistance = $this->archiveLevenshteinMaxDistance($normalizedSearch);
+        $bestScore = null;
+        $matchedFields = [];
+
+        foreach ($this->archiveSearchValues($archive) as $field => $value) {
+            $score = $this->archiveFieldLevenshteinScore($normalizedSearch, $value, $maxDistance);
+
+            if ($score === null) {
+                continue;
+            }
+
+            if ($bestScore === null || $score < $bestScore) {
+                $bestScore = $score;
+                $matchedFields = [$field];
+                continue;
+            }
+
+            if ($score === $bestScore) {
+                $matchedFields[] = $field;
+            }
+        }
+
+        if ($bestScore === null) {
+            return false;
+        }
+
+        $archive->search_term = $search;
+        $archive->search_score = $bestScore;
+        $archive->match_score = $bestScore;
+        $archive->matched_fields = array_values(array_unique($matchedFields));
+
+        return true;
+    }
+
+    private function archiveSearchValues(Archive $archive): array
+    {
+        $attachmentsText = collect($archive->attachments_snapshot ?? [])
+            ->map(function ($attachment) {
+                $attachment = is_array($attachment) ? $attachment : [];
+
+                return implode(' ', array_filter([
+                    $attachment['nom_original'] ?? null,
+                    $attachment['ocr_text'] ?? null,
+                    $attachment['ocr_error'] ?? null,
+                ]));
+            })
+            ->implode(' ');
+
+        $commentsText = collect($archive->comments_snapshot ?? [])
+            ->map(function ($comment) {
+                $comment = is_array($comment) ? $comment : [];
+
+                return implode(' ', array_filter([
+                    $comment['commentaire'] ?? null,
+                    $comment['instruction']['libelle'] ?? null,
+                    $comment['user']['nom_complet'] ?? null,
+                ]));
+            })
+            ->implode(' ');
+
+        return [
+            'numero' => (string) $archive->numero,
+            'objet' => (string) $archive->objet,
+            'resume' => (string) $archive->resume,
+            'extracted_text' => (string) $archive->extracted_text,
+            'expediteur' => (string) $archive->expediteur,
+            'destinataire' => (string) $archive->destinataire,
+            'motif' => (string) $archive->motif,
+            'service_source' => (string) $archive->serviceSource?->libelle,
+            'service_destinataire' => (string) $archive->serviceDestinataire?->libelle,
+            'structure_origine' => (string) $archive->structureOrigine?->libelle,
+            'structure_destinataire' => (string) $archive->structureDestinataire?->libelle,
+            'niveau_confidentialite' => (string) $archive->niveauConfidentialite?->libelle,
+            'courrier_type' => (string) $archive->courrierType?->libelle,
+            'source' => (string) $archive->source?->libelle,
+            'attachments' => $attachmentsText,
+            'comments' => $commentsText,
+        ];
+    }
+
+    private function archiveFieldLevenshteinScore(string $normalizedSearch, ?string $field, int $maxDistance): ?int
+    {
+        $normalizedField = $this->normalizeArchiveSearchText($field);
+
+        if ($normalizedField === '') {
+            return null;
+        }
+
+        if (str_contains($normalizedField, $normalizedSearch)) {
+            return 0;
+        }
+
+        $searchTokens = $this->archiveSearchTokens($normalizedSearch);
+        $fieldTokens = $this->archiveSearchTokens($normalizedField);
+        $candidateTexts = $fieldTokens;
+        $windowSize = count($searchTokens);
+
+        if ($windowSize > 1 && count($fieldTokens) >= $windowSize) {
+            for ($index = 0; $index <= count($fieldTokens) - $windowSize; $index++) {
+                $candidateTexts[] = implode(' ', array_slice($fieldTokens, $index, $windowSize));
+            }
+        }
+
+        if (strlen($normalizedField) <= 255) {
+            $candidateTexts[] = $normalizedField;
+        }
+
+        $bestDistance = null;
+
+        foreach (array_unique($candidateTexts) as $candidate) {
+            if ($candidate === '' || abs(strlen($candidate) - strlen($normalizedSearch)) > $maxDistance) {
+                continue;
+            }
+
+            $distance = $this->damerauLevenshtein($normalizedSearch, $candidate);
+
+            if ($distance <= $maxDistance) {
+                $bestDistance = $bestDistance === null ? $distance : min($bestDistance, $distance);
+            }
+        }
+
+        return $bestDistance;
+    }
+
+    private function damerauLevenshtein(string $a, string $b): int
+    {
+        $lenA = strlen($a);
+        $lenB = strlen($b);
+
+        if ($lenA === 0) { return $lenB; }
+        if ($lenB === 0) { return $lenA; }
+
+        $d = [];
+        for ($i = 0; $i <= $lenA; $i++) { $d[$i] = []; $d[$i][0] = $i; }
+        for ($j = 0; $j <= $lenB; $j++) { $d[0][$j] = $j; }
+
+        for ($i = 1; $i <= $lenA; $i++) {
+            for ($j = 1; $j <= $lenB; $j++) {
+                $cost = $a[$i - 1] === $b[$j - 1] ? 0 : 1;
+                $d[$i][$j] = min(
+                    $d[$i - 1][$j] + 1,
+                    $d[$i][$j - 1] + 1,
+                    $d[$i - 1][$j - 1] + $cost
+                );
+                if ($i > 1 && $j > 1 && $a[$i - 1] === $b[$j - 2] && $a[$i - 2] === $b[$j - 1]) {
+                    $d[$i][$j] = min($d[$i][$j], $d[$i - 2][$j - 2] + $cost);
+                }
+            }
+        }
+
+        return $d[$lenA][$lenB];
+    }
+
+    private function normalizeArchiveSearchText(?string $value): string
+    {
+        $normalized = Str::ascii(Str::lower(trim((string) $value)));
+        $normalized = preg_replace('/[^a-z0-9]+/', ' ', $normalized) ?? '';
+
+        return trim(preg_replace('/\s+/', ' ', $normalized) ?? '');
+    }
+
+    private function archiveSearchTokens(string $value): array
+    {
+        return array_values(array_filter(explode(' ', $value), fn(string $token) => $token !== ''));
+    }
+
+    private function archiveLevenshteinMaxDistance(string $normalizedSearch): int
+    {
+        $length = strlen(str_replace(' ', '', $normalizedSearch));
+
+        if ($length <= 3) {
+            return 0;
+        }
+
+        if ($length <= 5) {
+            return 1;
+        }
+
+        if ($length <= 8) {
+            return 2;
+        }
+
+        if ($length <= 12) {
+            return 3;
+        }
+
+        if ($length <= 16) {
+            return 4;
+        }
+
+        return 5;
+    }
+
+    private function applyArchiveExactDateFilter(Builder $query, string $column, ?string $date): void
+    {
+        $normalized = $this->normalizeArchiveDate($date);
+
+        if ($normalized !== null) {
+            $query->whereDate($column, $normalized);
+        }
+    }
+
+    private function applyArchiveDateRangeFilter(Builder $query, string $column, ?string $from, ?string $to): void
+    {
+        $normalizedFrom = $this->normalizeArchiveDate($from);
+        $normalizedTo = $this->normalizeArchiveDate($to);
+
+        if ($normalizedFrom && $normalizedTo) {
+            $query->whereBetween($column, [
+                \Carbon\Carbon::parse($normalizedFrom)->startOfDay(),
+                \Carbon\Carbon::parse($normalizedTo)->endOfDay(),
+            ]);
+            return;
+        }
+
+        if ($normalizedFrom) {
+            $query->where($column, '>=', \Carbon\Carbon::parse($normalizedFrom)->startOfDay());
+        }
+
+        if ($normalizedTo) {
+            $query->where($column, '<=', \Carbon\Carbon::parse($normalizedTo)->endOfDay());
+        }
+    }
+
+    private function normalizeArchiveDate(?string $date): ?string
+    {
+        if (!$date) {
+            return null;
+        }
+
+        try {
+            return \Carbon\Carbon::parse($date)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function applyDateReceptionFilter($query, string $dateReception): void
@@ -1160,11 +1743,15 @@ class CourrierController extends Controller
     private function archiveRelations(): array
     {
         return [
+            'courrierType',
             'niveauConfidentialite',
             'createur',
             'valideur',
+            'source',
             'serviceSource.structure',
             'serviceDestinataire.structure',
+            'structureOrigine',
+            'structureDestinataire',
             'transmisPar',
             'archivePar',
         ];

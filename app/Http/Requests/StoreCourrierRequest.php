@@ -16,9 +16,10 @@ class StoreCourrierRequest extends FormRequest
             return false;
         }
 
-        // Les réponses sont toujours autorisées (via parent_courrier_id)
+        // Les réponses nécessitent une vérification : l'utilisateur doit pouvoir répondre au courrier parent
         if ($this->filled('parent_courrier_id')) {
-            return true;
+            $parent = Courrier::find($this->input('parent_courrier_id'));
+            return $parent && $parent->peutEtreReponduPar($user);
         }
 
         // Pour les courriers sortants, seul le chef général ou secrétaire général (et admin) peuvent créer
@@ -67,9 +68,9 @@ class StoreCourrierRequest extends FormRequest
             'instructions.*.instruction_id' => ['nullable', 'integer', 'exists:instructions,id'],
             'instructions.*.commentaire' => ['nullable', 'string'],
             'instructions.*.validation_requise' => ['sometimes', 'boolean'],
-            'documents' => ['sometimes', 'array'],
-            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'max:10240'],
-            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'max:10240'],
+            'documents' => ['sometimes', 'array', 'max:5'],
+            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'mimetypes:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp', 'max:10240'],
+            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'mimetypes:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp', 'max:10240'],
         ];
     }
 
@@ -92,14 +93,14 @@ class StoreCourrierRequest extends FormRequest
                     if ($niveauChoisi && $niveauChoisi->rang > $user->getRangNiveauConfidentialite()) {
                         $validator->errors()->add(
                             'niveau_confidentialite_id',
-                            'Vous ne pouvez pas choisir un niveau de confidentialite superieur au votre.'
+                            'Vous ne pouvez pas choisir un niveau de confidentialité supérieur au vôtre.'
                         );
                     }
                 }
             }
 
             if ($this->boolean('requiert_reponse') && !$this->filled('delai_reponse_jours')) {
-                $validator->errors()->add('delai_reponse_jours', 'Le delai de reponse est obligatoire.');
+                $validator->errors()->add('delai_reponse_jours', 'Le délai de réponse est obligatoire.');
             }
 
             if (
@@ -110,7 +111,7 @@ class StoreCourrierRequest extends FormRequest
             ) {
                 $validator->errors()->add(
                     'type',
-                    'Les courriers recus doivent etre saisis par le secretariat general ou valides au niveau general.'
+                    'Les courriers reçus doivent être saisis par le secrétariat général ou validés au niveau général.'
                 );
             }
 
@@ -119,7 +120,7 @@ class StoreCourrierRequest extends FormRequest
                 && !$this->hasFile('fichier')
                 && !$this->hasFile('documents')
             ) {
-                $validator->errors()->add('fichier', 'Le fichier est obligatoire pour un courrier recu.');
+                $validator->errors()->add('fichier', 'Le fichier est obligatoire pour un courrier reçu.');
             }
 
             if (
@@ -129,7 +130,7 @@ class StoreCourrierRequest extends FormRequest
             ) {
                 $validator->errors()->add(
                     'expediteur',
-                    'Choisissez soit un expediteur, soit un service expediteur, pas les deux.'
+                    'Choisissez soit un expéditeur, soit un service expéditeur, pas les deux.'
                 );
             }
 
@@ -142,7 +143,7 @@ class StoreCourrierRequest extends FormRequest
             ) {
                 $validator->errors()->add(
                     'expediteur',
-                    'Veuillez saisir un expediteur ou choisir un service expediteur pour un courrier recu.'
+                    'Veuillez saisir un expéditeur ou choisir un service expéditeur pour un courrier reçu.'
                 );
             }
 
@@ -229,7 +230,7 @@ class StoreCourrierRequest extends FormRequest
                 // if ($this->filled('source_libelle')) {
                 //     $validator->errors()->add(
                 //         'source_libelle',
-                //         'Impossible de creer une nouvelle source pour un courrier sortant. Choisissez une source existante.'
+                //         'Impossible de créer une nouvelle source pour un courrier sortant. Choisissez une source existante.'
                 //     );
                 // }
             }

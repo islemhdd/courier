@@ -1,6 +1,6 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { AlertCircle, ArrowLeft, FileText, Lock } from 'lucide-react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { AlertCircle, ArrowLeft, ExternalLink, FileText, Lock, Loader2 } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { courrierApi } from '../api/courrierApi'
 import AllDetails from '../components/AllDetails'
@@ -12,6 +12,7 @@ const CourrierForm = lazy(() => import('../components/CourrierForm'))
 export default function CourrierPreview() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const mainRef = useRef(null)
   const [courrier, setCourrier] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -39,6 +40,10 @@ export default function CourrierPreview() {
     return () => {
       active = false
     }
+  }, [id])
+
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0)
   }, [id])
 
   const contenuRestreint = courrier?.contenu_restreint === true || courrier?.peut_voir_details === false
@@ -81,52 +86,91 @@ export default function CourrierPreview() {
     }
   }
 
+  const handleReply = async () => {
+    setReplyOpen(true)
+  }
+
   return (
-    <div className="min-h-[calc(100vh-9rem)] rounded-[2rem] border border-slate-200 bg-slate-100 p-4 shadow-sm sm:p-6 lg:p-8">
-      <div className="mb-6 flex flex-col gap-4 rounded-[1.5rem] border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+    <div ref={mainRef} className="flex min-h-[calc(100vh-9rem)] flex-col gap-5 sm:gap-6">
+      <nav className="glass-panel-strong flex items-center gap-3 rounded-[2rem] px-5 py-3 sm:px-6">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+          aria-label="Retour"
+        >
+          <ArrowLeft size={18} />
+        </button>
+
+        <div className="flex h-7 w-px bg-slate-200" />
+
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white">
-            <FileText size={22} />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white">
+            <FileText size={16} />
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">
-              Page d'aperçu complet
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">
+              Apercu complet du courrier
             </p>
-            <h2 className="mt-1 truncate text-lg font-semibold text-slate-950">
-              {courrier?.numero || 'Chargement du courrier'}
-            </h2>
+            <p className="truncate text-sm font-semibold text-slate-900">
+              {loading ? 'Chargement...' : (courrier?.numero || 'Courrier introuvable')}
+            </p>
           </div>
         </div>
 
-        <button
-          onClick={() => navigate(-1)}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          <ArrowLeft size={16} />
-          Retour
-        </button>
-      </div>
+        <div className="ml-auto flex items-center gap-2">
+          {!loading && courrier && (
+            <>
+              <Link
+                to="/recus"
+                className="hidden h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 sm:inline-flex"
+              >
+                <ExternalLink size={14} />
+                Courriers recus
+              </Link>
+              <Link
+                to="/archives"
+                className="hidden h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900 sm:inline-flex"
+              >
+                <ExternalLink size={14} />
+                Archives
+              </Link>
+            </>
+          )}
+        </div>
+      </nav>
 
       {loading ? (
-        <SkeletonLoader variant="detail" />
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 sm:p-8">
+          <div className="mb-8 flex animate-pulse items-start gap-5">
+            <div className="h-14 w-14 shrink-0 rounded-2xl bg-slate-200" />
+            <div className="min-w-0 flex-1 space-y-3">
+              <div className="h-3 w-32 rounded-full bg-slate-200" />
+              <div className="h-6 w-72 rounded-full bg-slate-200" />
+              <div className="h-3 w-48 rounded-full bg-slate-200" />
+            </div>
+          </div>
+          <SkeletonLoader variant="detail" />
+        </div>
       ) : error ? (
         <PageError message={error} onBack={() => navigate(-1)} />
       ) : (
-        <AllDetails
-          courrier={courrier}
-          contenuRestreint={contenuRestreint}
-          actionDisabled={actionLoading}
-          actions={{
-            canReply,
-            canTransmit,
-            canArchive,
-            onReply: canReply ? () => setReplyOpen(true) : undefined,
-            onTransmit: canTransmit ? () => setTransmitOpen(true) : undefined,
-            onArchive: canArchive ? handleArchive : undefined,
-            onClose: () => navigate(-1),
-            onViewCourrier: (id) => navigate(`/courriers/${id}`),
-          }}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <AllDetails
+            courrier={courrier}
+            contenuRestreint={contenuRestreint}
+            actionDisabled={actionLoading}
+            actions={{
+              canReply,
+              canTransmit,
+              canArchive,
+              onReply: canReply ? handleReply : undefined,
+              onTransmit: canTransmit ? () => setTransmitOpen(true) : undefined,
+              onArchive: canArchive ? handleArchive : undefined,
+              onClose: () => navigate(-1),
+              onViewCourrier: (id) => navigate(`/courriers/${id}`),
+            }}
+          />
+        </div>
       )}
 
       {transmitOpen && courrier && (
@@ -160,20 +204,27 @@ function PageError({ message, onBack }) {
   const restricted = message.includes("autorisation") || message.includes("droit")
 
   return (
-    <div className="rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
-        {restricted ? <Lock size={26} /> : <AlertCircle size={26} />}
+    <div className="flex flex-1 items-center justify-center rounded-[2rem] border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
+      <div className="max-w-md">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
+          {restricted ? <Lock size={28} /> : <AlertCircle size={28} />}
+        </div>
+        <h2 className="mt-6 text-lg font-semibold text-slate-950">{message}</h2>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+          {restricted
+            ? "Vous n'avez pas l'autorisation de consulter ce courrier."
+            : "Le courrier demande n'a pas pu etre charge. Verifiez l'identifiant ou reassayez."}
+        </p>
+        <div className="mt-8 flex items-center justify-center gap-3">
+          <button
+            onClick={onBack}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            <ArrowLeft size={16} />
+            Retour
+          </button>
+        </div>
       </div>
-      <h2 className="mt-5 text-lg font-semibold text-slate-950">{message}</h2>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
-        Aucune donnée détaillée n'est affichée tant que l'API ne confirme pas l'autorisation.
-      </p>
-      <button
-        onClick={onBack}
-        className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800"
-      >
-        Retour
-      </button>
     </div>
   )
 }

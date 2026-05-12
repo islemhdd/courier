@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, Plus, Search, Send } from 'lucide-react'
 
 import { courrierApi } from '../api/courrierApi'
@@ -45,15 +45,16 @@ export default function SentCourriers() {
     (err.response?.data?.errors
       ? Object.values(err.response.data.errors).flat()[0]
       : '') ||
-    "L'action a echoue."
+    "L'action a échoué."
+
+  const selectedIdRef = useRef(null)
 
   const applyCourriers = useCallback((items, preferredId = null) => {
     setCourriers(items)
-    setSelectedCourrier((current) => {
-      const nextId = preferredId ?? current?.id
-
-      return items.find((item) => item.id === nextId) || items[0] || null
-    })
+    const nextId = preferredId ?? selectedIdRef.current
+    const next = items.find((item) => item.id === nextId) || null
+    selectedIdRef.current = next?.id || null
+    setSelectedCourrier(next)
   }, [])
 
   const loadData = useCallback(
@@ -82,9 +83,9 @@ export default function SentCourriers() {
         const res = await courrierApi.getSent(query)
         const items = res.data.courriers.data
         const nextSelectedId =
-          selectedCourrier?.id && items.some((item) => item.id === selectedCourrier.id)
-            ? selectedCourrier.id
-            : items[0]?.id || null
+          selectedIdRef.current && items.some((item) => item.id === selectedIdRef.current)
+            ? selectedIdRef.current
+            : null
 
         applyCourriers(items, nextSelectedId)
         setPagination(res.data.courriers)
@@ -99,12 +100,12 @@ export default function SentCourriers() {
           SENT_CACHE_TTL,
         )
       } catch (err) {
-        setError(getApiErrorMessage(err) || 'Erreur lors du chargement des courriers envoyes.')
+        setError(getApiErrorMessage(err) || 'Erreur lors du chargement des courriers envoyés.')
       } finally {
         setLoading(false)
       }
     },
-    [applyCourriers, search, selectedCourrier?.id],
+    [applyCourriers, search],
   )
 
   useEffect(() => {
@@ -141,9 +142,9 @@ export default function SentCourriers() {
               <Send size={22} />
             </div>
             <div>
-              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Courriers envoyes</h2>
+              <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Courriers envoyés</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Suivi rapide du flux sortant et acces direct aux transmissions.
+                Suivi rapide du flux sortant et accès direct aux transmissions.
               </p>
             </div>
           </div>

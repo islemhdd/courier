@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   Archive,
@@ -37,6 +37,7 @@ export default function Dashboard() {
   const [formType, setFormType] = useState('sortant')
   const [showTypeSelector, setShowTypeSelector] = useState(false)
   const [error, setError] = useState('')
+  const selectedIdRef = useRef(null)
   const canCreateIncoming = user?.permissions?.peut_creer_courrier_recu === true
   const canCreateOutgoing = (() => {
     if (!user) return false
@@ -55,19 +56,20 @@ export default function Dashboard() {
     (err.response?.data?.errors
       ? Object.values(err.response.data.errors).flat()[0]
       : '') ||
-    "L'action a echoue."
+    "L'action a échoué."
 
   const applyCourriers = useCallback((courriersList, preferredId = null) => {
     setCourriers(courriersList)
-    setSelectedCourrier((current) => {
-      const nextId = preferredId ?? current?.id
+    const nextId = preferredId ?? selectedIdRef.current
+    const next = courriersList.find((courrier) => courrier.id === nextId) || null
 
-      return (
-        courriersList.find((courrier) => courrier.id === nextId) ||
-        courriersList[0] ||
-        null
-      )
-    })
+    selectedIdRef.current = next?.id || null
+    setSelectedCourrier(next)
+  }, [])
+
+  const handleSelectCourrier = useCallback((courrier) => {
+    selectedIdRef.current = courrier?.id || null
+    setSelectedCourrier(courrier)
   }, [])
 
   const applyCachedData = useCallback(
@@ -108,9 +110,9 @@ export default function Dashboard() {
         const nextStats = statsRes.data?.courriers || {}
         const nextUnreadMessages = unreadRes.data?.non_lus || 0
         const nextSelectedId =
-          selectedCourrier?.id && courriersList.some((courrier) => courrier.id === selectedCourrier.id)
-            ? selectedCourrier.id
-            : courriersList[0]?.id || null
+          selectedIdRef.current && courriersList.some((courrier) => courrier.id === selectedIdRef.current)
+            ? selectedIdRef.current
+            : null
 
         applyCourriers(courriersList, nextSelectedId)
         setStats(nextStats)
@@ -132,7 +134,7 @@ export default function Dashboard() {
         setLoading(false)
       }
     },
-    [applyCachedData, applyCourriers, selectedCourrier?.id],
+    [applyCachedData, applyCourriers],
   )
 
   useEffect(() => {
@@ -169,11 +171,11 @@ export default function Dashboard() {
               Espace de pilotage
             </p>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">
-              Bonjour, {user?.prenom}. <span className="gradient-text">Flux courrier centralise.</span>
+              Bonjour, {user?.prenom}. <span className="gradient-text">Flux courrier centralisé.</span>
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
-              Suivez les receptions recentes, les validations en attente et la messagerie interne
-              depuis une vue plus legere et plus rapide a charger.
+              Suivez les réceptions récentes, les validations en attente et la messagerie interne
+              depuis une vue plus légère et plus rapide à charger.
             </p>
           </div>
 
@@ -205,10 +207,10 @@ export default function Dashboard() {
         <SkeletonLoader variant="stats" />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatItem icon={<Inbox className="text-blue-600" />} label="Recus" value={stats?.recus || 0} />
+          <StatItem icon={<Inbox className="text-blue-600" />} label="Reçus" value={stats?.recus || 0} />
           <StatItem icon={<Send className="text-indigo-600" />} label="Sortants" value={stats?.envoyes || 0} />
           <StatItem icon={<Clock className="text-amber-600" />} label="En attente" value={stats?.en_attente_reponse || 0} />
-          <StatItem icon={<ShieldAlert className="text-rose-600" />} label="A valider" value={stats?.validation || 0} />
+          <StatItem icon={<ShieldAlert className="text-rose-600" />} label="À valider" value={stats?.validation || 0} />
         </div>
       )}
 
@@ -227,9 +229,9 @@ export default function Dashboard() {
             <div className="soft-divider flex items-center justify-between border-b bg-white/70 px-6 py-4">
               <div>
                 <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">
-                  Receptions recentes
+                  Réceptions récentes
                 </h3>
-                <p className="mt-1 text-sm text-slate-500">Selection rapide et panneau de details persistant.</p>
+                <p className="mt-1 text-sm text-slate-500">Sélection rapide et panneau de détails persistant.</p>
               </div>
               <button
                 onClick={() => navigate('/recus')}
@@ -243,7 +245,7 @@ export default function Dashboard() {
                 courriers={courriers}
                 loading={loading}
                 selectedCourrier={selectedCourrier}
-                onSelect={setSelectedCourrier}
+                onSelect={handleSelectCourrier}
               />
             </div>
           </section>
@@ -284,14 +286,14 @@ export default function Dashboard() {
           <div className="glass-panel-strong float-in w-full max-w-md rounded-[2rem] overflow-hidden">
             <div className="soft-divider border-b px-6 py-5">
               <h3 className="text-lg font-semibold text-slate-950">Nouveau courrier</h3>
-              <p className="mt-1 text-sm text-slate-500">Choisissez le flux a creer.</p>
+              <p className="mt-1 text-sm text-slate-500">Choisissez le flux à créer.</p>
             </div>
 
             <div className="space-y-3 p-6">
               {canCreateOutgoing && (
                 <TypeCard
                   title="Courrier sortant"
-                  description="Creer un nouveau courrier de depart."
+                  description="Créer un nouveau courrier de départ."
                   icon={<Send size={20} />}
                   tone="blue"
                   onClick={() => {
@@ -304,7 +306,7 @@ export default function Dashboard() {
 
               {canCreateIncoming && (
                 <TypeCard
-                  title="Courrier recu"
+                  title="Courrier reçu"
                   description="Enregistrer un courrier entrant."
                   icon={<Inbox size={20} />}
                   tone="emerald"
@@ -386,7 +388,7 @@ function QuickLink({ title, count, helper, icon, link }) {
         </div>
         <ArrowRight size={16} className="text-slate-300 group-hover:text-slate-900" />
       </div>
-      <p className="mt-4 text-sm font-medium text-slate-600">{count} element(s)</p>
+      <p className="mt-4 text-sm font-medium text-slate-600">{count} élément(s)</p>
     </button>
   )
 }

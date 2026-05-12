@@ -1,0 +1,49 @@
+# RAPPORT D'AUDIT DES VULNÉRABILITÉS - APPLICATION DE GESTION DE COURRIER
+
+Ce rapport détaille les failles de sécurité identifiées lors de l'audit technique de l'application. Les vulnérabilités sont classées par niveau de sévérité.
+
+## 1. Vulnérabilités Critiques
+
+### 1.1 Accès Public Direct aux Documents Sensibles (Information Exposure)
+**Localisation :** `config/filesystems.php`, `CourrierController::storeAttachments`
+**Description :** Les fichiers (PDF, images, etc.) sont stockés dans le disque `public` (`storage/app/public/courriers/`). En raison du lien symbolique `public/storage`, n'importe qui connaissant ou devinant l'URL d'un fichier (ex: `http://mon-app.com/storage/courriers/COUR-001234.pdf`) peut y accéder sans aucune authentification ni vérification des droits de confidentialité.
+**Impact :** Fuite totale de documents confidentiels ou secrets.
+**Recommandation :** Déplacer le stockage des courriers vers un disque `private` non accessible directement par le serveur web, et servir les fichiers via une route Laravel sécurisée vérifiant les politiques d'accès (`CourrierPolicy`).
+
+## 2. Vulnérabilités de Sévérité Haute
+
+### 2.1 Escalade de Privilèges via le Périmètre des Rôles (Privilege Escalation)
+**Localisation :** `UserController::canAssignRoleAndOrg`
+**Description :** La validation lors de la création ou modification d'un utilisateur vérifie le rôle (ex: interdiction pour un Chef de Structure de créer un Admin) mais ne vérifie pas le `role_scope`. Un Chef de Structure pourrait potentiellement créer un utilisateur avec un `role_scope = 'general'`, donnant à cet utilisateur des droits sur l'ensemble de l'organisation, dépassant ainsi les droits du créateur.
+**Impact :** Prise de contrôle étendue de l'application par un utilisateur à périmètre restreint.
+**Recommandation :** Ajouter une validation stricte sur le `role_scope` pour s'assurer qu'un utilisateur ne peut pas attribuer un périmètre supérieur au sien.
+
+### 2.2 Absence de Rate Limiting sur les Opérations Lourdes (DoS)
+**Localisation :** `OcrController::preview`, `OcrController::rerun`
+**Description :** Les routes de prévisualisation OCR et de relance du traitement OCR permettent de déclencher des opérations de calcul intensives (Tesseract OCR). Aucune limite de fréquence (Rate Limiting) n'est appliquée spécifiquement sur ces routes.
+**Impact :** Un attaquant pourrait saturer le CPU du serveur en envoyant de nombreuses requêtes de traitement OCR, rendant l'application indisponible.
+**Recommandation :** Appliquer un middleware `throttle` restrictif sur les routes liées à l'OCR.
+
+## 3. Vulnérabilités de Sévérité Moyenne
+
+### 3.1 Fuite de Données Métier via le Périmètre de Transmission (Data Leakage)
+**Localisation :** `CourrierController::transmettre`
+**Description :** Alors que les Chefs de Structure sont restreints dans les cibles de transmission (`assertChefStructureTransmissionTargets`), les Chefs de Service ne disposent pas d'une validation similaire. Ils peuvent techniquement transmettre un courrier dont ils ont l'accès à n'importe quel autre service ou structure de l'organisation.
+**Impact :** Diffusion non autorisée de courriers sensibles en dehors du périmètre prévu.
+**Recommandation :** Implémenter une méthode `assertChefServiceTransmissionTargets` pour restreindre la transmission au périmètre du service.
+
+### 3.2 Exposition de Champs Internes de l'Utilisateur (Information Exposure)
+**Localisation :** `HandleInertiaRequests::share`
+**Description :** L'objet `user` complet est partagé avec le frontend pour l'utilisateur authentifié. Bien que le mot de passe soit masqué, des champs tels que `role_scope`, `niveau_confidentialite_id`, et d'autres métadonnées internes sont exposés dans le code source de la page (Inertia shared props).
+**Impact :** Divulgation d'informations sur la structure interne de sécurité.
+**Recommandation :** Utiliser une ressource API ou une méthode de sérialisation spécifique dans le middleware pour ne partager que les champs strictement nécessaires au frontend.
+
+## 4. Observations Mineures
+
+### 4.1 Dépendance aux Chemins Système pour l'OCR
+**Localisation :** `OcrService::findTesseract`
+**Description :** Le service cherche les binaires Tesseract et Ghostscript via des chemins prévisibles ou des commandes système (`which`). Bien que sécurisé par `escapeshellarg`, une mauvaise configuration du système hôte pourrait être exploitée.
+**Recommandation :** Définir explicitement les chemins des binaires dans les variables d'environnement (`.env`) au lieu de se fier à une détection automatique.
+
+---
+*Fin de l'audit*

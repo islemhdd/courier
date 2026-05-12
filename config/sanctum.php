@@ -47,7 +47,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => 525600, // 1 an (525600 minutes) — les tokens SPA sont gérés via cookies, ceci concerne les tokens API
 
     /*
     |--------------------------------------------------------------------------

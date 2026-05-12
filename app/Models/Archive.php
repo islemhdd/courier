@@ -14,31 +14,47 @@ class Archive extends Model
         'numero',
         'objet',
         'type',
+        'courrier_type_id',
+        'resume',
+        'extracted_text',
+        'ocr_status',
+        'summary_source',
         'chemin_fichier',
         'date_creation',
         'date_reception',
+        'date_limite_reponse',
+        'repondu_le',
         'expediteur',
         'destinataire',
+        'source_id',
         'statut_original',
         'niveau_confidentialite_id',
         'createur_id',
         'valideur_id',
         'service_source_id',
         'service_destinataire_id',
+        'structure_origine_id',
+        'structure_destinataire_id',
         'transmis_par_id',
         'transmis_le',
         'archive_par_id',
         'archive_le',
         'motif',
+        'attachments_snapshot',
+        'comments_snapshot',
     ];
 
     protected $casts = [
         'date_creation' => 'datetime',
         'date_reception' => 'datetime',
+        'date_limite_reponse' => 'datetime',
+        'repondu_le' => 'datetime',
         'transmis_le' => 'datetime',
         'archive_le' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'attachments_snapshot' => 'array',
+        'comments_snapshot' => 'array',
     ];
 
     protected $appends = [
@@ -48,6 +64,16 @@ class Archive extends Model
     public function niveauConfidentialite(): BelongsTo
     {
         return $this->belongsTo(NiveauConfidentialite::class);
+    }
+
+    public function courrierType(): BelongsTo
+    {
+        return $this->belongsTo(CourrierType::class);
+    }
+
+    public function source(): BelongsTo
+    {
+        return $this->belongsTo(Source::class);
     }
 
     public function createur(): BelongsTo
@@ -68,6 +94,16 @@ class Archive extends Model
     public function serviceDestinataire(): BelongsTo
     {
         return $this->belongsTo(Service::class, 'service_destinataire_id');
+    }
+
+    public function structureOrigine(): BelongsTo
+    {
+        return $this->belongsTo(Structure::class, 'structure_origine_id');
+    }
+
+    public function structureDestinataire(): BelongsTo
+    {
+        return $this->belongsTo(Structure::class, 'structure_destinataire_id');
     }
 
     public function transmisPar(): BelongsTo
@@ -212,10 +248,6 @@ class Archive extends Model
 
     public function getUrlFichierAttribute(): ?string
     {
-        if (!$this->chemin_fichier) {
-            return null;
-        }
-
-        return asset('storage/' . $this->chemin_fichier);
+        return null;
     }
 }

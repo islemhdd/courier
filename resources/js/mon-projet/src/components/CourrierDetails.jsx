@@ -230,7 +230,7 @@ export default function CourrierDetails({
           <div className="space-y-4">
             <CompactInfo icon={<Globe size={14} />} label="Source" value={courrier.source?.libelle || courrier.expediteur} />
             <CompactInfo icon={<Calendar size={14} />} label="Reception" value={formatDate(courrier.date_reception)} />
-            <CompactInfo icon={<ShieldCheck size={14} />} label="Confidentialite" value={courrier.niveau_confidentialite?.libelle} />
+            <CompactInfo icon={<ShieldCheck size={14} />} label="Confidentialité" value={courrier.niveau_confidentialite?.libelle} />
             <CompactInfo icon={<Paperclip size={14} />} label="Annexes" value={`${courrier.attachments?.length || 0} fichier(s)`} />
           </div>
         )}
@@ -256,9 +256,19 @@ export default function CourrierDetails({
           )}
         </div>
 
+        <div className="pt-2">
+          <button
+            onClick={() => navigate(`/courriers/${courrier.id}`)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-slate-200 bg-white px-4 py-3 text-xs font-black uppercase tracking-widest text-slate-700 transition-all hover:border-slate-900 hover:bg-slate-900 hover:text-white active:scale-95"
+          >
+            <FileText size={15} />
+            Page complete
+          </button>
+        </div>
+
         <div className="flex flex-col gap-2 pt-2">
           {peutModifier && (
-            <GhostAction icon={<Pencil size={14} />} label="Modifier les metadonnees" onClick={() => onEdit?.(courrier)} disabled={actionDisabled} />
+            <GhostAction icon={<Pencil size={14} />} label="Modifier les métadonnées" onClick={() => onEdit?.(courrier)} disabled={actionDisabled} />
           )}
           {peutArchiver && (
             <GhostAction icon={<Archive size={14} />} label="Envoyer aux archives" onClick={() => onArchive?.(courrier.id)} disabled={actionDisabled} />
@@ -283,14 +293,14 @@ export default function CourrierDetails({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900 p-2 animate-in fade-in duration-200 sm:p-4">
           <div className="absolute inset-0" onClick={() => setIsAllDetailsOpen(false)} />
           <div className="bg-white relative z-10 flex h-[calc(100dvh-1rem)] min-h-0 w-full max-w-7xl flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-300 sm:h-[calc(100dvh-2rem)] sm:rounded-[2rem]">
-            <div className="print:hidden flex items-center justify-between border-b border-slate-100 px-4 py-4 bg-white sticky top-0 z-20 sm:px-6">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-4 bg-white sticky top-0 z-20 sm:px-6">
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400 mb-1">
                   {modalContenuRestreint ? 'Acces restreint' : 'Apercu complet du courrier'}
                 </p>
                 <h3 className="truncate text-base font-black text-slate-900 uppercase tracking-tight sm:text-lg">
                   {modalContenuRestreint
-                    ? 'Consultation non autorisee'
+                    ? 'Consultation non autorisée'
                     : currentDetailsLoading
                       ? 'Chargement du dossier'
                       : 'Dossier administratif'}
@@ -359,7 +369,7 @@ function DetailsError({ message, onClose }) {
       </div>
       <h2 className="mt-5 text-lg font-semibold text-slate-950">{message}</h2>
       <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
-        Aucune donnee detaillee n'est affichee tant que l'API ne confirme pas l'autorisation.
+        Aucune donnée détaillée n'est affichée tant que l'API ne confirme pas l'autorisation.
       </p>
       <button
         onClick={onClose}

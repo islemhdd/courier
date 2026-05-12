@@ -1,0 +1,479 @@
+================================================================================
+            EXPLICATION TECHNIQUE — FONCTIONNEMENT DE L'OCR
+            Application : Gestion Courrier (courier)
+================================================================================
+
+TABLE DES MATIÈRES
+------------------
+1. Architecture générale
+2. Déclenchement de l'OCR
+3. Processus d'extraction par type de fichier
+4. OCR via Tesseract (reconnaissance d'image)
+5. Génération automatique de résumé
+6. Détection de langue
+7. Estimation de confiance
+8. Extraction d'informations clés
+9. Statuts et cycle de vie OCR
+10. Recherche full-text dans les archives
+11. Schéma du pipeline complet
+
+
+================================================================================
+1. ARCHITECTURE GÉNÉRALE
+================================================================================
+
+   L'OCR est organisé en 3 couches :
+
+   ┌────────────────────────────────────────────────────────────────────┐
+   │  Contrôleur HTTP  (OcrController)                                 │
+   │  - POST /api/ocr/preview     (synchrone, prévisualisation)        │
+   │  - GET  /api/courriers/{id}/ocr   (statut)                        │
+   │  - POST /api/courriers/{id}/ocr/rerun  (relance)                  │
+   └───────────────────────┬────────────────────────────────────────────┘
+                           │
+   ┌───────────────────────▼────────────────────────────────────────────┐
+   │  File d'attente      (ProcessOcrJob implements ShouldQueue)        │
+   │  - Lancé automatiquement après création d'un courrier              │
+   │  - Queue sync en test, Redis/DB en production                      │
+   └───────────────────────┬────────────────────────────────────────────┘
+                           │
+   ┌───────────────────────▼────────────────────────────────────────────┐
+   │  Service métier      (OcrService)                                  │
+   │  - extractText()     : point d'entrée principal                   │
+   │  - processAttachment(): lecture depuis Storage Laravel             │
+   │  - generateSummary() : résumé automatique                         │
+   │  - detectLanguage()  : arabe, français, anglais                   │
+   │  - estimateConfidence(): score de 0 à 100                         │
+   └──────────┬──────────┬──────────┬───────────────────────────────────┘
+              │          │          │
+              ▼          ▼          ▼
+          PDF/DOCX    Image     Tesseract OCR
+         (extraction  (jpg/png/  (fallback pour
+         native)      webp)      PDF sans texte)
+
+
+================================================================================
+2. DÉCLENCHEMENT DE L'OCR
+================================================================================
+
+   A. LORS DE LA CRÉATION D'UN COURRIER
+   ──────────────────────────────────────
+   Dans CourrierController::store() (ligne 315-317) :
+
+       if ($courrier->attachments()->exists()) {
+           ProcessOcrJob::dispatch($courrier);
+       }
+
+   Après avoir créé le courrier en base, si des pièces jointes ont été
+   uploadées, un job asynchrone est dispatché dans la file d'attente.
+   Le job tourne en arrière-plan pendant que l'utilisateur continue
+   à naviguer.
+
+   B. LORS DE LA MODIFICATION D'UN COURRIER
+   ─────────────────────────────────────────
+   Dans CourrierController::update() (ligne 392-394) :
+
+       if ($request->hasFile('documents') || $request->hasFile('fichier')) {
+           ProcessOcrJob::dispatch($courrier->fresh());
+       }
+
+   Si de nouveaux fichiers sont ajoutés lors d'une modification, le job
+   est redéclenché.
+
+   C. RELANCE MANUELLE (RERUN)
+   ────────────────────────────
+   POST /api/courriers/{courrier}/ocr/rerun
+   - Remet tous les statuts OCR à "pending"
+   - Redispatch un ProcessOcrJob
+   - Vérifie que l'utilisateur peut voir le courrier en détail
+
+   D. PRÉVISUALISATION SYNCHRONE (PREVIEW)
+   ─────────────────────────────────────────
+   POST /api/ocr/preview (multipart/form-data)
+   - Appelle OcrService::extractText() directement (synchrone)
+   - Retourne le texte extrait + résumé + langue + confiance
+   - Utilisé dans le formulaire de création pour montrer un aperçu
+     du texte avant d'enregistrer le courrier
+
+
+================================================================================
+3. PROCESSUS D'EXTRACTION PAR TYPE DE FICHIER
+================================================================================
+
+   A. PDF  →  extractFromPdf()  (ligne 399)
+   ─────────────────────────────────────────
+   1) Essaie d'abord l'extraction native avec smalot/pdfparser :
+        $parser = new PdfParser();
+        $pdf = $parser->parseFile($path);
+        $text = $pdf->getText();
+        
+   2) Si le texte extrait fait plus de 50 caractères → succès
+      (le PDF contient du texte intégré, pas besoin d'OCR)
+
+   3) Si le texte fait moins de 50 caractères (PDF scanné, image seule)
+      → fallback vers Tesseract OCR via ocrImage()
+
+   4) Si smalot/pdfparser échoue (exception) → fallback vers Tesseract
+
+   B. DOCX  →  extractFromDoc()  (ligne 429)
+   ─────────────────────────────────────────
+   1) Ouvre le fichier DOCX avec ZipArchive
+   2) Lit le fichier XML word/document.xml
+   3) Parcourt les balises <w:t> (texte Word) avec XPath
+   4) Concatène tout le texte
+
+   5) Si le texte fait moins de 20 caractères (DOCX scanné converti)
+      → fallback vers Tesseract OCR
+
+   C. IMAGE (jpg, jpeg, png, webp)  →  extractFromImage()  (ligne 480)
+   ─────────────────────────────────────────────────────────────────────
+   1) Appelle directement ocrImage() → Tesseract
+
+   D. FICHIERS NON SUPPORTÉS
+   ──────────────────────────
+   Retourne une erreur : "Type de fichier non supporté"
+   Types supportés : jpg, jpeg, png, webp, pdf, doc, docx
+
+
+================================================================================
+4. OCR VIA TESSERACT (RECONNAISSANCE D'IMAGE)
+================================================================================
+
+   4.1. RECHERCHE DE TESSERACT SUR LE SYSTÈME  (findTesseract, ligne 591)
+   ────────────────────────────────────────────────────────────────────────
+   Chemins recherchés dans l'ordre :
+   - 'tesseract' / 'tesseract.exe' (PATH système)
+   - C:\Program Files\Tesseract-OCR\tesseract.exe  (Windows)
+   - C:\Program Files (x86)\Tesseract-OCR\tesseract.exe  (Windows 32-bit)
+   - which tesseract  (Linux/macOS)
+   - /usr/bin/tesseract, /usr/local/bin/tesseract  (Linux)
+   - /opt/homebrew/bin/tesseract  (macOS Apple Silicon)
+   - Variable d'environnement TESSERACT_HOME
+
+   4.2. EXÉCUTION DE TESSERACT  (runTesseract, ligne 560)
+   ───────────────────────────────────────────────────────
+   Commande construite :
+       tesseract <image> <output_prefix> -l ara+fra+eng --psm 3
+
+   Paramètres :
+   - -l ara+fra+eng : 3 langues simultanées (arabe, français, anglais)
+   - --psm 3 : Page Segmentation Mode 3 (détection automatique de bloc)
+   - <output_prefix> : répertoire temporaire unique
+
+   Résultat : Tesseract génère un fichier .txt qu'on lit et supprime.
+
+   4.3. CONVERSION PDF → IMAGES  (convertPdfToImages, ligne 641)
+   ──────────────────────────────────────────────────────────────
+   Avant d'OCRiser un PDF qui n'a pas de texte intégré, il faut
+   convertir chaque page en image :
+
+   MÉTHODE 1 : Imagick (extension PHP, prioritaire)
+       $imagick = new Imagick();
+       $imagick->setResolution(200, 200);   // 200 DPI
+       $imagick->readImage($pdfPath);
+       foreach pages: convertit en PNG qualité 90
+
+   MÉTHODE 2 : Ghostscript (fallback)
+       gs -dNOPAUSE -dBATCH -sDEVICE=png16m -r200 -o page_%d.png <pdf>
+       -r200 = 200 DPI
+       -sDEVICE=png16m = PNG 16 millions de couleurs
+
+   4.4. NETTOYAGE DES FICHIERS TEMPORAIRES
+   ─────────────────────────────────────────
+   Les fichiers PNG temporaires (conversion PDF) sont supprimés
+   après traitement avec @unlink().
+
+   4.5. GESTION DES ERREURS TESSERACT
+   ───────────────────────────────────
+   - Si Tesseract n'est pas installé → message d'erreur explicite
+     avec lien d'installation
+   - Si la conversion PDF échoue → message suggérant d'installer
+     Ghostscript ou Imagick
+   - Si aucun texte extrait → "L'OCR n'a pas pu extraire de texte"
+
+
+================================================================================
+5. GÉNÉRATION AUTOMATIQUE DE RÉSUMÉ  (generateSummary, ligne 86)
+================================================================================
+
+   Algorithme en 6 étapes :
+
+   ÉTAPE 1 : NETTOYAGE
+   ────────────────────
+   - Supprime les retours chariot (\r\n → \n)
+   - Remplace les espaces multiples par un seul espace
+   - Supprime les lignes vides consécutives (max 2)
+
+   ÉTAPE 2 : EXTRACTION DES PHRASES  (extractSentences, ligne 237)
+   ────────────────────────────────────────────────────────────────
+   - Fusionne les lignes qui ne se terminent pas par . ! ? : (point
+     arabe ؟ inclus)
+   - Détection des formules de salutation (Madame, Monsieur, Bonjour...)
+   - Segmentation finale par . ! ?  avec détection de majuscule suivante
+
+   ÉTAPE 3 : FILTRAGE DES PHRASES CANDIDATES
+   ──────────────────────────────────────────
+   Exclusion :
+   - Phrases trop courtes (< 15 caractères)
+   - Lignes purement numériques (dates, montants isolés)
+   - Entêtes de document (Objet, Réf, N°, Date, Direction...)
+   - Formules de politesse (Cordialement, Merci, Salutations...)
+
+   ÉTAPE 4 : SCORING DES PHRASES
+   ──────────────────────────────
+   Chaque phrase reçoit un score initial de 100, puis des bonus :
+
+   +150  → contient un mot-clé d'action (sollicite, approuve,
+           accorde, informe, transmet, décision, rapport,
+           demande, budget, financement, recrutement...)
+           (Liste complète lignes 224-234, bilingue
+           français-arabe)
+   +5 × position  → bonus pour les phrases en début de document
+   +50  → si longueur entre 40 et 350 caractères (taille idéale)
+   -50  → si longueur > 500 caractères (trop long)
+   +30  → si contient des chiffres (montants, dates)
+
+   ÉTAPE 5 : SÉLECTION ET DÉDUPLICATION
+   ─────────────────────────────────────
+   - Trie les phrases par score décroissant
+   - Prend les 4 meilleures
+   - Déduplication : si similarité > 70% entre deux phrases
+     (calculée par intersection de mots / taille moyenne),
+     la seconde est ignorée
+   - Les phrases sont ensuite triées par ordre d'apparition
+
+   ÉTAPE 6 : ASSEMBLAGE
+   ─────────────────────
+   - Concatène les phrases sélectionnées
+   - Si l'objet du courrier n'est pas déjà dans le résumé,
+     le préfixe
+   - Troncature à 700 caractères max
+   - Stocké dans courrier.resume avec summary_source = 'auto_generated'
+
+   DÉDUPLICATION DES TEXTES DE PIÈCES JOINTES
+   ────────────────────────────────────────────
+   combineAttachmentTexts() (ligne 334) :
+   - Calcule MD5 de chaque texte normalisé
+   - Ignore les doublons (même MD5)
+   - Ignore les textes < 20 caractères
+   - Sépare par "---"
+
+
+================================================================================
+6. DÉTECTION DE LANGUE  (detectLanguage, ligne 352)
+================================================================================
+
+   Méthode hybride (comptage de caractères + mots-clés) :
+
+   1. Compter les caractères arabes (Unicode \x{0600}-\x{06FF}
+      et plages étendues \x{0750}-\x{077F}, \x{08A0}-\x{08FF},
+      \x{FB50}-\x{FDFF}, \x{FE70}-\x{FEFF})
+
+   2. Compter les mots français (liste de 50 mots fréquents :
+      le, la, les, un, une, des, du, de, et, est, sont, dans,
+      pour, sur, avec...)
+
+   3. Compter les mots anglais (liste de 70 mots : the, a, an,
+      is, are, was, were, be, been, have, has, had, do, does...)
+
+   RÈGLE :
+   - Si caractères arabes > 10 ET > max(mots français, mots anglais)
+     → langue = 'ara'  (arabe)
+   - Si mots français > mots anglais → 'fra'
+   - Si mots anglais > mots français → 'eng'
+   - Par défaut → 'fra'
+
+
+================================================================================
+7. ESTIMATION DE CONFIANCE  (estimateConfidence, ligne 736)
+================================================================================
+
+   Score heuristique de 0 à 100 basé sur la qualité du texte extrait :
+
+   Base : 50 points
+   +20  → si ratio de caractères alphabétiques > 50%
+   +15  → si ratio > 70% (texte propre, peu de bruit)
+   +10  → si longueur moyenne des mots entre 2 et 20 caractères
+   +5   → si texte total > 50 caractères (texte substantiel)
+
+   Exemples :
+   - Texte parfait : 50 + 20 + 15 + 10 + 5 = 100
+   - Bruit (caractères spéciaux, pas de mots) : 50
+   - Texte très court : 50 + 5 = 55
+
+
+================================================================================
+8. EXTRACTION D'INFORMATIONS CLÉS  (extractKeyInformation, ligne 779)
+================================================================================
+
+   Analyse le texte OCR pour extraire 4 types d'informations :
+
+   DATES
+   ─────
+   - Regex : /\b\d{2,4}[-\\/]\d{2}[-\\/]\d{2,4}\b/
+   - Capture les formats JJ/MM/AAAA, MM/JJ/AAAA...
+
+   RÉFÉRENCES
+   ──────────
+   - N°, n°, No., numéro, # suivi d'un nombre
+   - Format COUR-XXXXXX ou COUR-XXXX-XXXX
+
+   ORGANISATIONS
+   ─────────────
+   - Mots-clés : Ministère, Direction, Service, Division,
+     Bureau, Cellule, Département, Wilaya, Commune, etc.
+   - Formes juridiques : SARL, SPA, EURL, SNC, SCS, SCA
+
+   PERSONNES
+   ─────────
+   - Motif : deux mots ou plus avec majuscule initiale
+   - Filtre : exclut les mots d'en-tête (Objet, Réf, Madame...)
+   - Limité à 10 résultats
+
+
+================================================================================
+9. STATUTS ET CYCLE DE VIE OCR
+================================================================================
+
+   A. AU NIVEAU DU COURRIER  (courrier.ocr_status)
+   ─────────────────────────────────────────────────
+   pending     → en attente (vient d'être créé)
+   processing  → en cours de traitement (début du job)
+   completed   → terminé avec succès
+   failed      → toutes les pièces jointes ont échoué
+
+   B. AU NIVEAU DE CHAQUE PIÈCE JOINTE  (courrier_attachments.ocr_status)
+   ────────────────────────────────────────────────────────────────────────
+   pending     → en attente
+   processing  → en cours
+   completed   → texte extrait avec succès
+   failed      → échec de l'extraction
+
+   C. TRANSITIONS
+   ──────────────
+   pending ──(job start)──→ processing ──(succès)──→ completed
+                                         ──(échec)──→ failed
+   completed ──(rerun)──→ pending
+   failed ──(rerun)──→ pending
+
+   D. CHAMPS STOCKÉS PAR PIÈCE JOINTE
+   ────────────────────────────────────
+   ocr_text        : Texte extrait (longText)
+   ocr_language    : Langue détectée (ara/fra/eng)
+   ocr_status      : Statut (pending/processing/completed/failed)
+   ocr_confidence  : Confiance (decimal 5,2)
+   ocr_error       : Message d'erreur (text)
+   ocr_processed_at: Date de traitement
+
+   E. AU NIVEAU DU JOB  (ProcessOcrJob, ligne 1)
+   ──────────────────────────────────────────────
+   1. Met à jour courrier.ocr_status = 'processing'
+   2. Pour chaque attachment :
+      a. Appelle OcrService::processAttachment(chemin_storage)
+      b. Si succès → stocke le texte, la langue, la confiance
+      c. Si échec → stocke l'erreur, passe à l'attachement suivant
+   3. Combine tous les textes des pièces jointes réussies
+   4. Si au moins une a réussi :
+      - Génère un résumé automatique
+      - Met à jour courrier.extracted_text, ocr_status='completed'
+   5. Si toutes ont échoué :
+      - Met à jour courrier.ocr_status='failed'
+
+
+================================================================================
+10. RECHERCHE FULL-TEXT DANS LES ARCHIVES
+================================================================================
+
+   Lors de l'archivage d'un courrier, toutes les données OCR sont
+   sauvegardées dans la table archives (snapshot) :
+
+   - extracted_text      → recherche plein texte
+   - ocr_status          → statut au moment de l'archivage
+   - summary_source      → 'manual' ou 'auto_generated'
+   - attachments_snapshot → chaque attachment avec ocr_text
+
+   Dans l'interface Archives, l'utilisateur peut filtrer par "Contenu/OCR"
+   qui cherche dans :
+   - resume, extracted_text, attachments_snapshot, comments_snapshot
+
+   La recherche Levenshtein améliorée permet de trouver des résultats
+   même avec des fautes de frappe ou OCR imparfait (voir la section
+   dédiée dans le rapport de tests).
+
+
+================================================================================
+11. SCHÉMA DU PIPELINE COMPLET
+================================================================================
+
+   CRÉATION D'UN COURRIER AVEC PIÈCE JOINTE
+   ─────────────────────────────────────────
+
+   Utilisateur                  Serveur                  File d'attente
+   ──────────                  ────────                  ─────────────
+       │                          │                          │
+       │ POST /api/courriers      │                          │
+       │ (multipart: fichier.pdf) │                          │
+       │─────────────────────────►│                          │
+       │                          │ Sauvegarde fichier +     │
+       │                          │ création courrier en DB  │
+       │                          │                          │
+       │                          │ Dispatch ProcessOcrJob   │
+       │                          │─────────────────────────►│
+       │                          │                          │
+       │   201 + courrier créé    │                          │
+       │◄─────────────────────────│                          │
+       │                          │                          │
+       │                    (temps passe)                    │
+       │                          │                          │
+       │                          │               ┌─────────┘
+       │                          │               ▼
+       │                          │         ProcessOcrJob::handle()
+       │                          │         ┌─────────────────────┐
+       │                          │         │ ocr_status='processing'
+       │                          │         │                     │
+       │                          │         │ Pour chaque att. :  │
+       │                          │         │  OcrService::       │
+       │                          │         │   processAttachment │
+       │                          │         │    → PDF/DOC/Image  │
+       │                          │         │                     │
+       │                          │         │ Combine textes      │
+       │                          │         │ Génère résumé       │
+       │                          │         │ Update DB           │
+       │                          │         └─────────────────────┘
+
+   PRÉVISUALISATION OCR (SYNCHRONE)
+   ─────────────────────────────────
+
+   Utilisateur                  Serveur
+   ┌─────────────────────────────────────────────┐
+   │ POST /api/ocr/preview                       │
+   │ (multipart: fichier.pdf)                    │
+   │─────────────────────────►                    │
+   │                          │                   │
+   │                          │ OcrService::      │
+   │                          │  extractText()    │
+   │                          │  → PDF natif ou   │
+   │                          │    Tesseract OCR  │
+   │                          │                   │
+   │   200 + texte + résumé   │                   │
+   │◄─────────────────────────│                   │
+   └─────────────────────────────────────────────┘
+
+
+================================================================================
+RÉSUMÉ DES DÉPENDANCES SYSTÈME
+================================================================================
+
+   PHP (obligatoire)
+   ├── smalot/pdfparser        → extraction texte natif des PDF
+   ├── ext-zip                 → lecture DOCX (ZipArchive)
+   ├── ext-simplexml           → parsing XML du DOCX
+   └── ext-mbstring            → multibyte (arabe, français)
+
+   Système (optionnel, pour images et PDF scannés)
+   ├── Tesseract OCR 5+        → reconnaissance optique
+   │   ├── tesseract-ocr-ara   → langue arabe
+   │   ├── tesseract-ocr-fra   → langue française
+   │   └── tesseract-ocr-eng   → langue anglaise
+   ├── Ghostscript             → conversion PDF → images (fallback)
+   └── Imagick (PHP ext)       → conversion PDF → images (prioritaire)

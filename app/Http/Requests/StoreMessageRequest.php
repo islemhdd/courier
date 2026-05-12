@@ -17,7 +17,6 @@ class StoreMessageRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        // Tout utilisateur authentifié peut envoyer un message
         return $this->user() !== null;
     }
 

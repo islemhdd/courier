@@ -145,11 +145,13 @@ class User extends Authenticatable
     }
 
     /**
-     * Seul le chef général (ou admin) peut créer un courrier reçu.
+     * Le chef général, le secrétaire général (et l'admin) peuvent créer un courrier reçu.
+     * Pour le secrétaire général, le courrier sera en statut CREE en attendant
+     * la validation par le chef général.
      */
     public function peutCreerCourrierRecu(): bool
     {
-        return $this->estChefGeneral();
+        return $this->estChefGeneral() || $this->estSecretaireGeneral();
     }
 
     public function peutAjouterSource(): bool
@@ -189,7 +191,7 @@ class User extends Authenticatable
 
     public function peutConsulterUtilisateurs(): bool
     {
-        return $this->estAdmin() || $this->estChef();
+        return $this->estAdmin();
     }
 
     public function peutGererUtilisateursDuService(): bool

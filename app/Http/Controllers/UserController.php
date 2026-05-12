@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
 {
@@ -62,7 +63,7 @@ class UserController extends Controller
         $data = $request->validated();
 
         if (!$this->canAssignRoleAndOrg($actor, $data)) {
-            return response()->json(['error' => 'Vous ne pouvez pas creer ce compte avec ce role ou ce perimetre.'], 403);
+            return response()->json(['error' => 'Vous ne pouvez pas créer ce compte avec ce rôle ou ce périmètre.'], 403);
         }
 
         $created = User::create([
@@ -78,8 +79,16 @@ class UserController extends Controller
             'niveau_confidentialite_id' => $data['niveau_confidentialite_id'] ?? null,
         ]);
 
+        Log::info('Utilisateur créé', [
+            'actor_id' => $actor->id,
+            'target_id' => $created->id,
+            'target_email' => $created->email,
+            'target_role' => $created->role,
+            'ip' => $request->ip(),
+        ]);
+
         return response()->json([
-            'message' => 'Compte utilisateur cree avec succes.',
+            'message' => 'Compte utilisateur créé avec succès.',
             'utilisateur' => $this->serializeUser($created->load(['service.structure', 'structure', 'niveauConfidentialite']), $actor),
         ], 201);
     }
@@ -90,7 +99,7 @@ class UserController extends Controller
         $data = $request->validated();
 
         if (!$this->canAssignRoleAndOrg($actor, $data, $user)) {
-            return response()->json(['error' => 'Vous ne pouvez pas modifier ce compte avec ce role ou ce perimetre.'], 403);
+            return response()->json(['error' => 'Vous ne pouvez pas modifier ce compte avec ce rôle ou ce périmètre.'], 403);
         }
 
         if (array_key_exists('password', $data) && $data['password']) {
@@ -101,8 +110,16 @@ class UserController extends Controller
 
         $user->update($data);
 
+        Log::info('Utilisateur modifié', [
+            'actor_id' => $actor->id,
+            'target_id' => $user->id,
+            'target_email' => $user->email,
+            'changes' => array_keys($data),
+            'ip' => $request->ip(),
+        ]);
+
         return response()->json([
-            'message' => 'Compte utilisateur modifie avec succes.',
+            'message' => 'Compte utilisateur modifié avec succès.',
             'utilisateur' => $this->serializeUser($user->fresh(['service.structure', 'structure', 'niveauConfidentialite']), $actor),
         ]);
     }
@@ -115,9 +132,16 @@ class UserController extends Controller
             return response()->json(['error' => 'Vous n\'avez pas le droit de supprimer ce compte utilisateur.'], 403);
         }
 
+        Log::warning('Utilisateur supprimé', [
+            'actor_id' => $actor->id,
+            'target_id' => $user->id,
+            'target_email' => $user->email,
+            'ip' => $actor->ip(),
+        ]);
+
         $user->delete();
 
-        return response()->json(['message' => 'Compte utilisateur supprime avec succes.']);
+        return response()->json(['message' => 'Compte utilisateur supprimé avec succès.']);
     }
 
     private function serializeUser(User $item, User $actor): array
@@ -180,20 +204,34 @@ class UserController extends Controller
 
     private function canAssignRoleAndOrg(User $actor, array $data, ?User $target = null): bool
     {
-        if ($actor->estAdmin() || $actor->estChefGeneral()) {
+        if ($actor->estAdmin()) {
             return true;
         }
 
         $role = $data['role'] ?? $target?->role;
+        $scope = $data['role_scope'] ?? $target?->role_scope;
         $structureId = $data['structure_id'] ?? $target?->structure_id;
         $serviceId = $data['service_id'] ?? $target?->service_id;
 
+        if ($actor->estChefGeneral()) {
+            return $role !== User::ROLE_ADMIN;
+        }
+
         if ($actor->estChefStructure()) {
-            return $role !== User::ROLE_ADMIN && $structureId === $actor->structure_id;
+            if ($role === User::ROLE_ADMIN) {
+                return false;
+            }
+
+            if ($scope !== User::SCOPE_SERVICE) {
+                return false;
+            }
+
+            return $structureId === $actor->structure_id;
         }
 
         return $actor->peutGererUtilisateursDuService()
             && $role !== User::ROLE_ADMIN
+            && ($scope ?? User::SCOPE_SERVICE) === User::SCOPE_SERVICE
             && $serviceId === $actor->service_id;
     }
 }

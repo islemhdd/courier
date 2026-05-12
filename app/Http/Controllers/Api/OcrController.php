@@ -19,7 +19,7 @@ class OcrController extends Controller
     public function preview(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf,doc,docx,webp', 'max:10240'],
+            'file' => ['required', 'file', 'mimes:jpg,jpeg,png,pdf,doc,docx,webp', 'mimetypes:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp', 'max:10240'],
         ]);
 
         $file = $request->file('file');
@@ -55,7 +55,7 @@ class OcrController extends Controller
     {
         $user = $request->user();
         if (!$courrier->peutVoirExistencePar($user)) {
-            return response()->json(['error' => 'Accès refusé.'], 403);
+            return response()->json(['error' => 'Courrier introuvable.'], 404);
         }
 
         $courrier->load('attachments');
@@ -87,7 +87,7 @@ class OcrController extends Controller
     {
         $user = $request->user();
         if (!$courrier->peutEtreVuEnDetailPar($user)) {
-            return response()->json(['error' => 'Accès refusé.'], 403);
+            return response()->json(['error' => 'Courrier introuvable.'], 404);
         }
 
         $courrier->attachments()->each(function ($attachment) {

@@ -1,0 +1,305 @@
+Implémentation Damerau-Levenshtein - CourrierController.php
+=========================================================
+Fichier : app/Http/Controllers/CourrierController.php
+Lignes   : 1307-1549
+
+======================================================================
+1. PAGINATE ARCHIVE SEARCH (l. 1307-1348) - Orchestrateur
+======================================================================
+
+    private function paginateArchiveSearch(Builder $query, string $search, Request $request): LengthAwarePaginator
+    {
+        $exactQuery = clone $query;
+        $this->applyArchiveGeneralSearch($exactQuery, $search);
+
+        $exactMatches = $exactQuery->orderByDesc('archive_le')->get();
+        $candidates = $exactMatches->isNotEmpty()
+            ? $exactMatches
+            : (clone $query)->orderByDesc('archive_le')->get();
+
+        $matches = $candidates
+            ->map(function (Archive $archive) use ($search) {
+                return $this->applyArchiveSearchMetadata($archive, $search) ? $archive : null;
+            })
+            ->filter()
+            ->sort(function (Archive $left, Archive $right) {
+                $scoreComparison = ($left->match_score ?? 999) <=> ($right->match_score ?? 999);
+
+                if ($scoreComparison !== 0) {
+                    return $scoreComparison;
+                }
+
+                $dateComparison = ($right->archive_le?->getTimestamp() ?? 0) <=> ($left->archive_le?->getTimestamp() ?? 0);
+
+                return $dateComparison !== 0 ? $dateComparison : $left->id <=> $right->id;
+            })
+            ->values();
+
+        $perPage = 15;
+        $page = max(1, $request->integer('page', 1));
+
+        return new LengthAwarePaginator(
+            $matches->forPage($page, $perPage)->values(),
+            $matches->count(),
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ],
+        );
+    }
+
+
+======================================================================
+2. APPLY ARCHIVE SEARCH METADATA (l. 1350-1390) - Scoring par champ
+======================================================================
+
+    private function applyArchiveSearchMetadata(Archive $archive, string $search): bool
+    {
+        $normalizedSearch = $this->normalizeArchiveSearchText($search);
+
+        if ($normalizedSearch === '') {
+            return false;
+        }
+
+        $maxDistance = $this->archiveLevenshteinMaxDistance($normalizedSearch);
+        $bestScore = null;
+        $matchedFields = [];
+
+        foreach ($this->archiveSearchValues($archive) as $field => $value) {
+            $score = $this->archiveFieldLevenshteinScore($normalizedSearch, $value, $maxDistance);
+
+            if ($score === null) {
+                continue;
+            }
+
+            if ($bestScore === null || $score < $bestScore) {
+                $bestScore = $score;
+                $matchedFields = [$field];
+                continue;
+            }
+
+            if ($score === $bestScore) {
+                $matchedFields[] = $field;
+            }
+        }
+
+        if ($bestScore === null) {
+            return false;
+        }
+
+        $archive->search_term = $search;
+        $archive->search_score = $bestScore;
+        $archive->match_score = $bestScore;
+        $archive->matched_fields = array_values(array_unique($matchedFields));
+
+        return true;
+    }
+
+
+======================================================================
+3. ARCHIVE SEARCH VALUES (l. 1392-1436) - Champs analysés
+======================================================================
+
+    private function archiveSearchValues(Archive $archive): array
+    {
+        $attachmentsText = collect($archive->attachments_snapshot ?? [])
+            ->map(function ($attachment) {
+                $attachment = is_array($attachment) ? $attachment : [];
+
+                return implode(' ', array_filter([
+                    $attachment['nom_original'] ?? null,
+                    $attachment['ocr_text'] ?? null,
+                    $attachment['ocr_error'] ?? null,
+                ]));
+            })
+            ->implode(' ');
+
+        $commentsText = collect($archive->comments_snapshot ?? [])
+            ->map(function ($comment) {
+                $comment = is_array($comment) ? $comment : [];
+
+                return implode(' ', array_filter([
+                    $comment['commentaire'] ?? null,
+                    $comment['instruction']['libelle'] ?? null,
+                    $comment['user']['nom_complet'] ?? null,
+                ]));
+            })
+            ->implode(' ');
+
+        return [
+            'numero'                => (string) $archive->numero,
+            'objet'                 => (string) $archive->objet,
+            'resume'                => (string) $archive->resume,
+            'extracted_text'        => (string) $archive->extracted_text,
+            'expediteur'            => (string) $archive->expediteur,
+            'destinataire'          => (string) $archive->destinataire,
+            'motif'                 => (string) $archive->motif,
+            'service_source'        => (string) $archive->serviceSource?->libelle,
+            'service_destinataire'  => (string) $archive->serviceDestinataire?->libelle,
+            'structure_origine'     => (string) $archive->structureOrigine?->libelle,
+            'structure_destinataire'=> (string) $archive->structureDestinataire?->libelle,
+            'niveau_confidentialite'=> (string) $archive->niveauConfidentialite?->libelle,
+            'courrier_type'         => (string) $archive->courrierType?->libelle,
+            'source'                => (string) $archive->source?->libelle,
+            'attachments'           => $attachmentsText,
+            'comments'              => $commentsText,
+        ];
+    }
+
+
+======================================================================
+4. ARCHIVE FIELD LEVENSHTEIN SCORE (l. 1438-1480) - Score par champ
+======================================================================
+
+    private function archiveFieldLevenshteinScore(string $normalizedSearch, ?string $field, int $maxDistance): ?int
+    {
+        $normalizedField = $this->normalizeArchiveSearchText($field);
+
+        if ($normalizedField === '') {
+            return null;
+        }
+
+        if (str_contains($normalizedField, $normalizedSearch)) {
+            return 0;
+        }
+
+        $searchTokens = $this->archiveSearchTokens($normalizedSearch);
+        $fieldTokens = $this->archiveSearchTokens($normalizedField);
+        $candidateTexts = $fieldTokens;
+        $windowSize = count($searchTokens);
+
+        if ($windowSize > 1 && count($fieldTokens) >= $windowSize) {
+            for ($index = 0; $index <= count($fieldTokens) - $windowSize; $index++) {
+                $candidateTexts[] = implode(' ', array_slice($fieldTokens, $index, $windowSize));
+            }
+        }
+
+        if (strlen($normalizedField) <= 255) {
+            $candidateTexts[] = $normalizedField;
+        }
+
+        $bestDistance = null;
+
+        foreach (array_unique($candidateTexts) as $candidate) {
+            if ($candidate === '' || abs(strlen($candidate) - strlen($normalizedSearch)) > $maxDistance) {
+                continue;
+            }
+
+            $distance = $this->damerauLevenshtein($normalizedSearch, $candidate);
+
+            if ($distance <= $maxDistance) {
+                $bestDistance = $bestDistance === null ? $distance : min($bestDistance, $distance);
+            }
+        }
+
+        return $bestDistance;
+    }
+
+
+======================================================================
+5. DAMERAU-LEVENSHTEIN (l. 1482-1509) - CŒUR DE L'ALGORITHME
+======================================================================
+
+    private function damerauLevenshtein(string $a, string $b): int
+    {
+        $lenA = strlen($a);
+        $lenB = strlen($b);
+
+        if ($lenA === 0) { return $lenB; }
+        if ($lenB === 0) { return $lenA; }
+
+        $d = [];
+        for ($i = 0; $i <= $lenA; $i++) { $d[$i] = []; $d[$i][0] = $i; }
+        for ($j = 0; $j <= $lenB; $j++) { $d[0][$j] = $j; }
+
+        for ($i = 1; $i <= $lenA; $i++) {
+            for ($j = 1; $j <= $lenB; $j++) {
+                $cost = $a[$i - 1] === $b[$j - 1] ? 0 : 1;
+                $d[$i][$j] = min(
+                    $d[$i - 1][$j] + 1,        // suppression
+                    $d[$i][$j - 1] + 1,        // insertion
+                    $d[$i - 1][$j - 1] + $cost // substitution
+                );
+                if ($i > 1 && $j > 1 && $a[$i - 1] === $b[$j - 2] && $a[$i - 2] === $b[$j - 1]) {
+                    $d[$i][$j] = min($d[$i][$j], $d[$i - 2][$j - 2] + $cost); // transposition
+                }
+            }
+        }
+
+        return $d[$lenA][$lenB];
+    }
+
+
+======================================================================
+6. NORMALISATION (l. 1511-1517)
+======================================================================
+
+    private function normalizeArchiveSearchText(?string $value): string
+    {
+        $normalized = Str::ascii(Str::lower(trim((string) $value)));
+        $normalized = preg_replace('/[^a-z0-9]+/', ' ', $normalized) ?? '';
+
+        return trim(preg_replace('/\s+/', ' ', $normalized) ?? '');
+    }
+
+
+======================================================================
+7. TOKENIZER (l. 1519-1521)
+======================================================================
+
+    private function archiveSearchTokens(string $value): array
+    {
+        return array_values(array_filter(explode(' ', $value), fn(string $token) => $token !== ''));
+    }
+
+
+======================================================================
+8. DISTANCE MAX DYNAMIQUE (l. 1524-1549)
+======================================================================
+
+    private function archiveLevenshteinMaxDistance(string $normalizedSearch): int
+    {
+        $length = strlen(str_replace(' ', '', $normalizedSearch));
+
+        if ($length <= 3)  { return 0; }
+        if ($length <= 5)  { return 1; }
+        if ($length <= 8)  { return 2; }
+        if ($length <= 12) { return 3; }
+        if ($length <= 16) { return 4; }
+        return 5;
+    }
+
+======================================================================
+RÉSUMÉ DU FLOT
+======================================================================
+
+1. GET /api/courriers/archives?q=autorisaton
+       ↓
+2. CourrierController::archives() (l. 132)
+       ↓
+3. paginateArchiveSearch() (l. 1307)
+   - Essaie d'abord une recherche LIKE exacte
+   - Si aucun résultat, prend tous les enregistrements
+   - Pour chaque candidat, calcule le score via applyArchiveSearchMetadata()
+       ↓
+4. applyArchiveSearchMetadata() (l. 1350)
+   - Normalise la recherche
+   - Détermine la distance max autorisée selon la longueur
+   - Boucle sur tous les champs (archiveSearchValues)
+   - Appelle archiveFieldLevenshteinScore() pour chaque champ
+       ↓
+5. archiveFieldLevenshteinScore() (l. 1438)
+   - Normalise le champ
+   - Vérifie sous-chaîne exacte → score 0
+   - Tokenize et construit des fenêtres glissantes
+   - Filtre rapide par longueur (|len(c) - len(search)| > maxDistance)
+   - Calcule Damerau-Levenshtein sur chaque candidat
+       ↓
+6. damerauLevenshtein() (l. 1482)
+   - Matrice 2D O(n×m)
+   - Coûts: insertion=1, suppression=1, substitution=1
+   - Transposition de caractères adjacents (Damerau) = coût 1
+       ↓
+7. Tri par score croissant (distance minimale = meilleur match)

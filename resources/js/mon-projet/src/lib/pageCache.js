@@ -1,4 +1,5 @@
-const CACHE_PREFIX = 'courier-page-cache:'
+const CACHE_VERSION = 'v2'
+const CACHE_PREFIX = `courrier-page-cache:${CACHE_VERSION}:`
 const DEFAULT_TTL_MS = 5 * 60 * 1000
 const memoryCache = new Map()
 

@@ -33,6 +33,10 @@ export const courrierApi = {
     return api.get('/courriers/archives', { params })
   },
 
+  getArchive(id, params = {}) {
+    return api.get(`/courriers/archives/${id}`, { params })
+  },
+
   getValidationQueue(params = {}) {
     return api.get('/courriers/validation', { params })
   },

@@ -20,7 +20,6 @@ import {
   Mail,
   MessageCircle,
   Paperclip,
-  Printer,
   Send,
   ShieldCheck,
   User,
@@ -52,30 +51,30 @@ export default function AllDetails({
       <EmptyDocument
         icon={<AlertCircle size={34} />}
         title="Informations non disponibles"
-        description="Le courrier selectionne est introuvable ou n'a pas ete retourne par l'API."
+        description="Le courrier sélectionné est introuvable ou n'a pas été retourné par l'API."
       />
     )
   }
 
   if (contenuRestreint) {
     return (
-      <div className="courrier-print-root rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
+      <div className="rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-sm sm:p-12">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-500">
           <Lock size={30} />
         </div>
         <p className="mt-6 text-[11px] font-bold uppercase tracking-[0.28em] text-slate-400">
-          Acces restreint
+          Accès restreint
         </p>
         <h2 className="mt-3 text-xl font-semibold text-slate-950">
           Vous n'avez pas l'autorisation de consulter ce courrier.
         </h2>
         <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">
-          Les details, le resume, l'OCR, les pieces jointes et les commentaires ne sont pas affiches.
+          Les détails, le résumé, l'OCR, les pièces jointes et les commentaires ne sont pas affichés.
         </p>
         {actions.onClose && (
           <button
             onClick={actions.onClose}
-            className="print:hidden mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800"
+            className="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white hover:bg-slate-800"
           >
             <X size={16} />
             Fermer
@@ -86,7 +85,7 @@ export default function AllDetails({
   }
 
   const statut = courrier.statut || courrier.statut_original
-  const statusLabel = courrier.archive_le ? 'Archive' : getStatusLabel(statut)
+  const statusLabel = courrier.archive_le ? 'Archivé' : getStatusLabel(statut)
   const confidentiality = getConfidentialityLabel(courrier)
   const dateReference = courrier.date_reception || courrier.date_creation || courrier.created_at
   const attachments = Array.isArray(courrier.attachments) ? courrier.attachments : null
@@ -100,16 +99,8 @@ export default function AllDetails({
       : null
   const downloadUrl = getPrimaryDownloadUrl(courrier)
   const showSummary = hasOwn(courrier, 'resume') || hasOwn(courrier, 'summary_source') || hasOwn(courrier, 'resume_auto_genere')
-  const showOcr = hasOwn(courrier, 'extracted_text') || hasOwn(courrier, 'ocr_status')
+  const showOcr = !!courrier?.extracted_text || (courrier?.ocr_status && courrier.ocr_status !== 'pending')
   const summaryIsAutomatic = courrier.summary_source === 'auto_generated' || Boolean(courrier.resume_auto_genere)
-
-  const handlePrint = () => {
-    if (actions.onPrint) {
-      actions.onPrint()
-      return
-    }
-    window.print()
-  }
 
   const handleCopyOcr = async () => {
     if (!courrier.extracted_text) return
@@ -120,7 +111,7 @@ export default function AllDetails({
   }
 
   return (
-    <article className="courrier-print-root space-y-6 pb-8 text-slate-900">
+    <article className="space-y-6 pb-8 text-slate-900">
       <DocumentHeader
         courrier={courrier}
         statusLabel={statusLabel}
@@ -130,35 +121,34 @@ export default function AllDetails({
         downloadUrl={downloadUrl}
         actions={actions}
         actionDisabled={actionDisabled}
-        onPrint={handlePrint}
       />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(340px,0.75fr)]">
         <div className="space-y-6">
           <SectionCard
             title="Identification du courrier"
-            subtitle="Reference, statut et qualification administrative."
+            subtitle="Référence, statut et qualification administrative."
             icon={<Hash size={18} />}
           >
             <InfoGrid>
-              <InfoField label="Numero" value={courrier.numero} important />
+              <InfoField label="Numéro" value={courrier.numero} important />
               <InfoField label="Objet" value={courrier.objet} important wide />
               <InfoField label="Type" value={courrier.type} badgeVariant="blue" />
               <InfoField label="Type administratif" value={entityLabel(courrier.courrier_type)} />
               <InfoField label="Source" value={entityLabel(courrier.source) || courrier.expediteur} />
               <InfoField label="Statut" value={statusLabel} badgeVariant={courrier.archive_le ? 'slate' : getStatusTone(statut)} />
-              <InfoField label="Confidentialite" value={confidentiality} badgeVariant={confidentialityTone(confidentiality)} />
+              <InfoField label="Confidentialité" value={confidentiality} badgeVariant={confidentialityTone(confidentiality)} />
             </InfoGrid>
           </SectionCard>
 
           <SectionCard
-            title="Expediteur et destinataire"
-            subtitle="Origine, destination et personnes concernees."
+            title="Expéditeur et destinataire"
+            subtitle="Origine, destination et personnes concernées."
             icon={<Mail size={18} />}
           >
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <PartyCard
-                title="Expediteur"
+                title="Expéditeur"
                 icon={<Building2 size={18} />}
                 name={courrier.expediteur || entityLabel(courrier.source)}
                 service={entityLabel(courrier.service_source)}
@@ -179,7 +169,7 @@ export default function AllDetails({
               <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">
-                    Personnes concernees
+                    Personnes concernées
                   </p>
                   <Badge variant="slate" size="xs">{concernedPeople.length}</Badge>
                 </div>
@@ -195,7 +185,7 @@ export default function AllDetails({
                     ))}
                   </div>
                 ) : (
-                  <EmptyInline message="Aucune personne concernee n'a ete associee." />
+                  <EmptyInline message="Aucune personne concernée n'a été associée." />
                 )}
               </div>
             )}
@@ -215,23 +205,23 @@ export default function AllDetails({
                     ))}
                   </div>
                 ) : (
-                  <EmptyInline message="Aucun destinataire de diffusion retourne." />
+                  <EmptyInline message="Aucun destinataire de diffusion retourné." />
                 )}
               </div>
             )}
           </SectionCard>
 
           <SectionCard
-            title="Dates et delais"
-            subtitle="Creation, reception et suivi de reponse."
+            title="Dates et délais"
+            subtitle="Création, réception et suivi de réponse."
             icon={<Calendar size={18} />}
           >
             <InfoGrid>
-              <InfoField label="Date de creation" value={formatDate(courrier.date_creation || courrier.created_at)} />
-              <InfoField label="Date de reception" value={formatDate(courrier.date_reception)} />
-              <InfoField label="Date limite de reponse" value={formatDate(courrier.date_limite_reponse)} />
-              <InfoField label="Reponse requise" value={courrier.requiert_reponse} badgeVariant={courrier.requiert_reponse ? 'amber' : 'slate'} />
-              <InfoField label="Repondu le" value={formatDate(courrier.repondu_le)} />
+              <InfoField label="Date de création" value={formatDate(courrier.date_creation || courrier.created_at)} />
+              <InfoField label="Date de réception" value={formatDate(courrier.date_reception)} />
+              <InfoField label="Date limite de réponse" value={formatDate(courrier.date_limite_reponse)} />
+              <InfoField label="Réponse requise" value={courrier.requiert_reponse} badgeVariant={courrier.requiert_reponse ? 'amber' : 'slate'} />
+              <InfoField label="Répondu le" value={formatDate(courrier.repondu_le)} />
               <InfoField label="Retard" value={courrier.est_en_retard} badgeVariant={courrier.est_en_retard ? 'rose' : 'slate'} />
             </InfoGrid>
           </SectionCard>
@@ -246,18 +236,18 @@ export default function AllDetails({
 
           {showSummary && (
             <SectionCard
-              title="Resume"
-              subtitle="Synthese lisible du contenu administratif."
+              title="Résumé"
+              subtitle="Synthèse lisible du contenu administratif."
               icon={<FileText size={18} />}
-              action={summaryIsAutomatic ? <Badge variant="blue" size="sm">Resume automatique</Badge> : null}
+              action={summaryIsAutomatic ? <Badge variant="blue" size="sm">Résumé automatique</Badge> : null}
             >
               {courrier.resume ? (
                 <ExpandableText text={courrier.resume} maxHeightClass="max-h-44" threshold={420} size="lg" />
               ) : (
                 <EmptyBlock
                   icon={<Info size={22} />}
-                  title="Aucun resume disponible"
-                  description="Aucune synthese n'a ete retournee pour ce courrier."
+                  title="Aucun résumé disponible"
+                  description="Aucune synthèse n'a été retournée pour ce courrier."
                 />
               )}
             </SectionCard>
@@ -266,19 +256,19 @@ export default function AllDetails({
           {showOcr && (
             <SectionCard
               title="Contenu extrait / OCR"
-              subtitle="Texte numerise, limite en hauteur pour rester lisible."
+              subtitle="Texte numérisé, limité en hauteur pour rester lisible."
               icon={<FileText size={18} />}
               action={<OcrStatusBadge status={courrier.ocr_status} hasText={Boolean(courrier.extracted_text)} />}
             >
               {courrier.extracted_text ? (
                 <div className="space-y-4">
-                  <div className="flex justify-end print:hidden">
+                  <div className="flex justify-end">
                     <button
                       onClick={handleCopyOcr}
                       className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50"
                     >
                       {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                      {copied ? 'Copie' : 'Copier le texte'}
+                      {copied ? 'Copié' : 'Copier le texte'}
                     </button>
                   </div>
                   <ExpandableText text={courrier.extracted_text} maxHeightClass="max-h-80" threshold={900} monospace />
@@ -297,8 +287,8 @@ export default function AllDetails({
         <aside className="space-y-6">
           {attachments && (
             <SectionCard
-              title="Pieces jointes"
-              subtitle="Fichiers associes au courrier."
+              title="Pièces jointes"
+              subtitle="Fichiers associés au courrier."
               icon={<Paperclip size={18} />}
               action={<Badge variant="slate" size="sm">{attachments.length} fichier(s)</Badge>}
             >
@@ -311,8 +301,8 @@ export default function AllDetails({
               ) : (
                 <EmptyBlock
                   icon={<Paperclip size={22} />}
-                  title="Aucune piece jointe"
-                  description="Aucun fichier n'a ete associe a ce courrier."
+                  title="Aucune pièce jointe"
+                  description="Aucun fichier n'a été associé à ce courrier."
                 />
               )}
             </SectionCard>
@@ -336,7 +326,7 @@ export default function AllDetails({
                 <EmptyBlock
                   icon={<MessageCircle size={22} />}
                   title="Aucun commentaire"
-                  description="Aucune instruction ou annotation n'a ete retournee."
+                  description="Aucune instruction ou annotation n'a été retournée."
                 />
               )}
             </SectionCard>
@@ -345,7 +335,7 @@ export default function AllDetails({
           {(courrier.parent_courrier_id || courrier.parent || replies) && (
             <SectionCard
               title="Fil du courrier"
-              subtitle="Relation entre courrier original et reponses."
+              subtitle="Relation entre courrier original et réponses."
               icon={<Layers size={18} />}
             >
               <ThreadSection courrier={courrier} replies={replies} onViewCourrier={actions.onViewCourrier} />
@@ -366,7 +356,6 @@ function DocumentHeader({
   downloadUrl,
   actions,
   actionDisabled,
-  onPrint,
 }) {
   return (
     <header className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
@@ -379,18 +368,18 @@ function DocumentHeader({
                 <Lock size={12} />
                 {confidentiality}
               </Badge>
-              <Badge variant="blue" size="sm">{courrier.type || 'Type non precise'}</Badge>
+              <Badge variant="blue" size="sm">{courrier.type || 'Type non précisé'}</Badge>
             </div>
             <p className="text-[11px] font-bold uppercase tracking-[0.32em] text-blue-200">
               Dossier courrier
             </p>
             <h1 className="mt-3 break-words text-2xl font-semibold tracking-tight sm:text-4xl">
-              {courrier.objet || 'Objet non renseigne'}
+              {courrier.objet || 'Objet non renseigné'}
             </h1>
             <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-slate-300">
               <span className="inline-flex items-center gap-2 rounded-full bg-slate-800 px-3 py-1.5 font-semibold text-white ring-1 ring-slate-700">
                 <Hash size={14} />
-                {courrier.numero || 'Sans numero'}
+                {courrier.numero || 'Sans numéro'}
               </span>
               <span className="inline-flex items-center gap-2">
                 <Calendar size={14} />
@@ -399,8 +388,7 @@ function DocumentHeader({
             </div>
           </div>
 
-          <div className="print:hidden flex flex-wrap gap-2 lg:justify-end">
-            <HeaderAction icon={<Printer size={15} />} label="Imprimer" onClick={onPrint} />
+          <div className="flex flex-wrap gap-2 lg:justify-end">
             {downloadUrl ? (
               <a
                 href={downloadUrl}
@@ -408,13 +396,13 @@ function DocumentHeader({
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-3 text-xs font-bold text-slate-950 shadow-sm hover:bg-blue-50 sm:px-4"
               >
                 <Download size={15} />
-                Telecharger
+                Télécharger
               </a>
             ) : (
-              <HeaderAction icon={<Download size={15} />} label="Telecharger" disabled />
+              <HeaderAction icon={<Download size={15} />} label="Télécharger" disabled />
             )}
             {actions.canReply && (
-              <HeaderAction icon={<MessageCircle size={15} />} label="Repondre" onClick={actions.onReply} disabled={actionDisabled} />
+              <HeaderAction icon={<MessageCircle size={15} />} label="Répondre" onClick={actions.onReply} disabled={actionDisabled} />
             )}
             {actions.canTransmit && (
               <HeaderAction icon={<Send size={15} />} label="Transmettre" onClick={actions.onTransmit} disabled={actionDisabled} />
@@ -430,9 +418,9 @@ function DocumentHeader({
       </div>
 
       <div className="grid grid-cols-1 divide-y divide-slate-100 bg-white sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-        <HeaderFact icon={<User size={16} />} label="Expediteur" value={courrier.expediteur || entityLabel(courrier.source)} />
+        <HeaderFact icon={<User size={16} />} label="Expéditeur" value={courrier.expediteur || entityLabel(courrier.source)} />
         <HeaderFact icon={<Send size={16} />} label="Destinataire" value={courrier.destinataire || entityLabel(courrier.service_destinataire)} />
-        <HeaderFact icon={<FileText size={16} />} label="Resume" value={courrier.resume ? truncate(courrier.resume, 82) : 'Non disponible'} />
+        <HeaderFact icon={<FileText size={16} />} label="Résumé" value={courrier.resume ? truncate(courrier.resume, 82) : 'Non disponible'} />
       </div>
     </header>
   )
@@ -635,7 +623,7 @@ function ExpandableText({
         <button
           type="button"
           onClick={() => setExpanded((current) => !current)}
-          className="print:hidden mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-950"
+          className="mt-4 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:text-slate-950"
         >
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           {expanded ? 'Reduire' : 'Voir plus'}
@@ -671,7 +659,7 @@ function AttachmentCard({ attachment }) {
           )}
         </div>
       </div>
-      <div className="print:hidden mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
         {url ? (
           <>
             <a
@@ -761,7 +749,7 @@ function RecipientCard({ recipient }) {
       ? entityLabel(recipient.service)
       : type === 'user'
         ? entityLabel(recipient.user)
-        : 'Toutes les entites autorisees'
+        : 'Toutes les entités autorisées'
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -850,10 +838,10 @@ function ThreadSection({ courrier, replies, onViewCourrier }) {
 function OcrStatusBadge({ status, hasText = false, compact = false }) {
   const normalized = String(status || (hasText ? 'completed' : 'pending')).toLowerCase()
   const meta = {
-    completed: { label: 'OCR termine', variant: 'emerald' },
+    completed: { label: 'OCR terminé', variant: 'emerald' },
     processing: { label: 'OCR en cours', variant: 'blue' },
     pending: { label: 'OCR en attente', variant: 'amber' },
-    failed: { label: 'OCR echoue', variant: 'rose' },
+    failed: { label: 'OCR échoué', variant: 'rose' },
   }[normalized] || { label: `OCR ${normalized}`, variant: 'slate' }
 
   return (
@@ -972,8 +960,8 @@ function fileType(filename, attachment) {
 
 function ocrEmptyMessage(status) {
   const normalized = String(status || 'pending').toLowerCase()
-  if (normalized === 'processing') return "L'analyse OCR est en cours. Le texte sera disponible apres traitement."
-  if (normalized === 'failed') return "L'analyse OCR a echoue ou le document n'a pas pu etre lu."
-  if (normalized === 'completed') return "L'OCR est marque comme termine mais aucun texte n'a ete retourne."
+  if (normalized === 'processing') return "L'analyse OCR est en cours. Le texte sera disponible après traitement."
+  if (normalized === 'failed') return "L'analyse OCR a échoué ou le document n'a pas pu être lu."
+  if (normalized === 'completed') return "L'OCR est marqué comme terminé mais aucun texte n'a été retourné."
   return "L'OCR n'a pas encore produit de contenu exploitable."
 }

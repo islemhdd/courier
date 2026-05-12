@@ -47,7 +47,7 @@ export default function CourrierTable({
           <ShieldAlert size={24} />
         </div>
         <h4 className="text-sm font-semibold text-slate-500">Aucun courrier</h4>
-        <p className="mt-1 text-xs text-slate-400">Aucun courrier trouve pour cette vue.</p>
+        <p className="mt-1 text-xs text-slate-400">Aucun courrier trouvé pour cette vue.</p>
       </div>
     )
   }

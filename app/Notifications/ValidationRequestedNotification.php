@@ -17,7 +17,7 @@ class ValidationRequestedNotification extends Notification implements ShouldBroa
 
     public function via($notifiable): array
     {
-        return ['broadcast'];
+        return ['broadcast', 'database'];
     }
 
     public function toBroadcast($notifiable): BroadcastMessage
@@ -25,10 +25,20 @@ class ValidationRequestedNotification extends Notification implements ShouldBroa
         return new BroadcastMessage([
             'type' => 'validation_requested',
             'titre' => 'Demande de validation',
-            'message' => 'Le courrier ' . $this->courrier->numero . ' est en attente de validation.',
-            'courrier_numero' => $this->courrier->numero,
-            'createur' => $this->courrier->createur->nom_complet,
+            'message' => 'Un courrier est en attente de validation.',
             'courrier_id' => $this->courrier->id,
+            'courrier_numero' => $this->courrier->numero,
         ]);
+    }
+
+    public function toArray($notifiable): array
+    {
+        return [
+            'type' => 'validation_requested',
+            'titre' => 'Demande de validation',
+            'message' => 'Un courrier est en attente de validation.',
+            'courrier_id' => $this->courrier->id,
+            'courrier_numero' => $this->courrier->numero,
+        ];
     }
 }

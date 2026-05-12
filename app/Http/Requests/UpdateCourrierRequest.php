@@ -49,9 +49,9 @@ class UpdateCourrierRequest extends FormRequest
             'instructions.*.instruction_id' => ['nullable', 'integer', 'exists:instructions,id'],
             'instructions.*.commentaire' => ['nullable', 'string'],
             'instructions.*.validation_requise' => ['sometimes', 'boolean'],
-            'documents' => ['sometimes', 'array'],
-            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'max:10240'],
-            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'max:10240'],
+            'documents' => ['sometimes', 'array', 'max:5'],
+            'documents.*' => ['file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'mimetypes:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp', 'max:10240'],
+            'fichier' => ['nullable', 'file', 'mimes:pdf,doc,docx,jpg,jpeg,png,webp', 'mimetypes:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp', 'max:10240'],
         ];
     }
 

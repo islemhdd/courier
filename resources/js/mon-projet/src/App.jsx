@@ -1,4 +1,4 @@
-import {
+import React, {
   Suspense,
   forwardRef,
   lazy,
@@ -12,6 +12,9 @@ import { NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-d
 import {
   Archive,
   Bell,
+  BellRing,
+  Building,
+  Clock,
   FileText,
   Inbox,
   LayoutDashboard,
@@ -28,6 +31,7 @@ import {
 } from 'lucide-react'
 import { Toaster, toast } from 'react-hot-toast'
 
+import api from './api/api'
 import { AuthProvider } from './context/AuthProvider'
 import { useAuth } from './context/auth-context'
 
@@ -38,6 +42,7 @@ const loadReceivedCourriers = () => import('./pages/ReceivedCourriers')
 const loadSentCourriers = () => import('./pages/SentCourriers')
 const loadValidation = () => import('./pages/Validation')
 const loadUsersPage = () => import('./pages/Users')
+const loadAdminOrg = () => import('./pages/AdminOrganization')
 const loadLogin = () => import('./pages/Login')
 const loadCourrierPreview = () => import('./pages/CourrierPreview')
 
@@ -48,6 +53,7 @@ const ReceivedCourriers = lazy(loadReceivedCourriers)
 const SentCourriers = lazy(loadSentCourriers)
 const Validation = lazy(loadValidation)
 const UsersPage = lazy(loadUsersPage)
+const AdminOrganization = lazy(loadAdminOrg)
 const Login = lazy(loadLogin)
 const CourrierPreview = lazy(loadCourrierPreview)
 
@@ -55,22 +61,22 @@ const routes = [
   {
     path: '/',
     title: 'Dashboard',
-    description: 'Vue globale, activite recente et statistiques.',
+    description: 'Vue globale, activité récente et statistiques.',
     icon: LayoutDashboard,
     component: Dashboard,
     preload: loadDashboard,
   },
   {
     path: '/recus',
-    title: 'Courriers recus',
-    description: 'Flux entrants et priorites a traiter.',
+    title: 'Courriers reçus',
+    description: 'Flux entrants et priorités à traiter.',
     icon: Inbox,
     component: ReceivedCourriers,
     preload: loadReceivedCourriers,
   },
   {
     path: '/envoyes',
-    title: 'Courriers envoyes',
+    title: 'Courriers envoyés',
     description: 'Suivi des transmissions sortantes.',
     icon: Send,
     component: SentCourriers,
@@ -79,7 +85,7 @@ const routes = [
   {
     path: '/messages',
     title: 'Messagerie',
-    description: 'Communication interne et alertes metier.',
+    description: 'Communication interne et alertes métier.',
     icon: MessageSquare,
     component: Messages,
     preload: loadMessages,
@@ -87,7 +93,7 @@ const routes = [
   {
     path: '/archives',
     title: 'Archives',
-    description: 'Historique et recherche avancee.',
+    description: 'Historique et recherche avancée.',
     icon: Archive,
     component: Archives,
     preload: loadArchives,
@@ -95,7 +101,7 @@ const routes = [
   {
     path: '/validation',
     title: 'Validation',
-    description: 'File des courriers en attente d arbitrage.',
+    description: 'File des courriers en attente d\'arbitrage.',
     icon: ShieldAlert,
     component: Validation,
     preload: loadValidation,
@@ -103,10 +109,18 @@ const routes = [
   {
     path: '/utilisateurs',
     title: 'Utilisateurs',
-    description: 'Gestion des comptes, roles et acces.',
+    description: 'Gestion des comptes, rôles et accès.',
     icon: Users,
     component: UsersPage,
     preload: loadUsersPage,
+  },
+  {
+    path: '/administration',
+    title: 'Administration',
+    description: 'Structures, services et chefs.',
+    icon: Building,
+    component: AdminOrganization,
+    preload: loadAdminOrg,
   },
 ]
 
@@ -137,7 +151,7 @@ function getNotificationRoute(notification) {
     return '/validation'
   }
 
-  // Handle courier received and courier replied notifications
+  // Handle courrier received and courrier replied notifications
   if (
     rawType === 'courrier_received' ||
     dataType === 'courrier_received' ||
@@ -154,6 +168,15 @@ function getNotificationRoute(notification) {
   ) {
     // Aller a la reponse elle-meme quand elle est disponible, sinon a son parent
     return `/courriers/${notification.reply_id || notification.data?.reply_id || notification.parent_id || notification.data?.parent_id}`
+  }
+
+  // Handle deadline notifications
+  if (
+    rawType === 'courrier_deadline' ||
+    dataType === 'courrier_deadline' ||
+    rawType.includes('CourrierDeadlineNotification')
+  ) {
+    return `/courriers/${notification.courrier_id || notification.data?.courrier_id}`
   }
 
   // Handle message received notifications
@@ -203,6 +226,10 @@ function AuthenticatedApp() {
           return user?.permissions?.peut_gerer_utilisateurs === true
         }
 
+        if (route.path === '/administration') {
+          return user?.role === 'admin'
+        }
+
         return true
       }),
     [canValidateCourriers, user?.permissions?.peut_gerer_utilisateurs],
@@ -222,7 +249,25 @@ function AuthenticatedApp() {
     let cancelled = false
     let cleanup = () => {}
 
+    const loadPersistedNotifications = async () => {
+      try {
+        const res = await api.get('/notifications')
+        if (cancelled) return
+        const items = res.data.notifications || []
+        setNotifications((previous) => {
+          const existingIds = new Set(previous.map((n) => n.id))
+          const newItems = items.filter((n) => !existingIds.has(n.id))
+          return [...newItems.reverse(), ...previous]
+        })
+      } catch {
+        // Silently fail - WebSocket will still work
+      }
+    }
+
     const setupNotifications = async () => {
+      await loadPersistedNotifications()
+      if (cancelled) return
+
       const { default: echo } = await import('./lib/echo')
 
       if (cancelled) return
@@ -230,32 +275,45 @@ function AuthenticatedApp() {
       const channel = echo.private(`App.Models.User.${user.id}`)
 
       channel.notification((notification) => {
+        const id = makeId()
         setNotifications((previous) => [
-          { ...notification, _id: makeId(), _at: new Date() },
+          { ...notification, _id: id, _at: new Date() },
           ...previous,
         ])
+
+        const toastType = notification.type || notification.data?.type || ''
+        const isDeadline = toastType === 'courrier_deadline' || toastType.includes('Deadline')
+        const toastIcon = isDeadline ? BellRing : Bell
 
         toast.custom(
           (toastState) => (
             <div
-              className={`notification-enter flex items-start gap-3 rounded-2xl border border-white/15 bg-slate-950/95 px-4 py-3 text-slate-50 shadow-2xl ${
-                toastState.visible ? 'opacity-100' : 'opacity-0'
+              className={`notification-enter flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-2xl backdrop-blur-sm ${
+                toastState.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+              } ${
+                isDeadline
+                  ? 'border-rose-200/30 bg-rose-950/90 text-rose-50'
+                  : 'border-white/15 bg-slate-950/90 text-slate-50'
               }`}
-              style={{ minWidth: '280px', maxWidth: '360px' }}
+              style={{ minWidth: '300px', maxWidth: '380px' }}
             >
-              <span className="mt-0.5 text-lg leading-none">🔔</span>
+              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                isDeadline ? 'bg-rose-500/20 text-rose-300' : 'bg-slate-700 text-slate-300'
+              }`}>
+                {React.createElement(toastIcon, { size: 14 })}
+              </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold leading-snug">
                   {notification.titre || 'Notification'}
                 </p>
-                <p className="mt-0.5 text-xs leading-relaxed text-slate-300">
+                <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-300">
                   {notification.message}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => toast.dismiss(toastState.id)}
-                className="mt-0.5 rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+                className="mt-0.5 rounded-lg p-1 text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
                 aria-label="Fermer"
               >
                 <X size={14} />
@@ -298,18 +356,28 @@ function AuthenticatedApp() {
   }, [])
 
   const dismissNotification = useCallback((id) => {
-    setNotifications((previous) => previous.filter((notification) => notification._id !== id))
+    setNotifications((previous) => {
+      const target = previous.find((n) => n._id === id || n.id === id)
+      if (target?.id) {
+        api.delete(`/notifications/${target.id}`).catch(() => {})
+      }
+      return previous.filter((n) => n._id !== id && n.id !== id)
+    })
   }, [])
 
   const dismissAll = useCallback(() => {
     setNotifications([])
     setPanelOpen(false)
+    api.delete('/notifications').catch(() => {})
   }, [])
 
   const handleNotificationClick = useCallback(
     (notification) => {
       setPanelOpen(false)
-      dismissNotification(notification._id)
+      dismissNotification(notification._id ?? notification.id)
+      if (notification.id) {
+        api.patch(`/notifications/${notification.id}/read`).catch(() => {})
+      }
       navigate(getNotificationRoute(notification))
     },
     [dismissNotification, navigate],
@@ -393,9 +461,9 @@ function AuthenticatedApp() {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="glass-panel hidden rounded-2xl px-4 py-3 text-sm text-slate-600 md:block">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Priorite
+                    Priorité
                   </p>
-                  <p className="mt-1 font-medium text-slate-800">Traitement fluide et temps reel</p>
+                  <p className="mt-1 font-medium text-slate-800">Traitement fluide et temps réel</p>
                 </div>
 
                 <NotificationBell
@@ -579,23 +647,25 @@ const NotificationPanel = forwardRef(function NotificationPanel(
 })
 
 function NotificationItem({ notification, onDismiss, onClick }) {
-  const typeColors = {
-    courrier_received: { dot: 'bg-emerald-500', bg: 'hover:bg-emerald-50/70' },
-    validation_requested: { dot: 'bg-amber-500', bg: 'hover:bg-amber-50/70' },
-    message_sent: { dot: 'bg-sky-500', bg: 'hover:bg-sky-50/70' },
-    message_received: { dot: 'bg-blue-500', bg: 'hover:bg-blue-50/70' },
+  const typeStyles = {
+    courrier_received: { icon: Inbox, bg: 'hover:bg-emerald-50/70', border: 'border-l-emerald-400' },
+    validation_requested: { icon: ShieldAlert, bg: 'hover:bg-amber-50/70', border: 'border-l-amber-400' },
+    message_sent: { icon: Send, bg: 'hover:bg-sky-50/70', border: 'border-l-sky-400' },
+    message_received: { icon: MessageSquare, bg: 'hover:bg-blue-50/70', border: 'border-l-blue-400' },
+    courrier_deadline: { icon: Clock, bg: 'hover:bg-rose-50/70', border: 'border-l-rose-400' },
   }
 
   const rawType = notification.type || ''
   const dataType = notification.data?.type || ''
-  const isValidation =
-    rawType === 'validation_requested' ||
-    dataType === 'validation_requested' ||
-    rawType.includes('ValidationRequestedNotification')
+  const normType = Object.keys(typeStyles).find(
+    (t) => rawType === t || dataType === t || rawType.includes(t) || rawType.includes('Deadline'),
+  ) || 'courrier_received'
 
-  const colors = isValidation
-    ? typeColors.validation_requested
-    : typeColors[rawType] || typeColors[dataType] || { dot: 'bg-slate-400', bg: 'hover:bg-slate-50/80' }
+  const style = typeStyles[normType] || typeStyles.courrier_received
+  const Icon = style.icon
+
+  const joursRestants = notification.jours_restants ?? notification.data?.jours_restants
+  const isOverdue = normType === 'courrier_deadline' && (joursRestants !== undefined ? joursRestants <= 0 : false)
 
   function formatTime(value) {
     if (!value) return ''
@@ -615,21 +685,35 @@ function NotificationItem({ notification, onDismiss, onClick }) {
   }
 
   return (
-    <li className={`transition ${colors.bg}`}>
-      <div className="flex items-start gap-3 px-4 py-3.5">
+    <li className={`transition ${style.bg}`}>
+      <div className={`flex items-start gap-3 px-4 py-3.5 border-l-2 ${style.border} ${isOverdue ? 'bg-rose-50/50' : ''}`}>
         <button
           type="button"
           onClick={() => onClick(notification)}
           className="flex min-w-0 flex-1 items-start gap-3 text-left"
           aria-label={`Ouvrir la notification ${notification.titre || notification.message}`}
         >
-          <div className="mt-1.5">
-            <span className={`status-dot block h-2.5 w-2.5 rounded-full ${colors.dot}`} />
+          <div className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-lg ${
+            normType === 'courrier_deadline'
+              ? isOverdue ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
+              : 'bg-slate-100 text-slate-500'
+          }`}>
+            <Icon size={13} />
           </div>
 
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold leading-snug text-slate-900">
               {notification.titre || 'Notification'}
+              {isOverdue && (
+                <span className="ml-1.5 inline-flex items-center rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-600">
+                  Urgent
+                </span>
+              )}
+              {normType === 'courrier_deadline' && !isOverdue && joursRestants !== undefined && (
+                <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                  J-{joursRestants}
+                </span>
+              )}
             </p>
             <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-slate-500">
               {notification.message}
@@ -677,7 +761,7 @@ function SidebarContent({ user, items, onLogout, onNavigate }) {
         <div className="mt-5 rounded-[1.5rem] bg-slate-950 px-4 py-4 text-white shadow-xl shadow-slate-900/12">
           <div className="flex items-center gap-2 text-slate-300">
             <Sparkles size={16} />
-            <span className="text-xs font-semibold uppercase tracking-[0.24em]">Vue unifiee</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.24em]">Vue unifiée</span>
           </div>
           <p className="mt-3 text-sm text-slate-100">
             Navigation rapide, composants plus fluides et chargement progressif.
@@ -704,7 +788,7 @@ function SidebarContent({ user, items, onLogout, onNavigate }) {
           </div>
           <div className="mt-4 flex items-center gap-2 text-xs font-medium text-emerald-700">
             <ShieldCheck size={14} />
-            Session securisee
+            Session sécurisée
           </div>
         </div>
 
@@ -853,8 +937,8 @@ function LoadingScreen() {
           <FileText size={22} />
         </div>
         <div>
-          <p className="text-sm font-semibold text-slate-900">Verification de la session</p>
-          <p className="mt-1 text-sm text-slate-500">Preparation de l espace de travail...</p>
+          <p className="text-sm font-semibold text-slate-900">Vérification de la session</p>
+          <p className="mt-1 text-sm text-slate-500">Préparation de l'espace de travail...</p>
         </div>
       </div>
     </div>

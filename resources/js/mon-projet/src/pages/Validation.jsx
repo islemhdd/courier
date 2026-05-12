@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertCircle, Search, ShieldAlert } from 'lucide-react'
 
 import { courrierApi } from '../api/courrierApi'
@@ -17,6 +17,7 @@ export default function Validation() {
   const [actionLoading, setActionLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [error, setError] = useState('')
+  const selectedIdRef = useRef(null)
 
   const getApiErrorMessage = useCallback((err) => {
     return (
@@ -26,17 +27,22 @@ export default function Validation() {
       (err.response?.data?.errors
         ? Object.values(err.response.data.errors).flat()[0]
         : '') ||
-      "L'action a echoue."
+      "L'action a échoué."
     )
   }, [])
 
   const applyCourriers = useCallback((items, preferredId = null) => {
     setCourriers(items)
-    setSelectedCourrier((current) => {
-      const nextId = preferredId ?? current?.id
+    const nextId = preferredId ?? selectedIdRef.current
+    const next = items.find((item) => item.id === nextId) || null
 
-      return items.find((item) => item.id === nextId) || items[0] || null
-    })
+    selectedIdRef.current = next?.id || null
+    setSelectedCourrier(next)
+  }, [])
+
+  const handleSelectCourrier = useCallback((courrier) => {
+    selectedIdRef.current = courrier?.id || null
+    setSelectedCourrier(courrier)
   }, [])
 
   const loadData = useCallback(
@@ -65,9 +71,9 @@ export default function Validation() {
         const res = await courrierApi.getValidationQueue(query)
         const items = res.data.courriers.data
         const nextSelectedId =
-          selectedCourrier?.id && items.some((item) => item.id === selectedCourrier.id)
-            ? selectedCourrier.id
-            : items[0]?.id || null
+          selectedIdRef.current && items.some((item) => item.id === selectedIdRef.current)
+            ? selectedIdRef.current
+            : null
 
         applyCourriers(items, nextSelectedId)
         setPagination(res.data.courriers)
@@ -86,11 +92,15 @@ export default function Validation() {
         setLoading(false)
       }
     },
-    [applyCourriers, getApiErrorMessage, search, selectedCourrier?.id],
+    [applyCourriers, getApiErrorMessage, search],
   )
 
   useEffect(() => {
-    loadData({}, { preferCache: true, revalidate: true })
+    const timeoutId = window.setTimeout(() => {
+      loadData({}, { preferCache: true, revalidate: true })
+    }, 0)
+
+    return () => window.clearTimeout(timeoutId)
   }, [loadData])
 
   const handleAction = async (action, id, data = {}) => {
@@ -154,7 +164,7 @@ export default function Validation() {
                 courriers={courriers}
                 loading={loading}
                 selectedCourrier={selectedCourrier}
-                onSelect={setSelectedCourrier}
+                onSelect={handleSelectCourrier}
               />
             </div>
             <div className="p-4 border-t border-slate-100">

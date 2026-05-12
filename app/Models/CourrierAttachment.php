@@ -25,6 +25,15 @@ class CourrierAttachment extends Model
         'ocr_processed_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::deleting(function (self $attachment) {
+            if ($attachment->chemin && \Illuminate\Support\Facades\Storage::disk('local')->exists($attachment->chemin)) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($attachment->chemin);
+            }
+        });
+    }
+
     public function courrier(): BelongsTo
     {
         return $this->belongsTo(Courrier::class);

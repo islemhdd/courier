@@ -155,6 +155,240 @@ test('archives endpoint reads from archive table only', function () {
         ->assertJsonPath('archives.data.0.numero', 'COUR-TEST-ARCHIVE-1');
 });
 
+test('archive show endpoint returns the requested archive by id', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    $archive = Archive::create([
+        'courrier_original_id' => 1001,
+        'numero' => 'COUR-ARCH-SHOW',
+        'objet' => 'Dossier de show archive',
+        'type' => 'sortant',
+        'resume' => 'Resume archive complet',
+        'extracted_text' => 'Texte OCR principal archive',
+        'date_creation' => now()->subDays(4),
+        'date_reception' => now()->subDays(3),
+        'date_limite_reponse' => now()->addDays(7),
+        'repondu_le' => now()->subDay(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut_original' => 'TRANSMIS',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
+        'motif' => 'Test show',
+        'attachments_snapshot' => [
+            ['nom_original' => 'scan.pdf', 'ocr_text' => 'OCR piece jointe'],
+        ],
+        'comments_snapshot' => [
+            ['commentaire' => 'Instruction archivee'],
+        ],
+    ]);
+
+    $this->actingAs($user)
+        ->getJson("/api/courriers/archives/{$archive->id}")
+        ->assertOk()
+        ->assertJsonPath('archive.id', $archive->id)
+        ->assertJsonPath('archive.numero', 'COUR-ARCH-SHOW')
+        ->assertJsonPath('archive.resume', 'Resume archive complet')
+        ->assertJsonPath('archive.extracted_text', 'Texte OCR principal archive')
+        ->assertJsonPath('archive.attachments.0.ocr_text', 'OCR piece jointe')
+        ->assertJsonPath('archive.comments.0.commentaire', 'Instruction archivee');
+});
+
+test('archives endpoint filters by object title', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    Archive::create([
+        'courrier_original_id' => 1002,
+        'numero' => 'COUR-OBJ-1',
+        'objet' => 'Rapport budget annuel',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut_original' => 'TRANSMIS',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
+    ]);
+
+    Archive::create([
+        'courrier_original_id' => 1003,
+        'numero' => 'COUR-OBJ-2',
+        'objet' => 'Note interne',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut_original' => 'TRANSMIS',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now()->subDay(),
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/archives?objet=budget')
+        ->assertOk()
+        ->assertJsonPath('archives.total', 1)
+        ->assertJsonPath('archives.data.0.numero', 'COUR-OBJ-1');
+});
+
+test('archives endpoint searches archived OCR content', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    Archive::create([
+        'courrier_original_id' => 1004,
+        'numero' => 'COUR-OCR-1',
+        'objet' => 'Decision',
+        'type' => 'entrant',
+        'resume' => 'Resume simple',
+        'extracted_text' => 'Contenu OCR avec autorisation ministerielle',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Ministere',
+        'destinataire' => 'Direction',
+        'statut_original' => 'RECU',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
+        'attachments_snapshot' => [
+            ['nom_original' => 'annexe.pdf', 'ocr_text' => 'Piece jointe avec visa technique'],
+        ],
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/archives?contenu=ministerielle')
+        ->assertOk()
+        ->assertJsonPath('archives.total', 1)
+        ->assertJsonPath('archives.data.0.numero', 'COUR-OCR-1');
+});
+
+test('archives endpoint returns close matches with levenshtein search', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    Archive::create([
+        'courrier_original_id' => 1005,
+        'numero' => 'COUR-LEV-1',
+        'objet' => 'Autorisation exceptionnelle',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut_original' => 'TRANSMIS',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/archives?q=autorisaton')
+        ->assertOk()
+        ->assertJsonPath('archives.total', 1)
+        ->assertJsonPath('archives.data.0.numero', 'COUR-LEV-1')
+        ->assertJsonPath('archives.data.0.match_score', 1);
+});
+
+test('archives endpoint filters by reception date range', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    Archive::create([
+        'courrier_original_id' => 1006,
+        'numero' => 'COUR-DATE-RECEPTION-1',
+        'objet' => 'Dans la plage',
+        'type' => 'entrant',
+        'date_creation' => '2026-05-01 08:00:00',
+        'date_reception' => '2026-05-02 09:00:00',
+        'expediteur' => 'Ministere',
+        'destinataire' => 'Direction',
+        'statut_original' => 'RECU',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
+    ]);
+
+    Archive::create([
+        'courrier_original_id' => 1007,
+        'numero' => 'COUR-DATE-RECEPTION-2',
+        'objet' => 'Hors plage',
+        'type' => 'entrant',
+        'date_creation' => '2026-05-10 08:00:00',
+        'date_reception' => '2026-05-12 09:00:00',
+        'expediteur' => 'Ministere',
+        'destinataire' => 'Direction',
+        'statut_original' => 'RECU',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/archives?date_reception_from=2026-05-01&date_reception_to=2026-05-03')
+        ->assertOk()
+        ->assertJsonPath('archives.total', 1)
+        ->assertJsonPath('archives.data.0.numero', 'COUR-DATE-RECEPTION-1');
+});
+
+test('archives endpoint filters by archive date range', function () {
+    [$user, $niveau] = createCourrierUser();
+
+    Archive::create([
+        'courrier_original_id' => 1008,
+        'numero' => 'COUR-DATE-ARCHIVE-1',
+        'objet' => 'Archive recente',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut_original' => 'TRANSMIS',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => '2026-05-08 12:00:00',
+    ]);
+
+    Archive::create([
+        'courrier_original_id' => 1009,
+        'numero' => 'COUR-DATE-ARCHIVE-2',
+        'objet' => 'Archive ancienne',
+        'type' => 'sortant',
+        'date_creation' => now(),
+        'date_reception' => now(),
+        'expediteur' => 'Direction',
+        'destinataire' => 'Ministere',
+        'statut_original' => 'TRANSMIS',
+        'niveau_confidentialite_id' => $niveau->id,
+        'createur_id' => $user->id,
+        'service_source_id' => $user->service_id,
+        'archive_par_id' => $user->id,
+        'archive_le' => '2026-04-01 12:00:00',
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/courriers/archives?archive_from=2026-05-01&archive_to=2026-05-10')
+        ->assertOk()
+        ->assertJsonPath('archives.total', 1)
+        ->assertJsonPath('archives.data.0.numero', 'COUR-DATE-ARCHIVE-1');
+});
+
 test('secretary creates outgoing courrier in created state', function () {
     [$user, $niveau, $service] = createCourrierUser('secretaire');
 

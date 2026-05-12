@@ -1,0 +1,48 @@
+# RAPPORT DE SÉCURITÉ GLOBAL - APPLICATION DE GESTION DE COURRIER
+
+## 1. Introduction
+Ce document présente une analyse détaillée de la sécurité de l'application. L'architecture repose sur le framework Laravel, utilisant des mécanismes de protection robustes pour garantir l'intégrité, la confidentialité et la disponibilité des données.
+
+## 2. Authentification
+L'application utilise un système d'authentification double :
+- **Web (Inertia/Vue.js) :** Authentification basée sur les sessions sécurisées de Laravel.
+- **API & Communications :** Utilisation de Laravel Sanctum pour une gestion sécurisée des jetons (tokens).
+- **Sécurité des mots de passe :** Hachage systématique via l'algorithme Bcrypt (Laravel default).
+- **Protection contre les attaques par force brute :** Throttling intégré sur les routes de connexion et de réinitialisation de mot de passe.
+
+
+## 3. Autorisations et Contrôle d'Accès
+Le système d'autorisation est granulaire et basé sur des politiques (Policies) :
+- **Rôles :** Admin, Chef, Secrétaire.
+- **Portées (Scopes) :** Général, Structure, Service.
+- **Logique Hiérarchique :** Un Chef de Service ne peut gérer que son service, tandis qu'un Chef Général a une vue sur toute l'organisation.
+- **Méthodes Centralisées :** Les modèles `User` et `Courrier` contiennent des méthodes dédiées (`peutEtreConsultePar`, `peutEtreModifiePar`, etc.) garantissant que chaque accès est vérifié au niveau de la donnée.
+
+## 4. Gestion de la Confidentialité
+L'un des points forts de l'application est sa gestion stricte de la confidentialité :
+- **Niveaux de Confidentialité :** (Public, Confidentiel, Secret) avec un système de rangs.
+- **Règle d'or :** Un utilisateur ne peut consulter un document que si son propre rang de confidentialité est supérieur ou égal à celui du document.
+- **Héritage :** Les réponses aux courriers héritent automatiquement du niveau de confidentialité du parent pour éviter les fuites d'informations.
+
+## 5. Protection des Données et Entrées
+- **Injections SQL :** Utilisation systématique de l'ORM Eloquent et du Query Builder, qui utilisent des requêtes préparées via PDO.
+- **XSS (Cross-Site Scripting) :** Protection native via Blade (échappement automatique) et Inertia.js.
+- **Validation des données :** Utilisation de `FormRequest` complexes (ex: `StoreCourrierRequest`) validant non seulement le format des données, mais aussi les droits métier (ex: interdiction de créer un courrier avec un niveau de confidentialité supérieur à celui du créateur).
+- **Protection CSRF :** Activée par défaut sur toutes les routes d'état (POST, PUT, DELETE).
+
+## 6. Sécurité des Fichiers
+- **Stockage :** Les documents sont stockés dans le dossier `storage/app/private` ou `public` selon les besoins, avec des noms de fichiers générés pour éviter les collisions et l'énumération.
+- **Validation des types :** Validation stricte des extensions (PDF, DOCX, images) et des tailles maximales (10 Mo).
+
+## 7. Configuration et Infrastructure
+- **Mode Debug :** Désactivé par défaut en production (`APP_DEBUG=false`).
+- **Clé d'application :** Utilisation d'une clé AES-256-CBC pour le chiffrement des cookies et des données sensibles.
+- **CORS :** Configuration restrictive autorisant uniquement les domaines connus (localhost en développement).
+
+## 8. Recommandations
+1. **Audit régulier des dépendances :** Utiliser `composer audit` et `npm audit` pour corriger les vulnérabilités dans les packages tiers.
+2. **Journalisation :** S'assurer que les actions sensibles (suppression, changement de rôle) sont tracées dans les logs.
+3. **HTTPS :** Obligatoire pour garantir la sécurité des échanges entre le client et le serveur.
+
+---
+*Fin du rapport*

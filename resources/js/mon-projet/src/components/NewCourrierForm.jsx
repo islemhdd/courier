@@ -241,8 +241,16 @@ export default function NewCourrierForm({
     }
   }
 
-  const addRecipient = () => setForm(p => ({ ...p, recipients: [...p.recipients, { recipient_type: 'structure', structure_id: '', service_id: '', user_id: '' }] }))
-  const removeRecipient = (index) => setForm(p => ({ ...p, recipients: p.recipients.filter((_, i) => i !== index) }))
+  const makeRecipient = () => ({ recipient_type: 'structure', structure_id: '', service_id: '', user_id: '' })
+  const ensureUnicastRecipient = (prev) => {
+    if (prev.mode_diffusion === 'unicast' && prev.recipients.length === 0) {
+      return { ...prev, recipients: [makeRecipient()] }
+    }
+    return prev
+  }
+  const addRecipient = () => setForm(p => ({ ...p, recipients: [...p.recipients, makeRecipient()] }))
+  const removeRecipient = (index) =>
+    setForm(p => ensureUnicastRecipient({ ...p, recipients: p.recipients.filter((_, i) => i !== index) }))
   const updateRecipient = (index, field, value) => {
     const nr = [...form.recipients]
     nr[index] = { ...nr[index], [field]: value }
@@ -459,7 +467,7 @@ export default function NewCourrierForm({
 
                   {type === 'sortant' && (
                     <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold text-slate-500">Courrier  Réponse à</label>
+                      <label className="text-[11px] font-semibold text-slate-500">Courrier Réponse à</label>
                       <select
                         value={form.parent_courrier_id}
                         onChange={e => setForm({...form, parent_courrier_id: e.target.value})}
@@ -619,7 +627,7 @@ export default function NewCourrierForm({
                         <button
                           key={m}
                           type="button"
-                          onClick={() => setForm({...form, mode_diffusion: m, recipients: m === 'broadcast' ? [] : form.recipients})}
+                          onClick={() => setForm(prev => ensureUnicastRecipient({...prev, mode_diffusion: m, recipients: m === 'broadcast' ? [] : prev.recipients}))}
                           className={`px-2.5 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-tight transition-all ${form.mode_diffusion === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         >
                           {m}
@@ -700,14 +708,16 @@ export default function NewCourrierForm({
                           </div>
                         ))}
                       </div>
-                      <button
-                        type="button"
-                        onClick={addRecipient}
-                        className="w-full py-3.5 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
-                      >
-                        <Plus size={15} />
-                        Ajouter un point de diffusion
-                      </button>
+                      {form.mode_diffusion !== 'unicast' && (
+                        <button
+                          type="button"
+                          onClick={addRecipient}
+                          className="w-full py-3.5 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Plus size={15} />
+                          Ajouter un point de diffusion
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="p-6 bg-indigo-50 rounded-xl border border-indigo-100 flex flex-col items-center text-center gap-3">

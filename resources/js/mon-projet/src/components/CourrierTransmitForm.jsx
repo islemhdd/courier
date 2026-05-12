@@ -53,12 +53,14 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
 
         setMeta(res.data)
 
-        setForm((prev) => ({
-          ...prev,
-          mode_diffusion: courrier?.mode_diffusion || 'unicast',
-          service_destinataire_id: courrier?.service_destinataire_id || '',
-          recipients: [],
-        }))
+        setForm((prev) =>
+          ensureUnicastRecipient({
+            ...prev,
+            mode_diffusion: courrier?.mode_diffusion || 'unicast',
+            service_destinataire_id: courrier?.service_destinataire_id || '',
+            recipients: [],
+          })
+        )
       } catch (err) {
         setError('Impossible de charger les données de transmission.')
       } finally {
@@ -69,25 +71,33 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
     fetchMeta()
   }, [courrier])
 
+  const makeRecipient = () => ({
+    recipient_type: 'service',
+    structure_id: '',
+    service_id: '',
+    user_id: '',
+  })
+
+  const ensureUnicastRecipient = (prev) => {
+    if (prev.mode_diffusion === 'unicast' && prev.recipients.length === 0) {
+      return { ...prev, recipients: [makeRecipient()] }
+    }
+    return prev
+  }
+
   const addRecipient = () =>
     setForm((prev) => ({
       ...prev,
-      recipients: [
-        ...prev.recipients,
-        {
-          recipient_type: 'service',
-          structure_id: '',
-          service_id: '',
-          user_id: '',
-        },
-      ],
+      recipients: [...prev.recipients, makeRecipient()],
     }))
 
   const removeRecipient = (index) =>
-    setForm((prev) => ({
-      ...prev,
-      recipients: prev.recipients.filter((_, i) => i !== index),
-    }))
+    setForm((prev) =>
+      ensureUnicastRecipient({
+        ...prev,
+        recipients: prev.recipients.filter((_, i) => i !== index),
+      })
+    )
 
   const updateRecipient = (index, field, value) => {
     const nextRecipients = [...form.recipients]
@@ -249,10 +259,12 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
                       key={mode}
                       type="button"
                       onClick={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          mode_diffusion: mode,
-                        }))
+                        setForm((prev) =>
+                          ensureUnicastRecipient({
+                            ...prev,
+                            mode_diffusion: mode,
+                          })
+                        )
                       }
                       className={`rounded-full px-4 py-2 text-[10px] font-bold uppercase tracking-wider transition-all ${
                         form.mode_diffusion === mode
@@ -374,13 +386,15 @@ export default function CourrierTransmitForm({ courrier, onClose, onSubmit }) {
                     </div>
                   ))}
 
-                  <button
-                    type="button"
-                    onClick={addRecipient}
-                    className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-600 hover:border-slate-300 transition-all"
-                  >
-                    + Ajouter un destinataire
-                  </button>
+                  {form.mode_diffusion !== 'unicast' && (
+                    <button
+                      type="button"
+                      onClick={addRecipient}
+                      className="w-full py-3 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-600 hover:border-slate-300 transition-all"
+                    >
+                      + Ajouter un destinataire
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="p-4 bg-blue-50 text-blue-700 rounded-xl border border-blue-100 flex items-center gap-3">

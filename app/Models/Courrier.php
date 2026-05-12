@@ -31,7 +31,6 @@ class Courrier extends Model
 
     protected $fillable = [
         'sequence_number',
-        'numero',
         'objet',
         'type',
         'courrier_type_id',
@@ -89,6 +88,15 @@ class Courrier extends Model
 
     protected static function booted(): void
     {
+        static::deleting(function (self $courrier) {
+            foreach ($courrier->attachments as $attachment) {
+                $attachment->delete();
+            }
+            if ($courrier->chemin_fichier && \Illuminate\Support\Facades\Storage::disk('local')->exists($courrier->chemin_fichier)) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($courrier->chemin_fichier);
+            }
+        });
+
         static::creating(function (self $courrier) {
             if (!$courrier->sequence_number) {
                 $courrier->sequence_number = ((int) static::query()->lockForUpdate()->max('sequence_number')) + 1;
@@ -243,7 +251,7 @@ class Courrier extends Model
 
     public function scopeVisiblePourUser(Builder $query, User $user): Builder
     {
-        if ($user->estAdmin()) {
+        if ($user->estAdmin() || $user->estChefGeneral()) {
             return $query;
         }
 
@@ -825,7 +833,7 @@ class Courrier extends Model
             return false;
         }
 
-        // Admin et chef général peuvent toujours répondre
+        // Seul l'admin peut toujours répondre (le chef général ne peut pas répondre intentionnellement)
         if ($user->estAdmin()) {
             return true;
         }
@@ -889,7 +897,7 @@ class Courrier extends Model
 
     public function getUrlFichierAttribute(): ?string
     {
-        return $this->chemin_fichier ? asset('storage/' . $this->chemin_fichier) : null;
+        return null;
     }
 
     public function getCheminFichierStorageAttribute(): string

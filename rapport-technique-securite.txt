@@ -1,0 +1,939 @@
+================================================================================
+    RAPPORT TECHNIQUE ET SÉCURITÉ — APPLICATION GESTION COURRIER
+    Architecture web, stack technique et améliorations de sécurité
+    Date : 2026-05-12
+================================================================================
+
+
+TABLE DES MATIÈRES
+------------------
+1. Architecture générale de l'application
+2. Stack technique détaillé (backend)
+3. Stack technique détaillé (frontend)
+4. API REST — Conception et endpoints
+5. Base de données et modèle de données
+6. Sécurité — Authentification
+7. Sécurité — Contrôle d'accès RBAC
+8. Sécurité — Gestion de la confidentialité
+9. Sécurité — Protection des fichiers
+10. Sécurité — Rate limiting et protection anti-abus
+11. Sécurité — Protection CSRF, XSS, injections
+12. Sécurité — Configuration CORS et headers
+13. Tests de sécurité et validation
+14. Risques résiduels et recommandations
+15. Correctifs appliqués durant ce travail
+
+
+================================================================================
+1. ARCHITECTURE GÉNÉRALE DE L'APPLICATION
+================================================================================
+
+L'application Gestion Courrier est une application web moderne de type SPA
+(Single Page Application) avec une architecture découplée :
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                    ARCHITECTURE GLOBALE                             │
+    │                                                                     │
+    │  ┌──────────────────────────────────────────────────────────┐       │
+    │  │  FRONTEND (React 19 + TypeScript + Vite 6)               │       │
+    │  │  • Interface SPA avec react-router-dom                   │       │
+    │  │  • Inertia.js pour les pages SSR (login, accueil)        │       │
+    │  │  • Appels Axios vers l'API REST Laravel                  │       │
+    │  │  • Realtime via Laravel Echo + Pusher/Reverb             │       │
+    │  │  • UI : Radix UI + Headless UI + Tailwind CSS 4          │       │
+    │  └──────────────────────┬───────────────────────────────────┘       │
+    │                         │ HTTP/JSON + Sanctum cookies               │
+    │  ┌──────────────────────▼───────────────────────────────────┐       │
+    │  │  BACKEND (Laravel 12 + PHP 8.2+)                          │       │
+    │  │  • API REST dans routes/api.php (40+ endpoints)           │       │
+    │  │  • Authentification Sanctum (cookie SPA)                  │       │
+    │  │  • File d'attente : database driver (sync en test)        │       │
+    │  │  • Notifications temps réel via Reverb                    │       │
+    │  │  • Jobs asynchrones : ProcessOcrJob                       │       │
+    │  │  • Commandes planifiées : archivage, rappels délais       │       │
+    │  │  • 3 couches : Contrôleur → Service → Modèle Eloquent     │       │
+    │  └──────────────────────┬───────────────────────────────────┘       │
+    │                         │                                           │
+    │  ┌──────────────────────▼───────────────────────────────────┐       │
+    │  │  BASE DE DONNÉES (MySQL / SQLite de test)                 │       │
+    │  │  • 18 tables principales                                   │       │
+    │  │  • Index FULLTEXT pour recherche plein texte               │       │
+    │  │  • Migrations versionnées (28 migrations)                  │       │
+    │  └──────────────────────────────────────────────────────────┘       │
+    └─────────────────────────────────────────────────────────────────────┘
+
+Points clés de l'architecture :
+
+1. Découplage Frontend/Backend : L'API REST permet une séparation nette.
+   Le frontend React communique exclusivement via HTTP/JSON. Aucune
+   logique métier côté frontend — tout passe par l'API.
+
+2. Authentification par cookies : Sanctum en mode SPA utilise des cookies
+   de session (pas de tokens JWT stockés côté client). Plus sécurisé car
+   httpOnly + sameSite protègent contre le vol de tokens.
+
+3. Traitement asynchrone : L'OCR est délégué à un job de queue. Le
+   frontend reçoit une réponse immédiate pendant que le traitement lourd
+   s'exécute en arrière-plan.
+
+4. Trois couches backend :
+   - Contrôleurs : validation HTTP, orchestration, réponses JSON
+   - Services : logique métier complexe (OcrService)
+   - Modèles : règles d'accès et comportements métier
+
+
+================================================================================
+2. STACK TECHNIQUE DÉTAILLÉ (BACKEND)
+================================================================================
+
+2.1. Langage et framework
+    PHP ≥ 8.2
+    Laravel Framework 12.0
+    Configuration : PHP 8.2+, ext-mbstring, ext-zip, ext-simplexml
+
+2.2. Packages de production (composer.json — require)
+    ┌──────────────────────────────────────┬────────────┬───────────────────┐
+    │ Package                              │ Version    │ Rôle              │
+    ├──────────────────────────────────────┼────────────┼───────────────────┤
+    │ laravel/framework                    │ ^12.0      │ Framework core    │
+    │ laravel/sanctum                      │ ^4.0       │ Auth API (SPA)    │
+    │ laravel/reverb                       │ ^1.0       │ WebSocket server  │
+    │ inertiajs/inertia-laravel            │ ^2.0       │ SSR pages         │
+    │ tightenco/ziggy                      │ ^2.4       │ Routes JS         │
+    │ pusher/pusher-php-server             │ ^7.2       │ Broadcasting      │
+    │ smalot/pdfparser                     │ ^2.12      │ Extraction PDF    │
+    │ laravel/tinker                       │ ^2.10.1    │ Shell interactif  │
+    └──────────────────────────────────────┴────────────┴───────────────────┘
+
+2.3. Packages de développement (composer.json — require-dev)
+    ┌──────────────────────────────────────┬────────────┬───────────────────┐
+    │ Package                              │ Version    │ Rôle              │
+    ├──────────────────────────────────────┼────────────┼───────────────────┤
+    │ pestphp/pest                         │ ^3.8       │ Tests             │
+    │ pestphp/pest-plugin-laravel          │ ^3.2       │ Intégration Pest  │
+    │ laravel/breeze                       │ ^2.4       │ Starter kit       │
+    │ fakerphp/faker                       │ ^1.23      │ Données factices  │
+    │ laravel/sail                         │ ^1.41      │ Docker dev        │
+    │ laravel/pint                         │ ^1.18      │ Code style        │
+    │ mockery/mockery                      │ ^1.6       │ Mocking           │
+    │ nunomaduro/collision                 │ ^8.6       │ Erreurs CLI       │
+    └──────────────────────────────────────┴────────────┴───────────────────┘
+
+2.4. Dépendances système
+    Tesseract OCR 5+    → reconnaissance optique de caractères
+      - tesseract-ocr-ara  → langue arabe
+      - tesseract-ocr-fra  → langue française
+      - tesseract-ocr-eng  → langue anglaise
+    Ghostscript          → conversion PDF → images (fallback)
+    Imagick (PHP ext)    → conversion PDF → images (prioritaire)
+
+2.5. File d'attente
+    Driver par défaut : database (table 'jobs')
+    Driver de test : sync (exécution synchrone)
+    Driver production recommandé : Redis ou database
+
+2.6. Broadcasting / Temps réel
+    Driver par défaut : reverb (WebSocket natif Laravel)
+    Fallback : pusher (compatible)
+    Canal privé : App.Models.User.{id} (authentifié via auth:sanctum)
+    Frontend : laravel-echo + pusher-js
+
+2.7. Cache et Session
+    Cache driver : array (test), file (local), redis (production conseillé)
+    Session driver : array (test), database (local/production)
+    Session httpOnly : true
+    Session same_site : lax
+    Session lifetime : 120 minutes
+    Session encrypt : false (à activer en production)
+
+2.8. Tests
+    Framework : Pest 3.8 (basé sur PHPUnit 11)
+    Base de données : SQLite in-memory
+    Queue : sync
+    Mail : array
+    Nombre de fichiers de test : 22 (Feature) + 1 (Unit)
+    Tests de sécurité dédiés : SecurityTest.php (307 lignes, 14 tests)
+    Tests de messagerie : MessageConfidentialityTest.php (280 lignes)
+
+
+================================================================================
+3. STACK TECHNIQUE DÉTAILLÉ (FRONTEND)
+================================================================================
+
+3.1. Technologies principales
+    React 19.0 avec TypeScript 5.7
+    Vite 6 (bundler)
+    react-router-dom 7.14 (routage SPA)
+    Tailwind CSS 4.2 avec @tailwindcss/vite
+    Inertia.js 2.0 (pages SSR : login, settings)
+
+3.2. Bibliothèques UI
+    Radix UI : Avatar, Checkbox, Collapsible, Dialog, DropdownMenu,
+              Label, NavigationMenu, Select, Separator, Slot, Toggle,
+              ToggleGroup, Tooltip
+    Headless UI 2.2 : Composants accessibles
+    Lucide React 0.475 : Icônes vectorielles
+    class-variance-authority : Variants de composants
+    tailwind-merge : Fusion de classes Tailwind
+    clsx : Utilitaires de classnames
+
+3.3. Communication
+    Axios 1.15 : Requêtes HTTP vers l'API Laravel
+    Laravel Echo 2.3 : WebSocket client
+    Pusher JS 8.5 : Transport WebSocket
+
+3.4. Build
+    Laravel Vite Plugin 1.0 : Intégration Laravel/Vite
+    @vitejs/plugin-react : Support React/Vite
+    ESLint + Prettier : Qualité de code
+    TypeScript strict mode
+
+3.5. Configuration particulière
+    Deux configurations Vite coexistent :
+    - /vite.config.js (racine) : build principal avec laravel-vite-plugin
+    - /resources/js/mon-projet/vite.config.js : build secondaire
+
+    Note : Les tests qui rendent des vues échouent avec 500 car le
+    manifeste Vite (public/build/manifest.json) n'existe pas dans
+    l'environnement de test. Solution : exécuter npm run build avant
+    les tests ou ignorer Vite dans l'environnement de test.
+
+
+================================================================================
+4. API REST — CONCEPTION ET ENDPOINTS
+================================================================================
+
+4.1. Design général
+    Type : API REST JSON
+    Authentification : Sanctum (cookie SPA) + auth:sanctum
+    Base URL : /api
+    Versioning : Aucun (API v1 implicite)
+    Format réponses : JSON cohérent avec messages en français
+
+4.2. Groupes de routes
+
+    AUTHENTIFICATION (routes/api.php)
+    ─────────────────────────────────
+    POST   /api/login              → connexion (throttle:5,1)
+    GET    /api/user               → utilisateur connecté
+    POST   /api/logout             → déconnexion
+
+    COURRIERS (routes/api.php, 20 endpoints)
+    ─────────────────────────────────────────
+    GET    /api/courriers                 → liste paginée
+    GET    /api/courriers/recus           → courriers reçus
+    GET    /api/courriers/envoyes         → courriers envoyés
+    GET    /api/courriers/archives        → archives
+    GET    /api/courriers/archives/{id}   → détail archive
+    GET    /api/courriers/validation      → courriers à valider
+    GET    /api/courriers/stats           → statistiques
+    GET    /api/courriers/create          → données formulaire
+    POST   /api/courriers                 → création
+    GET    /api/courriers/{id}            → détail
+    GET    /api/courriers/{id}/download   → téléchargement fichier
+    GET    /api/courriers/{id}/attachments/{a}/download → pièce jointe
+    PATCH  /api/courriers/{id}            → modification
+    DELETE /api/courriers/{id}            → suppression (admin only)
+    PATCH  /api/courriers/{id}/archiver   → archiver
+    PATCH  /api/courriers/{id}/transmettre → transmettre
+    PATCH  /api/courriers/{id}/valider    → valider
+    PATCH  /api/courriers/{id}/non-valider → non-valider
+    PATCH  /api/courriers/{id}/demander-validation → demande validation
+
+    MESSAGES (routes/api.php, 9 endpoints)
+    ──────────────────────────────────────
+    GET    /api/messages                   → liste (filtré par type)
+    POST   /api/messages                   → création
+    GET    /api/messages/non-lus           → compteur
+    GET    /api/messages/destinataires     → recherche destinataires
+    GET    /api/messages/{id}              → détail
+    PATCH  /api/messages/{id}              → modification (brouillon)
+    DELETE /api/messages/{id}              → suppression
+    PATCH  /api/messages/{id}/send         → envoi
+    PATCH  /api/messages/{id}/read         → marquer lu
+
+    UTILISATEURS (routes/api.php, 4 endpoints)
+    ──────────────────────────────────────────
+    GET    /api/utilisateurs               → liste
+    POST   /api/utilisateurs               → création
+    PATCH  /api/utilisateurs/{id}          → modification
+    DELETE /api/utilisateurs/{id}          → suppression
+
+    OCR (routes/api.php, 3 endpoints)
+    ─────────────────────────────────
+    POST   /api/ocr/preview                → prévisualisation synchrone
+    GET    /api/courriers/{id}/ocr         → statut OCR
+    POST   /api/courriers/{id}/ocr/rerun   → relance OCR
+
+    SERVICES (routes/api.php, 5 endpoints)
+    ──────────────────────────────────────
+    CRUD complet pour les services
+
+    ADMIN (routes/api.php, protégé middleware 'admin')
+    ──────────────────────────────────────────────────
+    CRUD structures, services, affectation chefs
+
+    NOTIFICATIONS (routes/api.php, 4 endpoints inline)
+    ──────────────────────────────────────────────────
+    GET    /api/notifications              → liste
+    PATCH  /api/notifications/{id}/read    → marquer lu
+    POST   /api/notifications/read-all     → tout marquer lu
+    DELETE /api/notifications/{id}         → supprimer
+
+4.3. Rate limiting par endpoint
+    Connexion :             5 req/min
+    Liste courriers :      60 req/min
+    Création courrier :    30 req/min
+    Modification courrier : 30 req/min
+    Validation :            30 req/min
+    Demande validation :    10 req/min
+    Messages (lecture) :   60 req/min
+    Messages (création) :  10 req/min
+    Messages (envoi) :     10 req/min
+    Utilisateurs (liste) : 60 req/min
+    Utilisateurs (création) : 10 req/min
+    Utilisateurs (modif) : 30 req/min
+    Utilisateurs (suppr) : 10 req/min
+    Services (création) :  10 req/min
+    Services (suppr) :     10 req/min
+    Email verification :    6 req/min
+
+
+================================================================================
+5. BASE DE DONNÉES ET MODÈLE DE DONNÉES
+================================================================================
+
+5.1. Connexion et configuration
+    Production : MySQL (gestion_de_courier)
+    Test : SQLite in-memory (:memory:)
+    Strict mode : true (empêche la troncature silencieuse)
+    Contraintes de clés étrangères : activées
+
+5.2. Tables principales (18 tables)
+
+    ORGANISATION
+    ────────────
+    structures          → Entités organisationnelles de haut niveau
+    services            → Services (liés à une structure)
+    users               → Utilisateurs (liés à un service, une structure)
+
+    COURRIERS
+    ─────────
+    courriers           → Table centrale (30+ colonnes)
+    courrier_types      → Types de courriers (entrant/sortant)
+    sources             → Sources d'envoi
+    instructions        → Instructions de traitement
+    courrier_recipients → Destinataires polymorphes (user/service/structure/all)
+    courrier_comments   → Commentaires et validations
+    courrier_attachments → Pièces jointes (avec données OCR)
+    courrier_people     → Personnes concernées (pivot)
+
+    SUPPORT
+    ───────
+    niveau_confidentialites → Niveaux de confidentialité (avec rang)
+    messages             → Messagerie interne
+    archives             → Snapshots de courriers archivés
+    notifications        → Notifications base de données
+
+    TECHNIQUE
+    ─────────
+    password_reset_tokens → Tokens de réinitialisation mot de passe
+    sessions              → Sessions utilisateur
+    jobs                  → File d'attente
+    cache                 → Cache
+    personal_access_tokens → Tokens Sanctum
+
+5.3. Modèle de données — Courrier (table la plus riche)
+    Colonnes principales :
+      id, numero, objet, type, statut
+      chemin_fichier, resume, extracted_text
+      date_creation, date_reception, date_limite_reponse
+      expediteur, destinataire
+      niveau_confidentialite_id
+      createur_id, valideur_id, transmis_par_id
+      service_source_id, service_destinataire_id
+      structure_source_id, structure_destinataire_id
+      courrier_type_id, source_id
+      parent_courrier_id (pour les réponses)
+      requiert_reponse, delai_reponse_jours
+      mode_diffusion
+      ocr_status, summary_source
+      transmission_demandee, sequence_number
+
+    Index FULLTEXT :
+      - (numero, objet, resume, expediteur, destinataire)
+      - (extracted_text)
+      - (resume)
+
+5.4. Modèle de données — Utilisateur
+    Colonnes :
+      id, nom, prenom, email, password
+      actif (booléen)
+      role (admin | chef | secretaire)
+      role_scope (general | structure | service)
+      service_id, structure_id
+      niveau_confidentialite_id
+      remember_token
+
+    Champs protégés (hidden) : password, remember_token
+    Cast : password → hashed (auto-bcrypt)
+
+5.5. Relations Eloquent clés
+    User
+      → belongsTo(Service)
+      → belongsTo(Structure)
+      → belongsTo(NiveauConfidentialite)
+      → hasMany(Courrier, 'createur_id')
+      → hasMany(Message, 'emetteur_id')
+
+    Courrier
+      → belongsTo(User, 'createur_id')
+      → belongsTo(Service, 'service_source_id')
+      → belongsTo(Service, 'service_destinataire_id')
+      → belongsTo(NiveauConfidentialite)
+      → morphToMany(recipients) via courrier_recipients
+      → hasMany(CourrierAttachment)
+      → hasMany(CourrierComment)
+      → belongsToMany(User, 'courrier_people')
+
+    Message
+      → belongsTo(User, 'emetteur_id')
+      → belongsTo(User, 'destinataire_id')
+      → belongsTo(Courrier, 'courrier_id') [nullable]
+
+
+================================================================================
+6. SÉCURITÉ — AUTHENTIFICATION
+================================================================================
+
+6.1. Stack d'authentification
+    Laravel Sanctum 4.0 (mode SPA)
+    Sessions Laravel (driver database)
+    Cookies httpOnly + sameSite=lax
+    CSRF token via endpoint sanctum/csrf-cookie
+
+6.2. Processus de connexion (LoginRequest)
+    1. Rate limiting : 5 tentatives par email+IP (throttle + application)
+    2. Vérification : email + mot de passe + actif === true
+    3. Si échec : incrémente compteur RateLimiter, log l'événement
+    4. Si verrouillage (>5 échecs) : attendre 60 secondes
+    5. Si succès : régénération session, flash notification
+
+6.3. Processus de déconnexion
+    1. Invalidation session
+    2. Régénération token CSRF
+    3. Suppression tokens Sanctum courants
+
+6.4. Hachage des mots de passe
+    Algorithme : Bcrypt (via Hash::make ou cast 'hashed')
+    Rounds : 12 (configurable dans .env)
+    Aucun mot de passe stocké en clair
+
+6.5. Protection des comptes inactifs
+    LoginRequest ligne 46 : condition 'actif' => true dans les credentials
+    Les utilisateurs avec actif=false ne peuvent pas se connecter
+    Recherche de destinataires exclut les comptes inactifs
+
+6.6. Protection CSRF
+    Middleware ValidateCsrfToken activé
+    Token CSRF accessible via GET /sanctum/csrf-cookie
+    Token régénéré à la déconnexion
+
+
+================================================================================
+7. SÉCURITÉ — CONTRÔLE D'ACCÈS RBAC
+================================================================================
+
+7.1. Système de rôles (3 × 3 = 9 profils)
+    RÔLES :                    PORTÉES :
+    ──────                      ────────
+    admin                      general
+    chef (chef)                structure
+    secretaire                 service
+
+    Combinaisons possibles :
+    ┌────────────────┬──────────┬────────────┬──────────┐
+    │ Rôle \ Portée  │ general  │ structure  │ service  │
+    ├────────────────┼──────────┼────────────┼──────────┤
+    │ admin          │ Admin    │ —          │ —        │
+    │ chef           │ Chef     │ Chef de    │ Chef de  │
+    │                │ Général  │ Structure  │ Service  │
+    │ secretaire     │ Sec.     │ Sec. de    │ Sec. de  │
+    │                │ Général  │ Structure  │ Service  │
+    └────────────────┴──────────┴────────────┴──────────┘
+
+7.2. Méthodes de vérification dans User.php
+
+    VÉRIFICATIONS DE RÔLE :
+    ───────────────────────
+    estAdmin()             → role === 'admin'
+    estChef()              → role === 'chef'
+    estSecretaire()        → role === 'secretaire'
+
+    VÉRIFICATIONS DE RÔLE + PORTÉE :
+    ─────────────────────────────────
+    estChefGeneral()       → (chef OR admin) && scope === 'general'
+    estSecretaireGeneral() → secretaire && scope === 'general'
+    estChefStructure()     → chef && scope === 'structure'
+    estSecretaireStructure() → secretaire && scope === 'structure'
+    estChefService()       → chef && scope === 'service'
+    estSecretaireService() → secretaire && scope === 'service'
+
+    VÉRIFICATIONS DE PERMISSION :
+    ─────────────────────────────
+    peutCreerCourrier()                → true pour tous
+    peutCreerCourrierRecu()            → chefGeneral uniquement
+    peutAjouterSource()                → chefGeneral ou secretaireGeneral
+    peutGererTousLesUtilisateurs()     → admin ou chefGeneral
+    peutConsulterUtilisateurs()        → admin ou chef
+    peutGererUtilisateursDuService()   → chefService avec service_id
+    peutGererUtilisateur($autre)       → hiérarchique complet
+
+7.3. Hiérarchie de gestion des utilisateurs
+    peutGererUtilisateur($autre) implémente :
+      1. Admin peut gérer tout le monde
+      2. Chef général peut gérer (structure/service) mais pas admin
+      3. Chef structure peut gérer sa structure mais pas supérieur
+      4. Chef service ne peut gérer que son service
+
+7.4. Policies Laravel
+    UserPolicy         → CRUD basé sur peutConsulterUtilisateurs/peutGererUtilisateur
+    CourrierPolicy     → view, create, createIncoming, update, delete,
+                          archiver, transmettre, valider, nonValider
+    MessagePolicy      → view (sender/recipient only), delete (sender only)
+    ServicePolicy      → admin/chefGeneral/chefStructure
+
+7.5. Middleware personnalisé
+    EnsureUserIsAdmin (middleware 'admin') :
+      - Vérifie $user->estAdmin()
+      - 403 JSON si non-admin
+      - Protège : AdminStructureController, AdminServiceController,
+        AdminChefAffectationController
+
+7.6. Diagramme des permissions (courriers)
+
+    ACTION              │ ADMIN │ CHEF GEN │ CHEF STR │ CHEF SVCE │ SEC
+    ────────────────────┼───────┼──────────┼──────────┼───────────┼─────
+    Voir existence      │  OUI  │   OUI    │  OUI(*)  │   OUI(*)  │ OUI(*)
+    Voir détail         │  OUI  │   OUI    │  OUI(*)  │   OUI(*)  │ OUI(*)
+    (+ vérif confid.)   │       │          │          │           │
+    Créer courrier      │  OUI  │   OUI    │   OUI    │   OUI     │ OUI
+    Créer courrier entr.│  OUI  │   OUI    │   NON    │   NON     │ NON
+    Valider             │  OUI  │   OUI    │   OUI    │   OUI     │ NON
+    Transmettre         │  OUI  │   OUI    │   OUI    │   OUI     │ OUI
+    Archiver            │  OUI  │   NON    │   NON    │   NON     │ OUI(*)
+    Supprimer           │  OUI  │   NON    │   NON    │   NON     │ NON
+    Modifier            │  OUI  │   NON    │   NON    │   NON     │ NON
+    Répondre            │  OUI  │   NON    │   OUI(*) │   OUI(*)  │ OUI(*)
+
+    (*) = Dans son périmètre (service/structure) ou destinataire direct
+
+
+================================================================================
+8. SÉCURITÉ — GESTION DE LA CONFIDENTIALITÉ
+================================================================================
+
+8.1. Niveaux de confidentialité
+    Table : niveau_confidentialites
+    Colonnes : id, libelle, rang
+
+    Fonctionnement :
+    - Chaque utilisateur a un niveau (niveau_confidentialite_id)
+    - Chaque courrier a un niveau (niveau_confidentialite_id)
+    - La comparaison se fait par rang (entier)
+
+8.2. Règle de confidentialité
+    méthode niveauEstAutorisePour($user) dans Courrier.php (ligne 616) :
+        return $user->getRangNiveauConfidentialite() >= $this->getRangNiveauConfidentialite();
+
+    → Un utilisateur ne peut consulter un courrier que si son niveau
+      de confidentialité est ≥ à celui du courrier.
+
+8.3. Application dans le code
+    - peutEtreConsultePar() vérifie niveauEstAutorisePour() en premier (l.663)
+    - Si niveau insuffisant : retour 404 (ne pas révéler l'existence)
+    - La même règle s'applique aux archives (Archive.php l.148)
+
+8.4. Protection des réponses aux courriers
+    Lors de la création d'une réponse, le niveau de confidentialité
+    est forcé depuis le courrier parent :
+        'niveau_confidentialite_id' => $courrierParent->niveau_confidentialite_id
+
+    → Empêche la création d'une réponse avec un niveau inférieur à
+      celui du courrier original (fuite d'information).
+
+8.5. Vérification dans les messages
+    MessageConfidentialityTest.php (280 lignes) :
+    - Un message référençant un courrier vérifie que le destinataire
+      a bien le droit de voir le courrier référencé
+    - Si le destinataire perd l'accès, les détails du courrier sont
+      masqués dans la liste des messages
+
+
+================================================================================
+9. SÉCURITÉ — PROTECTION DES FICHIERS
+================================================================================
+
+9.1. Stockage
+    Disque : local (storage/app/private/)
+    Chemin : storage/app/private/courriers/
+    Pas de stockage public pour les fichiers sensibles
+
+9.2. Validation des uploads (StoreCourrierRequest.php)
+    Types autorisés : pdf, doc, docx, jpg, jpeg, png, webp
+    MIME types vérifiés :
+      - application/pdf
+      - application/msword
+      - application/vnd.openxmlformats-officedocument.wordprocessingml.document
+      - image/jpeg, image/png, image/webp
+    Taille max : 10 Mo (10240 KB)
+    Nombre max de documents : 5
+
+9.3. Nettoyage des noms de fichiers
+    Dans CourrierController::storeAttachments() (l.896) :
+        $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '', $file->getClientOriginalName());
+
+    Stockage avec préfixe uniqid() pour éviter collisions et énumération
+
+9.4. Téléchargement sécurisé
+    downloadCourrierFile()   → vérifie peutEtreConsultePar($user)
+    downloadAttachment()     → vérifie peutEtreConsultePar($user)
+    Retour 403 si non autorisé, 404 si fichier manquant
+
+9.5. Nettoyage à la suppression
+    Courrier::booted() event 'deleting' (l.91-98) :
+      - Supprime chaque fichier d'attachement du disque
+      - Supprime le fichier principal du courrier
+      - Supprime les enregistrements en base
+
+
+================================================================================
+10. SÉCURITÉ — RATE LIMITING ET PROTECTION ANTI-ABUS
+================================================================================
+
+10.1. Rate limiting au niveau route
+    Appliqué via le middleware throttle dans routes/api.php :
+    - Login :           5 requêtes par minute (prévention force brute)
+    - Données :         60 req/min (navigation normale)
+    - Écritures :       30 req/min (création/modification)
+    - Actions rares :   10 req/min (validation, envoi message)
+    - Gestion users :   10 req/min (création/suppression)
+
+10.2. Rate limiting au niveau application
+    LoginRequest.php ligne 67 : Laravel RateLimiter avec 5 tentatives
+    Clé de throttling : email + adresse IP
+    Lockout : 60 secondes après 5 échecs
+
+10.3. File d'attente pour opérations lourdes
+    OCR : ProcessOcrJob dispatché en queue (pas de blocage du frontend)
+    Driver queue : database (production), sync (test)
+
+
+================================================================================
+11. SÉCURITÉ — PROTECTION CSRF, XSS, INJECTIONS
+================================================================================
+
+11.1. Protection CSRF
+    Sanctum : middleware ValidateCsrfToken dans la config
+    Endpoint /sanctum/csrf-cookie pour初始化 le token
+    Routes API web : CSRF automatique via Laravel
+    Routes API Sanctum : cookie de session + CSRF token header
+
+11.2. Protection XSS
+    Frontend React : échappement automatique (JSX)
+    Inertia.js : échappement par défaut
+    Backend : htmlspecialchars() appliqué sur certains filtres
+    Noms de fichiers : nettoyés par regex (caractères dangereux supprimés)
+    Pas de HTML brut dans les réponses API
+
+11.3. Protection contre les injections SQL
+    ORM Eloquent utilisé partout (requêtes préparées PDO)
+    Recherche full-text MySQL : MATCH AGAINST avec paramètres liés
+    Aucun DB::raw() avec concaténation d'entrées utilisateur
+    whereRaw() utilisé uniquement avec des constantes (ex: '1 = 0')
+
+11.4. Validation des entrées
+    18 classes FormRequest avec validation complète :
+    - StoreCourrierRequest (294 lignes, +20 règles métier personnalisées)
+    - StoreUserRequest, UpdateUserRequest
+    - StoreMessageRequest, UpdateMessageRequest
+    - StoreServiceRequest, UpdateServiceRequest
+    - Auth/LoginRequest
+    - Settings/ProfileUpdateRequest
+
+
+================================================================================
+12. SÉCURITÉ — CONFIGURATION CORS ET HEADERS
+================================================================================
+
+12.1. Configuration CORS (config/cors.php)
+    Origines autorisées :
+      - localhost:5173, 127.0.0.1:5173
+      - localhost:5174, 127.0.0.1:5174
+      - localhost:8000
+      - Configurable via CORS_ALLOWED_ORIGINS env
+    Méthodes : * (toutes)
+    Headers : * (tous)
+    Credentials : true (nécessaire pour cookies Sanctum)
+    Paths : api/*, sanctum/csrf-cookie, broadcasting/auth
+
+12.2. Headers de sécurité manquants
+    NON implémentés (gap identifié) :
+    - Content-Security-Policy (protection XSS par navigation)
+    - Strict-Transport-Security (HSTS, forcer HTTPS)
+    - X-Content-Type-Options (empêcher MIME sniffing)
+    - X-Frame-Options (protection clickjacking)
+    - Referrer-Policy (contrôle des referers)
+    - Permissions-Policy (contrôle des APIs navigateur)
+
+    Recommandation : ajouter un middleware qui définit ces headers
+    sur toutes les réponses.
+
+12.3. Sécurité des sessions
+    http_only : true (JS ne peut pas lire le cookie)
+    same_site : lax (protection CSRF basique)
+    secure : dépend de APP_ENV (true en production)
+    lifetime : 120 minutes
+
+
+================================================================================
+13. TESTS DE SÉCURITÉ ET VALIDATION
+================================================================================
+
+13.1. Tests de sécurité dédiés (SecurityTest.php — 307 lignes, 14 tests)
+
+    ESCALADE DE PRIVILÈGES (6 tests) :
+    ✓ Chef de structure ne peut pas créer un chef général
+    ✓ Chef de structure ne peut pas créer un autre chef de structure
+    ✓ Chef de structure peut créer un secrétaire de service (limite basse)
+    ✓ Chef de service ne peut pas créer hors de son service
+    ✓ Secrétaire simple ne peut pas gérer les utilisateurs
+    ✓ Protection des rangs hiérarchiques
+
+    VISIBILITÉ DES COURRIERS (5 tests) :
+    ✓ Chef structure A ne voit pas les courriers structure B
+    ✓ Chef service ne voit que son service
+    ✓ Chef général voit tous les courriers
+    ✓ Admin voit tous les courriers
+    ✓ Secrétaire ne voit que son service
+
+    CONFIDENTIALITÉ (3 tests) :
+    ✓ Niveau bas ne voit pas courriers niveau supérieur
+    ✓ Détails cachés si niveau insuffisant
+    ✓ Existence masquée (404 au lieu de 403)
+
+    Uploads :
+    ✓ Rejet des fichiers .exe
+    ✓ Rejet des fichiers >10MB
+
+    Actions :
+    ✓ Seul admin peut supprimer
+    ✓ Seul admin peut modifier un courrier validé
+    ✓ Seul chef peut valider
+    ✓ Seul créateur ou admin peut demander validation
+
+13.2. Tests de messagerie (MessageConfidentialityTest — 280 lignes)
+    ✓ Envoi cross-service sans courrier
+    ✓ Auto-envoi interdit
+    ✓ Message avec courrier : vérification visibilité émetteur
+    ✓ Message avec courrier : vérification visibilité destinataire
+    ✓ Message avec courrier : vérification niveau confidentialité
+    ✓ Perte d'accès → détails masqués
+    ✓ Messages envoyés : immutables
+
+13.3. Tests du scénario global (GlobalScenarioTest — 297 lignes)
+    ✓ Cycle de vie complet d'un courrier (création → validation → archivage)
+    ✓ Création courrier entrant par secrétaire → 422 (refusé)
+    ✓ Validation par secrétaire → 403 (refusé)
+    ✓ Escalade de privilèges → 403 (refusé)
+    ✓ Suppression par non-admin → 403
+    ✓ Suppression par admin → 200
+    ✓ Réponse avec notification
+
+13.4. Tests OCR (OcrTest)
+    ✓ Preview endpoints (supporté et non supporté)
+    ! Échec sur "OCR does not block courrier creation on failure"
+
+
+================================================================================
+14. RISQUES RÉSIDUELS ET RECOMMANDATIONS
+================================================================================
+
+14.1. Critique — Fichier .env suivi par Git
+    Le fichier .env contient APP_KEY, DB credentials, et est suivi
+    par git. Correction :
+    - git rm --cached .env && echo ".env" >> .gitignore
+    - Changer APP_KEY et tous les secrets exposés
+
+14.2. Critique — Inscription publique active
+    Routes GET /register et POST /register encore exposées.
+    Tout le monde peut créer un compte secretaire actif.
+    Correction : supprimer ou désactiver les routes register,
+    ou créer les comptes avec actif=false.
+
+14.3. Haute — Route de test exposée
+    /api/test-notification existe dans routes/api.php.
+    Supprimer ou protéger par middleware admin.
+
+14.4. Haute — Headers de sécurité manquants
+    Aucun header de sécurité (CSP, HSTS, X-Frame-Options, etc.)
+    n'est appliqué. Ajouter un middleware dédié.
+
+14.5. Haute — Configuration production
+    APP_DEBUG=true, APP_ENV=local, SESSION_ENCRYPT=false
+    sont dans .env. Doivent être modifiés en production.
+
+14.6. Moyenne — Expiration tokens Sanctum
+    525600 minutes (~1 an) pour les tokens personnels.
+    Réduire à 7-30 jours selon les besoins.
+
+14.7. Moyenne — Journalisation insuffisante
+    Seules les actions sur les utilisateurs sont loggées.
+    Ajouter logging pour : validation, transmission, archivage,
+    suppression de courriers, téléchargements.
+
+14.8. Faible — Codes HTTP incohérents
+    Erreurs de permission : tantôt 403 (forbidden), tantôt 422
+    (validation). Uniformiser en 403 pour toutes les erreurs
+    de permission métier.
+
+14.9. Faible — Commentaire trompeur (corrigé dans ce travail)
+    Ligne 836 de Courrier.php : commentaire disait "Admin et chef
+    général peuvent toujours répondre" mais code ne vérifie que
+    estAdmin(). Corrigé par mise à jour du commentaire.
+
+
+================================================================================
+15. CORRECTIFS APPLIQUÉS DURANT CE TRAVAIL
+================================================================================
+
+15.1. Correction visibilité chef général
+    Fichier : app/Models/Courrier.php, ligne 254
+    Méthode : scopeVisiblePourUser()
+    Changement :
+      AVANT : if ($user->estAdmin()) return $query;
+      APRÈS : if ($user->estAdmin() || $user->estChefGeneral()) return $query;
+
+    Problème : Le chef général ne voyait que les courriers de son
+    propre service (héritage du comportement scope=service). Il ne
+    pouvait pas voir les courriers des autres services, ce qui
+    bloquait la chaîne de validation.
+
+    Test : Un secrétaire dans le service 2 crée un courrier. Le chef
+    général peut le voir (assertStatus(200) au lieu de 404/403).
+
+15.2. Correction recherche floue (Damerau-Levenshtein)
+    Fichier : app/Http/Controllers/CourrierController.php, ligne 1472
+    Méthode : archiveSearchWithFuzzyMatch()
+    Changement :
+      AVANT : levenshtein() (PHP standard)
+      APRÈS : damerauLevenshtein() (algorithme personnalisé)
+
+    Problème : levenshtein() ne prend pas en compte les transpositions
+    de lettres (ex: "minister" → "ministre" = distance 2 au lieu de 1).
+
+    Amélioration : distance max portée de 3 à 5 pour les longues chaînes.
+
+15.3. Correction commentaire trompeur
+    Fichier : app/Models/Courrier.php, ligne 836
+    Changement :
+      AVANT : "// Admin et chef général peuvent toujours répondre"
+      APRÈS : "// Seul l'admin peut toujours répondre (le chef général
+               ne peut pas répondre intentionnellement)"
+
+    Note : Comportement intentionnel (confirmé par le responsable).
+    Le chef général ne doit pas pouvoir répondre aux courriers.
+    Seul le commentaire était incorrect.
+
+15.4. Tests ajoutés
+    Fichier : tests/Feature/GlobalScenarioTest.php (297 lignes)
+    Contenu : 2 tests, 45 assertions
+    Test 1 : "courrier suit le cycle de vie complet" — couvre création,
+      validation, transmission, archivage, réponse avec notification
+    Test 2 : "les permissions sont correctement appliquées" — couvre
+      création entrant refusée, validation refusée, escalade privilèges,
+      suppression, visibilité chef général
+
+    Exécution : ./vendor/bin/pest --filter=GlobalScenarioTest → OK
+
+15.5. Ajout permission création courrier reçu pour secrétaire général
+    Fichier : app/Models/User.php, ligne 152
+    Méthode : peutCreerCourrierRecu()
+    Changement :
+      AVANT : return $this->estChefGeneral();
+      APRÈS : return $this->estChefGeneral() || $this->estSecretaireGeneral();
+
+    Problème : Le secrétaire général ne pouvait pas créer de courrier
+    reçu (entrant). Le bouton "Nouveau" n'apparaissait pas sur la page
+    des courriers reçus.
+
+    Conséquence : Le secrétaire général peut désormais créer des
+    courriers entrants. Comme il n'est ni admin ni chef général, le
+    statut du courrier sera CREE (au lieu de RECU), nécessitant une
+    validation par le chef général.
+
+    Fichier : app/Http/Controllers/CourrierController.php, ligne 272
+    Logique de statut :
+      AVANT (l.272-278) :
+        if (sortant && !chefGeneral && !admin) → CREE
+        elseif (entrant) → RECU
+        else → VALIDE
+
+      APRÈS (l.272-278) :
+        if (!chefGeneral && !admin) → CREE
+        elseif (entrant) → RECU
+        else → VALIDE
+
+    Explication : La condition était spécifique aux courriers sortants.
+    Maintenant elle s'applique à tous les types : si le créateur n'est
+    ni chef général ni admin, le courrier est créé en statut CREE et
+    devra être validé par un chef général.
+
+
+================================================================================
+ANNEXE — SCHÉMA DU PIPELINE COMPLET (CRÉATION COURRIER)
+================================================================================
+
+    FRONTEND                      BACKEND API                   FILE/LARAVEL
+    ────────                      ───────────                   ────────────
+        │                              │                            │
+        │  POST /api/courriers          │                            │
+        │  (multipart: fichier+data)    │                            │
+        │─────────────────────────────►│                            │
+        │                              │ StoreCourrierRequest       │
+        │                              │  - validation type/mime    │
+        │                              │  - validation permissions  │
+        │                              │  - validation métier       │
+        │                              │                            │
+        │                              │ Enregistrement en base     │
+        │                              │ Stockage fichier via       │
+        │                              │   $file->storeAs(...)      │
+        │                              │                            │
+        │                              │ Dispatch ProcessOcrJob     │
+        │                              │ (si pièces jointes)        │
+        │                              │──────────────────────────► │
+        │                              │                            │
+        │  ← 201 + données courrier    │                            │
+        │◄─────────────────────────────│                            │
+        │                              │              ┌─────────────┘
+        │                              │              ▼
+        │                              │    ProcessOcrJob::handle()
+        │                              │    → status='processing'
+        │                              │    → pour chaque att. :
+        │                              │        - smalot/pdfparser
+        │                              │        - ZipArchive(DOCX)
+        │                              │        - Tesseract(image)
+        │                              │    → combine textes
+        │                              │    → generateSummary()
+        │                              │    → update courrier DB
+        │                              │    → status='completed'
+        │                              │
+        │  GET /api/courriers/{id}      │
+        │  → voir extracted_text        │
+        │─────────────────────────────►│
+        │◄─────────────────────────────│
+        │  200 + extracted_text        │
+
+================================================================================
+FIN DU RAPPORT
+================================================================================

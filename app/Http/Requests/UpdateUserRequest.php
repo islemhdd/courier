@@ -33,4 +33,50 @@ class UpdateUserRequest extends FormRequest
             'niveau_confidentialite_id' => ['sometimes', 'nullable', 'integer', 'exists:niveau_confidentialites,id'],
         ];
     }
+
+    public function withValidator($validator): void
+    {
+        $target = $this->route('user');
+
+        $validator->after(function ($validator) use ($target) {
+            $data = $validator->getData();
+
+            $role = $data['role'] ?? $target?->role;
+            $scope = $data['role_scope'] ?? $target?->role_scope;
+
+            if ($role === User::ROLE_CHEF && $scope === User::SCOPE_STRUCTURE) {
+                $structureId = $data['structure_id'] ?? $target?->structure_id;
+
+                if (!empty($structureId)) {
+                    $exists = User::query()
+                        ->where('role', User::ROLE_CHEF)
+                        ->where('role_scope', User::SCOPE_STRUCTURE)
+                        ->where('structure_id', $structureId)
+                        ->when($target, fn($q) => $q->whereKeyNot($target->id))
+                        ->exists();
+
+                    if ($exists) {
+                        $validator->errors()->add('structure_id', 'Un chef est déjà attribué à cette structure.');
+                    }
+                }
+            }
+
+            if ($role === User::ROLE_CHEF && $scope === User::SCOPE_SERVICE) {
+                $serviceId = $data['service_id'] ?? $target?->service_id;
+
+                if (!empty($serviceId)) {
+                    $exists = User::query()
+                        ->where('role', User::ROLE_CHEF)
+                        ->where('role_scope', User::SCOPE_SERVICE)
+                        ->where('service_id', $serviceId)
+                        ->when($target, fn($q) => $q->whereKeyNot($target->id))
+                        ->exists();
+
+                    if ($exists) {
+                        $validator->errors()->add('service_id', 'Un chef est déjà attribué à ce service.');
+                    }
+                }
+            }
+        });
+    }
 }

@@ -52,7 +52,7 @@ class ServiceController extends Controller
         $service->loadCount('users')->load('structure');
 
         return response()->json([
-            'message' => 'Service cree avec succes.',
+            'message' => 'Service créé avec succès.',
             'service' => $this->serializeService($service, $request->user()),
         ], 201);
     }
@@ -63,7 +63,7 @@ class ServiceController extends Controller
         $service->loadCount('users')->load('structure');
 
         return response()->json([
-            'message' => 'Service modifie avec succes.',
+            'message' => 'Service modifié avec succès.',
             'service' => $this->serializeService($service, $request->user()),
         ]);
     }
@@ -82,7 +82,7 @@ class ServiceController extends Controller
 
         $service->delete();
 
-        return response()->json(['message' => 'Service supprime avec succes.']);
+        return response()->json(['message' => 'Service supprimé avec succès.']);
     }
 
     private function serializeService(Service $service, $actor): array

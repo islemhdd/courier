@@ -1,0 +1,47 @@
+FONCTIONNEMENT DE L'OCR (TESSERACT) DANS LE PROJET
+==============================================
+
+Ce projet intègre un système d'OCR (Reconnaissance Optique de Caractères) pour extraire le texte des pièces jointes des courriers (PDF, images, documents Word) et générer automatiquement des résumés.
+
+1. ARCHITECTURE TECHNIQUE
+-------------------------
+Le système repose sur deux composants principaux :
+- OcrService (app/Services/OcrService.php) : Contient toute la logique d'extraction, de détection de langue et de génération de résumé.
+- ProcessOcrJob (app/Jobs/ProcessOcrJob.php) : Une tâche asynchrone qui gère le traitement en arrière-plan pour ne pas ralentir l'interface utilisateur.
+
+2. FLUX DE TRAITEMENT
+---------------------
+1. Déclenchement : Lorsqu'un courrier est créé ou qu'une pièce jointe est ajoutée, le job `ProcessOcrJob` est mis en file d'attente (dispatch).
+2. Analyse du fichier : Pour chaque pièce jointe, l'OCR Service détermine la méthode d'extraction :
+   - PDF avec texte : Utilise `smalot/pdfparser` pour extraire directement le texte (rapide et précis).
+   - PDF sans texte (scanné) : Convertit d'abord les pages du PDF en images (via Ghostscript ou Imagick), puis applique Tesseract.
+   - Images (JPG, PNG, WEBP) : Applique directement Tesseract.
+   - Word (DOCX) : Extrait le texte du XML interne, sinon utilise l'OCR.
+
+3. UTILISATION DE TESSERACT
+---------------------------
+Tesseract est utilisé via des commandes système (`exec`).
+- Langues supportées : Arabe (ara), Français (fra), Anglais (eng).
+- Commande : `tesseract [image] [output] -l ara+fra+eng --psm 3`
+- Détection de Tesseract : Le service cherche automatiquement l'exécutable sur le système (chemins standards Windows et Linux comme `/usr/bin/tesseract` ou `C:\Program Files\Tesseract-OCR\tesseract.exe`).
+
+4. TRAITEMENT DES RÉSULTATS
+---------------------------
+- Stockage : Le texte extrait est sauvegardé dans la table `courrier_attachments` pour chaque fichier, et concaténé dans la table `courriers` (champ `extracted_text`).
+- Statut : Le suivi se fait via le champ `ocr_status` (pending, processing, completed, failed).
+- Résumé Automatique : Une fois le texte extrait, l'algorithme `generateSummary` analyse le contenu :
+  - Il nettoie le texte et le découpe en phrases.
+  - Il score chaque phrase selon des mots-clés d'action (ex: "sollicite", "approuve", "décision").
+  - Il sélectionne les phrases les plus pertinentes pour remplir le champ `resume` du courrier.
+
+5. PRÉREQUIS SYSTÈME
+--------------------
+Pour que l'OCR fonctionne pleinement, le serveur doit avoir :
+1. Tesseract OCR installé avec les paquets de langues (tesseract-ocr-ara, tesseract-ocr-fra).
+2. Ghostscript (`gs`) pour la conversion des PDF scannés en images.
+3. Extension PHP Imagick (optionnel mais recommandé pour de meilleures performances de conversion).
+
+6. POINTS DE VIGILANCE
+----------------------
+- Performance : L'OCR est une opération lourde en CPU. C'est pourquoi elle est exécutée de manière asynchrone via les files d'attente (Queues).
+- Confidentialité : Le texte extrait est soumis aux mêmes règles de confidentialité que le courrier original.

@@ -9,3 +9,5 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 Schedule::command('courriers:archiver-valides')->monthlyOn(1, '01:00');
+
+Schedule::command('courriers:deadline-rappels --include-overdue')->dailyAt('06:00');

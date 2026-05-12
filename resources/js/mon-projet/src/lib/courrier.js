@@ -1,11 +1,11 @@
 export const COURRIER_STATUS = {
-  CREE: 'Cree',
+  CREE: 'Créé',
   NON_VALIDE: 'Non valide',
-  VALIDE: 'Valide',
+  VALIDE: 'Validé',
   TRANSMIS: 'Transmis',
-  RECU: 'Recu',
-  ARCHIVE: 'Archive',
-  ARCHIVED: 'Archive',
+  RECU: 'Reçu',
+  ARCHIVE: 'Archivé',
+  ARCHIVED: 'Archivé',
 }
 
 export function normalizeStatus(statut) {

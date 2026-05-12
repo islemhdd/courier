@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   MessageSquare,
   Plus,
@@ -30,6 +31,7 @@ const USERS_LOOKUP_CACHE_KEY = buildPageCacheKey('message-users', { q: '' })
 const USERS_LOOKUP_CACHE_TTL = 60 * 1000
 
 export default function Messages() {
+  const [searchParams] = useSearchParams()
   const [messages, setMessages] = useState([])
   const [selectedMessage, setSelectedMessage] = useState(null)
   const [pagination, setPagination] = useState(null)
@@ -42,13 +44,16 @@ export default function Messages() {
   const [composerError, setComposerError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const pendingMessageId = searchParams.get('messageId')
+
+  const selectedMsgIdRef = useRef(null)
 
   const applyMessages = useCallback((items, preferredId = null) => {
     setMessages(items)
-    setSelectedMessage((current) => {
-      const nextId = preferredId ?? current?.id
-      return items.find((item) => item.id === nextId) || items[0] || null
-    })
+    const nextId = preferredId ?? selectedMsgIdRef.current
+    const next = items.find((item) => item.id === nextId) || null
+    selectedMsgIdRef.current = next?.id || null
+    setSelectedMessage(next)
   }, [])
 
   const loadUnreadCount = useCallback(async ({ preferCache = false, revalidate = false } = {}) => {
@@ -90,9 +95,9 @@ export default function Messages() {
         const res = await messageApi.getAll(query)
         const items = res.data.messages.data
         const nextSelectedId =
-          selectedMessage?.id && items.some((item) => item.id === selectedMessage.id)
-            ? selectedMessage.id
-            : items[0]?.id || null
+          selectedMsgIdRef.current && items.some((item) => item.id === selectedMsgIdRef.current)
+            ? selectedMsgIdRef.current
+            : null
         applyMessages(items, nextSelectedId)
         setPagination(res.data.messages)
         setPageCache(cacheKey, { messages: items, selectedId: nextSelectedId, pagination: res.data.messages }, MESSAGES_CACHE_TTL)
@@ -102,13 +107,35 @@ export default function Messages() {
         setLoading(false)
       }
     },
-    [applyMessages, mailbox, search, selectedMessage?.id],
+    [applyMessages, mailbox, search],
   )
 
   useEffect(() => {
     loadMessages({}, { preferCache: true, revalidate: true })
     loadUnreadCount({ preferCache: true, revalidate: true })
   }, [loadMessages, loadUnreadCount])
+
+  const pendingMessageHandled = useRef(false)
+
+  useEffect(() => {
+    if (!pendingMessageId || pendingMessageHandled.current) return
+    if (messages.length > 0) {
+      pendingMessageHandled.current = true
+      const msg = messages.find((m) => String(m.id) === String(pendingMessageId))
+      if (msg) {
+        handleOpenMessage(msg)
+        return
+      }
+    }
+    messageApi.getOne(pendingMessageId).then((res) => {
+      if (res.data?.message) {
+        pendingMessageHandled.current = true
+        setSelectedMessage(res.data.message)
+        if (res.data.message.destinataire_id) setMailbox('recu')
+        else if (res.data.message.emetteur_id) setMailbox('envoye')
+      }
+    }).catch(() => {})
+  }, [pendingMessageId, messages])
 
   const handleOpenMessage = async (message) => {
     try {
@@ -183,8 +210,8 @@ export default function Messages() {
           </button>
           <div className="flex items-center gap-1 ml-auto bg-slate-100 p-1 rounded-xl">
             {[
-              { key: 'recu', label: 'Boite', icon: Inbox },
-              { key: 'envoye', label: 'Envoyes', icon: SendHorizonal },
+              { key: 'recu', label: 'Boîte', icon: Inbox },
+              { key: 'envoye', label: 'Envoyés', icon: SendHorizonal },
               { key: 'brouillon', label: 'Brouillons', icon: FileEdit },
             ].map(({ key, label, icon: TabIcon }) => (
               <button
@@ -235,9 +262,9 @@ export default function Messages() {
                 <p className="text-sm font-semibold text-slate-400">Aucun message</p>
                 <p className="text-xs text-slate-300 mt-1">
                   {mailbox === 'recu'
-                    ? "Vous n'avez recu aucun message."
+                    ? "Vous n'avez reçu aucun message."
                     : mailbox === 'envoye'
-                      ? "Vous n'avez envoye aucun message."
+                      ? "Vous n'avez envoyé aucun message."
                       : "Vous n'avez aucun brouillon."}
                 </p>
               </div>
@@ -312,7 +339,7 @@ export default function Messages() {
               <div className="flex flex-col h-full">
                 <div className="p-5 border-b border-slate-100">
                   <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Details</h3>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Détails</h3>
                     <span className="text-[10px] text-slate-400">
                       {new Date(selectedMessage.date_envoi).toLocaleString('fr-FR', {
                         day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -348,7 +375,7 @@ export default function Messages() {
                           <div className="flex items-start gap-2 text-amber-700">
                             <EyeOff size={14} className="shrink-0 mt-0.5" />
                             <div>
-                              <p className="font-semibold">Acces restreint</p>
+                              <p className="font-semibold">Accès restreint</p>
                               <p className="text-[11px] opacity-80 mt-0.5">Vous ne pouvez pas voir ce courrier.</p>
                             </div>
                           </div>
@@ -389,7 +416,7 @@ export default function Messages() {
                 <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50 flex items-center justify-center text-slate-300 mb-4 border border-slate-100">
                   <MessageSquare size={28} />
                 </div>
-                <p className="text-sm font-semibold text-slate-500">Aucun message selectionne</p>
+                <p className="text-sm font-semibold text-slate-500">Aucun message sélectionné</p>
                 <p className="text-xs text-slate-400 mt-1 max-w-[200px]">
                   Cliquez sur un message dans la liste ou composez-en un nouveau.
                 </p>
@@ -518,7 +545,7 @@ function ComposerModal({ editingMessage, onClose, onSuccess }) {
     event.preventDefault()
     setError('')
     if (!form.destinataire_id) {
-      setError('Veuillez selectionner un destinataire.')
+      setError('Veuillez sélectionner un destinataire.')
       return
     }
     setSubmitting(true)
@@ -612,7 +639,7 @@ function ComposerModal({ editingMessage, onClose, onSuccess }) {
               {showUserDropdown && !selectedUser && (
                 <div className="absolute z-20 top-full mt-1.5 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
                   {users.length === 0 && !usersLoading && (
-                    <p className="p-3 text-xs text-slate-400 text-center">Aucun utilisateur trouve.</p>
+                    <p className="p-3 text-xs text-slate-400 text-center">Aucun utilisateur trouvé.</p>
                   )}
                   {users.map((user) => (
                     <button
@@ -641,7 +668,7 @@ function ComposerModal({ editingMessage, onClose, onSuccess }) {
 
           <div className="space-y-1.5" ref={courrierSearchRef}>
             <label className="text-xs font-semibold text-slate-500">
-              Courrier reference <span className="font-normal text-slate-300">(optionnel)</span>
+              Courrier référencé <span className="font-normal text-slate-300">(optionnel)</span>
             </label>
             <div className="relative">
               <input
@@ -709,7 +736,7 @@ function ComposerModal({ editingMessage, onClose, onSuccess }) {
               value={form.contenu}
               onChange={(event) => setForm({ ...form, contenu: event.target.value })}
               className="w-full p-4 border-0 bg-slate-50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 transition resize-none placeholder:text-slate-400"
-              placeholder="Redigez votre message..."
+              placeholder="Rédigez votre message..."
             />
           </div>
 

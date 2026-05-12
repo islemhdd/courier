@@ -16,20 +16,39 @@ class CourrierReponduNotification extends Notification implements ShouldBroadcas
 
     public function via($notifiable): array
     {
-        return ['broadcast'];
+        return ['broadcast', 'database'];
     }
 
     public function toBroadcast($notifiable): BroadcastMessage
     {
-        return new BroadcastMessage([
+        $canView = $notifiable->peutVoirCourrier($this->courrier);
+
+        $data = [
             'type' => 'courrier_repondu',
             'titre' => 'Courrier répondu',
-            'message' => 'Une réponse a été ajoutée au courrier ' . $this->courrier->parent->numero . '.',
-            'parent_numero' => $this->courrier->parent->numero,
-            'parent_id' => $this->courrier->parent->id,
-            'reply_numero' => $this->courrier->numero,
-            'reply_id' => $this->courrier->id,
-            'expediteur' => $this->courrier->createur->nom_complet,
-        ]);
+            'message' => 'Une réponse a été ajoutée à un courrier.',
+        ];
+
+        if ($canView) {
+            $data['message'] = 'Une réponse a été ajoutée au courrier ' . ($this->courrier->parent->numero ?? 'N/A') . '.';
+            $data['reply_id'] = $this->courrier->id;
+        }
+
+        return new BroadcastMessage($data);
+    }
+
+    public function toArray($notifiable): array
+    {
+        $canView = $notifiable->peutVoirCourrier($this->courrier);
+
+        return [
+            'type' => 'courrier_repondu',
+            'titre' => 'Courrier répondu',
+            'message' => $canView
+                ? 'Une réponse a été ajoutée au courrier ' . ($this->courrier->parent->numero ?? 'N/A') . '.'
+                : 'Une réponse a été ajoutée à un courrier.',
+            'reply_id' => $canView ? $this->courrier->id : null,
+            'parent_id' => $this->courrier->parent_courrier_id,
+        ];
     }
 }

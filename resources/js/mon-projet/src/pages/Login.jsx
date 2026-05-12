@@ -68,7 +68,7 @@ export default function Login() {
                   Gestion Courrier
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Plateforme documentaire securisee
+                  Plateforme documentaire sécurisée
                 </p>
               </div>
             </div>
@@ -91,13 +91,13 @@ export default function Login() {
               <div className="mt-10 grid gap-4 md:grid-cols-3">
                 <FeatureCard
                   icon={<ShieldCheck size={18} />}
-                  title="Acces securise"
-                  text="Confidentialite, roles et controles backend."
+                  title="Accès sécurisé"
+                  text="Confidentialité, rôles et contrôles backend."
                   tone="teal"
                 />
                 <FeatureCard
                   icon={<CheckCircle2 size={18} />}
-                  title="Circuit maitrise"
+                  title="Circuit maîtrisé"
                   text="Validation, transmission, reception et archivage."
                   tone="amber"
                 />
@@ -127,7 +127,7 @@ export default function Login() {
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#0f766e]">
                     Gestion Courrier
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">Connexion securisee</p>
+                  <p className="mt-1 text-sm text-slate-500">Connexion sécurisée</p>
                 </div>
               </div>
 

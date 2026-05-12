@@ -1,0 +1,1236 @@
+================================================================================
+    EXPLICATION TECHNIQUE & CODE — FONCTIONNEMENT DE L'OCR
+    Application : Gestion Courrier (courier)
+================================================================================
+
+Ce fichier explique le module OCR à deux niveaux :
+- NIVEAU TECHNIQUE : comment ça marche dans son ensemble
+- NIVEAU CODE : extraits de code commentés pour chaque étape
+
+
+================================================================================
+1. ARCHITECTURE DU MODULE OCR
+================================================================================
+
+TECHNIQUE :
+-----------
+Le module OCR est divisé en 3 composants qui communiquent en chaîne :
+
+    Contrôleur HTTP  (OcrController)
+         ↓
+    Job asynchrone   (ProcessOcrJob) — file d'attente
+         ↓
+    Service métier   (OcrService) — le moteur OCR
+
+Le Contrôleur reçoit les requêtes HTTP et les traduit en appels.
+Le Job tourne en arrière-plan pour ne pas bloquer l'utilisateur.
+Le Service contient toute la logique d'extraction de texte.
+
+CODE :
+------
+Les 3 fichiers principaux :
+
+    app/Http/Controllers/Api/OcrController.php      (116 lignes)
+    app/Jobs/ProcessOcrJob.php                       (127 lignes)
+    app/Services/OcrService.php                      (826 lignes)
+
+
+================================================================================
+2. DÉCLENCHEMENT DE L'OCR
+================================================================================
+
+TECHNIQUE :
+-----------
+L'OCR est déclenché automatiquement après la création ou la modification
+d'un courrier qui contient des pièces jointes. Il peut aussi être
+déclenché manuellement (rerun) ou en prévisualisation (preview).
+
+A. DÉCLENCHEMENT AUTOMATIQUE (création de courrier)
+
+CODE (CourrierController.php, lignes 315-317) :
+    public function store(StoreCourrierRequest $request): JsonResponse
+    {
+        // ... création du courrier ...
+
+        // Après création : si le courrier a des pièces jointes,
+        // on lance l'OCR en arrière-plan
+        if ($courrier->attachments()->exists()) {
+            ProcessOcrJob::dispatch($courrier);
+        }
+
+        return response()->json([...], 201);
+    }
+
+    // Note : dispatch() met le job dans la file d'attente (queue).
+    // Le job sera exécuté dès qu'un worker sera disponible.
+    // En développement : QUEUE_CONNECTION=sync (exécution synchrone)
+    // En production : QUEUE_CONNECTION=database ou redis
+
+B. DÉCLENCHEMENT AUTOMATIQUE (modification de courrier)
+
+CODE (CourrierController.php, lignes 392-394) :
+    public function update(UpdateCourrierRequest $request, Courrier $courrier): JsonResponse
+    {
+        // ... modification du courrier ...
+
+        // Si de nouveaux fichiers ont été uploadés pendant l'édition
+        if ($request->hasFile('documents') || $request->hasFile('fichier')) {
+            ProcessOcrJob::dispatch($courrier->fresh());
+            // fresh() = recharger depuis la DB pour avoir les dernières données
+        }
+
+        return response()->json([...]);
+    }
+
+C. RELANCE MANUELLE (rerun)
+
+CODE (OcrController.php, lignes 90-113) :
+    public function rerun(Courrier $courrier, Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // VÉRIFICATION DE SÉCURITÉ : seul le chef/admin peut rerun
+        // car il faut voir le courrier en détail
+        if (!$courrier->peutEtreVuEnDetailPar($user)) {
+            return response()->json(['error' => 'Accès refusé.'], 403);
+        }
+
+        // On réinitialise TOUS les statuts OCR à "pending"
+        // updateQuietly() évite de déclencher les événements du modèle
+        // (pour ne pas boucler sur des observers)
+
+        $courrier->attachments()->each(function ($attachment) {
+            $attachment->updateQuietly([
+                'ocr_status' => 'pending',
+                'ocr_text' => null,
+                'ocr_language' => null,
+                'ocr_confidence' => null,
+                'ocr_error' => null,
+                'ocr_processed_at' => null,
+            ]);
+        });
+
+        $courrier->updateQuietly([
+            'ocr_status' => 'pending',
+            'extracted_text' => null,
+            'summary_source' => 'manual',
+        ]);
+
+        // Relance le job
+        ProcessOcrJob::dispatch($courrier);
+
+        return response()->json(['message' => 'OCR relancé.']);
+    }
+
+D. PRÉVISUALISATION SYNCHRONE (preview)
+
+CODE (OcrController.php, lignes 27-72) :
+    public function preview(Request $request): JsonResponse
+    {
+        // Validation du fichier uploadé
+        $request->validate([
+            'file' => [
+                'required',
+                'file',
+                'mimes:pdf,doc,docx,jpg,jpeg,png,webp',
+                'max:10240',  // 10 Mo max
+            ],
+        ]);
+
+        $file = $request->file('file');
+
+        try {
+            // Appel SYNCHRONE au service (pas de job, résultat immédiat)
+            $result = app(OcrService::class)->extractText($file);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'error' => $result['error'],
+                ], 422);
+            }
+
+            // Génération du résumé à partir du texte extrait
+            $summary = app(OcrService::class)->generateSummary(
+                $result['text'],
+                $request->input('objet', '')
+            );
+
+            return response()->json([
+                'success' => true,
+                'text' => $result['text'],
+                'summary' => $summary,
+                'language' => $result['language'] ?? 'fra',
+                'confidence' => $result['confidence'] ?? null,
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Erreur OCR : ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+================================================================================
+3. LE JOB ASYNCHRONE  (ProcessOcrJob)
+================================================================================
+
+TECHNIQUE :
+-----------
+Le job ProcessOcrJob implémente l'interface ShouldQueue de Laravel.
+Il est exécuté par un worker de file d'attente. Son rôle est de :
+
+1. Mettre le statut du courrier à "processing"
+2. Pour chaque pièce jointe, appeler OcrService::processAttachment()
+3. Stocker les résultats dans la base de données
+4. Combiner tous les textes extraits
+5. Générer un résumé automatique
+6. Mettre à jour le statut final
+
+CODE (ProcessOcrJob.php) :
+    class ProcessOcrJob implements ShouldQueue
+    {
+        use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+        public $courrier;  // Modèle Courrier (sérialisé automatiquement)
+        public $timeout = 300;  // 5 minutes max par job
+
+        public function __construct(Courrier $courrier)
+        {
+            $this->courrier = $courrier;
+        }
+
+        public function handle(): void
+        {
+            // ÉTAPE 1 : Marquer le début du traitement
+            $this->courrier->update(['ocr_status' => 'processing']);
+
+            $ocrService = app(OcrService::class);
+            $attachmentTexts = [];
+            $allFailed = true;
+
+            // ÉTAPE 2 : Parcourir toutes les pièces jointes
+            foreach ($this->courrier->attachments as $attachment) {
+                try {
+                    // Appel au service OCR
+                    $result = $ocrService->processAttachment($attachment->chemin_fichier);
+                    // Note : chemin_fichier est le stockage (ex: storage/app/public/...)
+
+                    if ($result['success']) {
+                        // Succès → on stocke le texte extrait dans la BDD
+                        $attachment->update([
+                            'ocr_text' => $result['text'],
+                            'ocr_language' => $result['language'],
+                            'ocr_status' => 'completed',
+                            'ocr_confidence' => $result['confidence'],
+                            'ocr_error' => null,
+                            'ocr_processed_at' => now(),
+                        ]);
+                        $attachmentTexts[] = $result['text'];
+                        $allFailed = false;
+                    } else {
+                        // Échec → on stocke l'erreur
+                        $attachment->update([
+                            'ocr_status' => 'failed',
+                            'ocr_error' => $result['error'],
+                            'ocr_processed_at' => now(),
+                        ]);
+                    }
+                } catch (\Throwable $e) {
+                    // Exception inattendue → on stocke l'erreur
+                    $attachment->update([
+                        'ocr_status' => 'failed',
+                        'ocr_error' => $e->getMessage(),
+                        'ocr_processed_at' => now(),
+                    ]);
+                }
+            }
+
+            // ÉTAPE 3 : Combiner et finaliser
+            if (!$allFailed) {
+                // Au moins une pièce jointe a réussi
+                $combinedText = $ocrService->combineAttachmentTexts($attachmentTexts);
+                $summary = $ocrService->generateSummary($combinedText, $this->courrier->objet);
+
+                $this->courrier->update([
+                    'extracted_text' => $combinedText,
+                    'ocr_status' => 'completed',
+                    'summary_source' => 'auto_generated',
+                    'resume' => $summary,
+                ]);
+            } else {
+                // Toutes les pièces jointes ont échoué
+                $this->courrier->update([
+                    'extracted_text' => null,
+                    'ocr_status' => 'failed',
+                ]);
+            }
+        }
+    }
+
+
+================================================================================
+4. LE SERVICE OCR  —  extractText()  (point d'entrée)
+================================================================================
+
+TECHNIQUE :
+-----------
+extractText() est la méthode principale. Elle reçoit un fichier
+(UploadedFile PHP ou chemin string) et route vers la bonne méthode
+d'extraction selon l'extension.
+
+CODE (OcrService.php, lignes 16-58) :
+    public function extractText(UploadedFile|string $file): array
+    {
+        // Déterminer le chemin réel et l'extension
+        $path = $file instanceof UploadedFile
+            ? $file->getRealPath()       // Fichier uploadé → chemin temporaire
+            : $file;                     // Déjà un chemin
+
+        $extension = $file instanceof UploadedFile
+            ? strtolower($file->getClientOriginalExtension())
+            : strtolower(pathinfo($file, PATHINFO_EXTENSION));
+
+        // Vérifier si le type de fichier est supporté
+        if (!$this->isSupported($extension)) {
+            return [
+                'success' => false,
+                'text' => '',
+                'error' => 'Type non supporté : ' . $extension,
+            ];
+        }
+
+        try {
+            // Routage selon le type de fichier
+            if (in_array($extension, self::SUPPORTED_DOC_TYPES)) {
+                // PDF, DOC, DOCX
+                return $this->extractFromDocument($path, $extension);
+            }
+
+            if (in_array($extension, self::SUPPORTED_IMAGE_TYPES)) {
+                // JPG, JPEG, PNG, WEBP
+                return $this->extractFromImage($path);
+            }
+        } catch (\Throwable $e) {
+            // Capture toutes les exceptions pour ne jamais planter
+            Log::error('OCR extraction failed', [
+                'file' => $path,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'text' => '',
+                'error' => 'Erreur : ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    public function isSupported(string $extension): bool
+    {
+        return in_array(
+            strtolower($extension),
+            array_merge(self::SUPPORTED_IMAGE_TYPES, self::SUPPORTED_DOC_TYPES)
+        );
+    }
+
+    // Constantes de support
+    private const SUPPORTED_IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'webp'];
+    private const SUPPORTED_DOC_TYPES = ['pdf', 'doc', 'docx'];
+
+
+================================================================================
+5. EXTRACTION PDF  —  extractFromPdf()
+================================================================================
+
+TECHNIQUE :
+-----------
+La stratégie est "2 niveaux" :
+1. D'abord, essayer l'extraction native via smalot/pdfparser
+   (récupère le texte intégré dans le PDF)
+2. Si le texte est trop court (< 50 caractères), c'est que le PDF
+   est un scan → utiliser Tesseract OCR sur les images du PDF
+
+CODE (OcrService.php, lignes 399-427) :
+    private function extractFromPdf(string $path): array
+    {
+        try {
+            // NIVEAU 1 : Extraction native avec smalot/pdfparser
+            if (!class_exists(PdfParser::class)) {
+                // Vérification que le package est installé
+                throw new \RuntimeException(
+                    'smalot/pdfparser n\'est pas installé'
+                );
+            }
+
+            $parser = new PdfParser();
+            $pdf = $parser->parseFile($path);
+            $text = $pdf->getText();   // Extraction native
+            $text = $this->cleanText($text);
+
+            // Si le texte fait plus de 50 caractères, c'est bon
+            if (strlen(trim($text)) > 50) {
+                $language = $this->detectLanguage($text);
+
+                return [
+                    'success' => true,
+                    'text' => $text,
+                    'language' => $language,
+                    'confidence' => 100.00,
+                    'error' => null,
+                ];
+            }
+
+            // Texte trop court → PDF scanné, on passe par Tesseract
+            return $this->ocrImage($path);
+
+        } catch (\Throwable $e) {
+            // Si le parser natif échoue, fallback Tesseract
+            return $this->ocrImage($path);
+        }
+    }
+
+    // Smalot PdfParser extrait le texte du PDF via une bibliothèque PHP
+    // qui décode les objets PDF, les polices et le texte intégré.
+    // Ceci fonctionne pour les PDF "numériques" (créés par Word,
+    // LaTeX, etc.) mais pas pour les PDF scannés.
+
+
+================================================================================
+6. EXTRACTION DOCX  —  extractFromDoc()
+================================================================================
+
+TECHNIQUE :
+-----------
+Un fichier DOCX est en réalité une archive ZIP contenant du XML.
+La méthode :
+1. Ouvre l'archive ZIP
+2. Lit le fichier word/document.xml
+3. Parcourt les balises XML <w:t> qui contiennent le texte
+4. Concatène tout
+
+CODE (OcrService.php, lignes 429-478) :
+    private function extractFromDoc(string $path): array
+    {
+        try {
+            $text = '';
+            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+            if ($extension === 'docx') {
+                // DOCX = archive ZIP
+                $zip = new \ZipArchive();
+
+                if ($zip->open($path) === true) {
+                    // Le contenu textuel est dans word/document.xml
+                    $content = $zip->getFromName('word/document.xml');
+                    $zip->close();
+
+                    if ($content !== false) {
+                        // Parser le XML
+                        $xml = simplexml_load_string($content);
+
+                        if ($xml !== false) {
+                            // Les espaces de noms Word (http://schemas.openxmlformats.org/...)
+                            $namespaces = $xml->getNamespaces(true);
+
+                            // Naviguer jusqu'au body > paragraphes > runs > textes
+                            $body = $xml->xpath('//w:body');
+
+                            if ($body && !empty($body)) {
+                                $textParts = [];
+                                // <w:t> = balise de texte Word
+                                foreach ($body[0]->xpath('.//w:t') as $t) {
+                                    $textParts[] = (string)$t;
+                                }
+                                $text = implode(' ', $textParts);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Si texte trop court → fallback Tesseract
+            if (strlen(trim($text)) < 20) {
+                return $this->ocrImage($path);
+            }
+
+            $text = $this->cleanText($text);
+            $language = $this->detectLanguage($text);
+
+            return [
+                'success' => true,
+                'text' => $text,
+                'language' => $language,
+                'confidence' => 100.00,
+                'error' => null,
+            ];
+
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'text' => '',
+                'error' => 'Impossible de lire le Word : ' . $e->getMessage(),
+            ];
+        }
+    }
+
+
+================================================================================
+7. OCR VIA TESSERACT  —  ocrImage(), runTesseract()
+================================================================================
+
+TECHNIQUE :
+-----------
+Tesseract est un moteur OCR open source (Google). La méthode :
+1. Cherche l'exécutable Tesseract sur le système
+2. Si le fichier est un PDF, le convertit en images PNG
+3. Pour chaque image, appelle Tesseract en ligne de commande
+4. Récupère le fichier .txt généré par Tesseract
+5. Calcule la confiance et détecte la langue
+6. Nettoie les fichiers temporaires
+
+CODE (OcrService.php, lignes 485-558) :
+    private function ocrImage(string $path): array
+    {
+        // 1. Trouver Tesseract sur le système
+        $tesseractPath = $this->findTesseract();
+
+        if ($tesseractPath === null) {
+            return [
+                'success' => false,
+                'text' => '',
+                'error' => 'Tesseract OCR n\'est pas installé. '
+                    . 'Installez depuis : https://github.com/tesseract-ocr/tesseract'
+                    . 'Paquets : tesseract-ocr, tesseract-ocr-ara, '
+                    . 'tesseract-ocr-fra, tesseract-ocr-eng',
+            ];
+        }
+
+        // 2. Si c'est un PDF, le convertir en images
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        if ($extension === 'pdf') {
+            $imagePaths = $this->convertPdfToImages($path);
+
+            if (empty($imagePaths)) {
+                return [
+                    'success' => false,
+                    'text' => '',
+                    'error' => 'Impossible de convertir le PDF en images. '
+                        . 'Installez Ghostscript ou Imagick.',
+                ];
+            }
+        } else {
+            $imagePaths = [$path];  // Déjà une image
+        }
+
+        // 3. Lancer Tesseract sur chaque image
+        $allText = '';
+        $totalConfidence = 0;
+        $imageCount = 0;
+
+        foreach ($imagePaths as $imagePath) {
+            $result = $this->runTesseract($tesseractPath, $imagePath);
+
+            if ($result !== null) {
+                $allText .= $result['text'] . "\n\n";
+                $totalConfidence += $result['confidence'];
+                $imageCount++;
+            }
+
+            // Nettoyage : supprimer les fichiers temporaires
+            if ($imagePath !== $path && file_exists($imagePath)) {
+                @unlink($imagePath);
+            }
+        }
+
+        $allText = $this->cleanText($allText);
+
+        if (empty(trim($allText))) {
+            return [
+                'success' => false,
+                'text' => '',
+                'error' => 'L\'OCR n\'a pas pu extraire de texte.',
+            ];
+        }
+
+        // 4. Post-traitement
+        $language = $this->detectLanguage($allText);
+        $avgConfidence = $imageCount > 0
+            ? round($totalConfidence / $imageCount, 2)
+            : null;
+
+        return [
+            'success' => true,
+            'text' => $allText,
+            'language' => $language,
+            'confidence' => min($avgConfidence, 100.00),
+            'error' => null,
+        ];
+    }
+
+    // Exécution de Tesseract en ligne de commande
+    private function runTesseract(string $tesseractPath, string $imagePath): ?array
+    {
+        $escapedImage = escapeshellarg($imagePath);
+
+        // Langues : arabe + français + anglais simultanément
+        $lang = self::OCR_LANGUAGES;  // 'ara+fra+eng'
+
+        // Répertoire de sortie unique (pour éviter les collisions)
+        $outputDir = dirname($imagePath) . DIRECTORY_SEPARATOR . 'ocr_' . uniqid();
+        $escapedOutput = escapeshellarg($outputDir);
+
+        // Construction de la commande Tesseract
+        // --psm 3 = Page Segmentation Mode : détection automatique
+        $cmd = "\"{$tesseractPath}\" {$escapedImage} {$escapedOutput}"
+             . " -l {$lang} --psm 3 2>&1";
+
+        // Exécution
+        exec($cmd, $outputLines, $exitCode);
+
+        // Tesseract génère un fichier .txt au chemin spécifié
+        $textFile = $outputDir . '.txt';
+        $text = '';
+
+        if (file_exists($textFile)) {
+            $text = file_get_contents($textFile);
+            @unlink($textFile);  // Nettoyage
+        }
+
+        if ($exitCode !== 0) {
+            return null;  // Échec de Tesseract
+        }
+
+        // Estimation de la confiance dans le résultat
+        $confidence = $this->estimateConfidence($text);
+
+        return [
+            'text' => $text,
+            'confidence' => $confidence,
+        ];
+    }
+
+
+================================================================================
+8. RECHERCHE DE TESSERACT SUR LE SYSTÈME
+================================================================================
+
+TECHNIQUE :
+-----------
+La méthode findTesseract() cherche l'exécutable Tesseract à plusieurs
+endroits selon le système d'exploitation.
+
+CODE (OcrService.php, lignes 591-639) :
+    private function findTesseract(): ?string
+    {
+        // 1. Essayer dans le PATH système
+        $possiblePaths = [
+            'tesseract',
+            'tesseract.exe',
+            'C:\\Program Files\\Tesseract-OCR\\tesseract.exe',
+            'C:\\Program Files (x86)\\Tesseract-OCR\\tesseract.exe',
+        ];
+
+        foreach ($possiblePaths as $path) {
+            // Exécuter "tesseract --version" pour vérifier
+            $cmd = "\"{$path}\" --version 2>&1";
+            exec($cmd, $output, $exitCode);
+
+            if ($exitCode === 0) {
+                return $path;  // Trouvé !
+            }
+        }
+
+        // 2. Linux/macOS : utiliser which
+        if (DIRECTORY_SEPARATOR === '/') {
+            exec('which tesseract 2>&1', $whichOutput, $whichExitCode);
+            if ($whichExitCode === 0 && !empty($whichOutput[0])) {
+                return trim($whichOutput[0]);
+            }
+
+            // Chemins Linux/macOS courants
+            $nixPaths = [
+                '/usr/bin/tesseract',
+                '/usr/local/bin/tesseract',
+                '/opt/homebrew/bin/tesseract',
+            ];
+            foreach ($nixPaths as $path) {
+                if (file_exists($path)) {
+                    return $path;
+                }
+            }
+        }
+
+        // 3. Windows : chercher dans Program Files
+        $potentialDirs = [
+            'C:\\Program Files\\Tesseract-OCR',
+            'C:\\Program Files (x86)\\Tesseract-OCR',
+            getenv('TESSERACT_HOME'),  // Variable d'environnement
+        ];
+
+        foreach ($potentialDirs as $dir) {
+            if ($dir) {
+                $exe = $dir . DIRECTORY_SEPARATOR . 'tesseract.exe';
+                if (file_exists($exe)) {
+                    return $exe;
+                }
+            }
+        }
+
+        return null;  // Tesseract non trouvé
+    }
+
+
+================================================================================
+9. CONVERSION PDF → IMAGES
+================================================================================
+
+TECHNIQUE :
+-----------
+Pour OCRiser un PDF scanné, il faut d'abord convertir chaque page
+en image. Deux méthodes sont utilisées :
+1. Imagick (extension PHP) — prioritaire
+2. Ghostscript (outil système) — fallback
+
+CODE (OcrService.php, lignes 641-700) :
+    private function convertPdfToImages(string $pdfPath): array
+    {
+        $outputDir = dirname($pdfPath)
+            . DIRECTORY_SEPARATOR . 'pdf_images_' . uniqid();
+        @mkdir($outputDir, 0755, true);
+
+        // MÉTHODE 1 : Imagick (extension PHP)
+        if (extension_loaded('imagick')) {
+            try {
+                $imagick = new \Imagick();
+                $imagick->setResolution(200, 200);  // 200 DPI
+                $imagick->readImage($pdfPath);
+                $imagick->setIteratorIndex(0);  // Commencer page 1
+
+                $paths = [];
+                $pageNum = 1;
+
+                foreach ($imagick as $page) {
+                    $page->setImageFormat('png');
+                    $page->setImageCompressionQuality(90);
+                    $imagePath = $outputDir
+                        . DIRECTORY_SEPARATOR . 'page_' . $pageNum . '.png';
+                    $page->writeImage($imagePath);
+                    $paths[] = $imagePath;
+                    $pageNum++;
+                }
+
+                $imagick->clear();
+                return $paths;
+
+            } catch (\Throwable $e) {
+                Log::warning('Imagick failed, trying Ghostscript', [
+                    'error' => $e->getMessage(),
+                ]);
+                // Fallback vers Ghostscript
+            }
+        }
+
+        // MÉTHODE 2 : Ghostscript (fallback)
+        return $this->convertPdfWithGhostscript($pdfPath, $outputDir);
+    }
+
+    private function convertPdfWithGhostscript(
+        string $pdfPath, string $outputDir
+    ): array {
+        $gsPath = $this->findGhostscript();
+
+        if ($gsPath === null) {
+            return [];  // Aucun convertisseur disponible
+        }
+
+        // Commande Ghostscript :
+        // -dNOPAUSE -dBATCH : pas d'interaction
+        // -sDEVICE=png16m : format PNG 16M couleurs
+        // -r200 : 200 DPI
+        // -o : fichier de sortie (page_1.png, page_2.png, ...)
+        $cmd = "\"{$gsPath}\" -dNOPAUSE -dBATCH -sDEVICE=png16m -r200"
+             . " -o " . escapeshellarg(
+                   $outputDir . DIRECTORY_SEPARATOR . 'page_%d.png'
+               )
+             . " " . escapeshellarg($pdfPath) . " 2>&1";
+
+        exec($cmd, $outputLines, $exitCode);
+
+        if ($exitCode !== 0) {
+            return [];
+        }
+
+        // Récupérer les fichiers générés
+        $paths = glob($outputDir . DIRECTORY_SEPARATOR . 'page_*.png');
+        sort($paths);
+
+        return $paths;
+    }
+
+
+================================================================================
+10. GÉNÉRATION AUTOMATIQUE DE RÉSUMÉ
+================================================================================
+
+TECHNIQUE :
+-----------
+L'algorithme de résumé automatique fonctionne en 4 phases :
+1. Découpage en phrases → filtrage des phrases inutiles
+2. Scoring des phrases (mots-clés, position, longueur, chiffres)
+3. Sélection des 4 meilleures phrases (sans doublons)
+4. Assemblage avec l'objet du courrier
+
+CODE (OcrService.php, lignes 86-213) :
+    public function generateSummary(string $text, string $objet = ''): string
+    {
+        $text = trim($text);
+        if (empty($text)) {
+            return $objet ?: '';
+        }
+
+        $text = $this->cleanText($text);
+        $sentences = $this->extractSentences($text);
+
+        if (empty($sentences)) {
+            return $objet ?: '';
+        }
+
+        // PHASE 1 : Filtrer les phrases candidates
+        $candidates = [];
+
+        foreach ($sentences as $idx => $sentence) {
+            $lower = mb_strtolower(trim($sentence));
+
+            // Rejeter les phrases trop courtes
+            if (mb_strlen($sentence) < 15) continue;
+
+            // Rejeter les lignes purement numériques
+            if (preg_match('/^[\d\s\/\-\.:,\;#()%]+$/', $sentence)) continue;
+
+            // Rejeter les en-têtes de document
+            $isHeader = false;
+            foreach ($this->getHeaderKeywords() as $kw) {
+                if (mb_strpos($lower, $kw) === 0 && mb_strlen($lower) < 60) {
+                    $isHeader = true;
+                    break;
+                }
+            }
+            if ($isHeader) continue;
+
+            // Rejeter les formules de politesse
+            if (preg_match(
+                '/^(Madame|Monsieur|Cher|Chère|Bonjour|Cordialement'
+                . '|Salutations|Respectueusement|Merci).{0,25},?$/i',
+                trim($sentence)
+            )) continue;
+
+            $candidates[] = [
+                'text' => $sentence,
+                'index' => $idx,
+            ];
+        }
+
+        if (empty($candidates)) {
+            return $objet ?: '';
+        }
+
+        // PHASE 2 : Scoring de chaque phrase
+        $scored = [];
+
+        foreach ($candidates as $cand) {
+            $score = 100;  // Score de base
+            $lowerText = mb_strtolower($cand['text']);
+
+            // Bonus mots-clés d'action (+150)
+            foreach ($this->getActionKeywords() as $akw) {
+                if (mb_strpos($lowerText, $akw) !== false) {
+                    $score += 150;  // Phrase importante
+                }
+            }
+
+            // Bonus position (+5 par rang, favorise début)
+            $score += (count($sentences) - $cand['index']) * 5;
+
+            // Bonus longueur idéale (+50 si 40-350 car.)
+            $textLen = mb_strlen($cand['text']);
+            if ($textLen > 40 && $textLen < 350) $score += 50;
+            if ($textLen > 500) $score -= 50;
+
+            // Bonus chiffres (+30)
+            if (preg_match('/\d+/', $cand['text'])) $score += 30;
+
+            $scored[] = [
+                'text' => $cand['text'],
+                'index' => $cand['index'],
+                'score' => $score,
+            ];
+        }
+
+        // Trier par score (meilleur en premier)
+        usort($scored, fn($a, $b) => $b['score'] <=> $a['score']);
+
+        // PHASE 3 : Sélectionner les 4 meilleures (sans doublons)
+        $selected = [];
+        $totalSelected = min(4, count($scored));
+
+        for ($i = 0; $i < count($scored) && count($selected) < $totalSelected; $i++) {
+            // Vérifier si cette phrase est trop similaire (>70%) à
+            // une phrase déjà sélectionnée
+            $isDuplicate = false;
+            $s1Lower = mb_strtolower($scored[$i]['text']);
+
+            foreach ($selected as $sel) {
+                $s2Lower = mb_strtolower($sel['text']);
+
+                // Calcul de similarité : intersection de mots
+                // / taille moyenne des deux textes
+                $words1 = explode(' ', $s1Lower);
+                $words2 = explode(' ', $s2Lower);
+                $common = array_intersect($words1, $words2);
+                $similarity = (2.0 * count($common))
+                            / (count($words1) + count($words2));
+
+                if ($similarity > 0.7) {
+                    $isDuplicate = true;
+                    break;
+                }
+            }
+
+            if (!$isDuplicate) {
+                $selected[] = $scored[$i];
+            }
+        }
+
+        // Remettre dans l'ordre du document
+        usort($selected, fn($a, $b) => $a['index'] <=> $b['index']);
+
+        // PHASE 4 : Assembler le résumé final
+        $summaryText = implode(' ',
+            array_map(fn($s) => trim($s['text']), $selected)
+        );
+        $summaryText = preg_replace('/\s+/', ' ', $summaryText);
+        $summaryText = trim($summaryText);
+
+        // Préfixer l'objet s'il n'est pas déjà dans le résumé
+        if ($objet && $summaryText) {
+            $objetClean = mb_strtolower(trim($objet));
+            $summaryLower = mb_strtolower($summaryText);
+
+            if (mb_strpos($summaryLower, mb_substr($objetClean, 0, 15))
+                === false
+            ) {
+                $summary = $objet . ' – ' . $summaryText;
+            } else {
+                $summary = $summaryText;
+            }
+        } elseif ($objet) {
+            $summary = $objet;
+        } else {
+            $summary = $summaryText;
+        }
+
+        // Troncature à 700 caractères
+        if (mb_strlen($summary) > 700) {
+            $summary = mb_substr($summary, 0, 697) . '...';
+        }
+
+        return $summary ?: $objet ?: '';
+    }
+
+    // Liste des mots-clés d'action (bilingue français-arabe)
+    private function getActionKeywords(): array
+    {
+        return [
+            'sollicit', 'approuv', 'accord', 'inform', 'notif',
+            'transmet', 'avis', 'décision', 'rapport', 'demand',
+            'prie', 'honneur', 'autoris', 'financement', 'budget',
+            'montant', 'paiement', 'virement', 'recrut',
+            'affectation', 'mutation', 'mission', 'ordre',
+            'invitation', 'réunion', 'convoc', 'contrat', 'marché',
+            'avenant', 'convention', 'note', 'circulaire',
+            'directive', 'instruction', 'annuel', 'exercice',
+            // Arabe
+            'نرجو', 'يشرفني', 'أحيطكم', 'الموافقة', 'يرجى',
+            'بموجب', 'طلب', 'قرار', 'تقرير', 'ميزانية',
+            'تبليغ', 'إشعار', 'إرسال', 'مهمة', 'اجتماع',
+            'دعوة', 'عقد', 'اتفاقية', 'تعليمة', 'منشور',
+        ];
+    }
+
+
+================================================================================
+11. DÉTECTION DE LANGUE
+================================================================================
+
+TECHNIQUE :
+-----------
+La détection utilise une méthode hybride :
+1. Compter les caractères arabes (Unicode)
+2. Compter les mots français (liste fréquentielle)
+3. Compter les mots anglais (liste fréquentielle)
+4. Comparer les 3 compteurs
+
+CODE (OcrService.php, lignes 352-376) :
+    public function detectLanguage(string $text): string
+    {
+        $text = trim($text);
+        if (empty($text)) return 'fra';  // Défaut français
+
+        // Compter les caractères arabes
+        $arabicCount = preg_match_all(
+            '/[\x{0600}-\x{06FF}\x{0750}-\x{077F}'
+            . '\x{08A0}-\x{08FF}\x{FB50}-\x{FDFF}'
+            . '\x{FE70}-\x{FEFF}]/u',
+            $text
+        );
+
+        // Compter les mots français fréquents
+        $frenchWords = preg_match_all(
+            '/\b(le|la|les|un|une|des|du|de|et|est|sont|dans|pour|sur'
+            . '|avec|pas|nous|vous|leur|ils|elles|qui|que|quoi|dont|ou'
+            . '|ce|cet|cette|ces|mon|ton|son|ma|ta|sa|mes|tes|ses|nos'
+            . '|vos|leurs|au|aux|en|par|tout|tous|toute|toutes|chez'
+            . '|sans|vers|pendant|depuis)\b/i',
+            $text
+        );
+
+        // Compter les mots anglais fréquents
+        $englishWords = preg_match_all(
+            '/\b(the|a|an|is|are|was|were|be|been|have|has|had|do|does'
+            . '|did|will|would|can|could|shall|should|may|might|must'
+            . '|this|that|these|those|i|you|he|she|it|we|they|my|your'
+            . '|his|her|its|our|their|and|or|but|if|because|so|than|as'
+            . '|until|while|of|at|by|for|with|about|against|between'
+            . '|into|through|during|before|after|above|below|from|up'
+            . '|down|out|off|over|under|again|further|then|once|here'
+            . '|there|when|where|why|how)\b/i',
+            $text
+        );
+
+        // Règle de décision
+        if ($arabicCount > 10
+            && $arabicCount > max($frenchWords, $englishWords)
+        ) {
+            return 'ara';  // Arabe dominant
+        }
+
+        if ($frenchWords > $englishWords) {
+            return 'fra';  // Français
+        }
+
+        if ($englishWords > $frenchWords) {
+            return 'eng';  // Anglais
+        }
+
+        return 'fra';  // Défaut
+    }
+
+
+================================================================================
+12. ESTIMATION DE CONFIANCE
+================================================================================
+
+TECHNIQUE :
+-----------
+Le score de confiance (0-100) estime la qualité du texte OCR
+sans avoir de retour direct de Tesseract. Il utilise des
+heuristiques sur le texte extrait : ratio de caractères
+alphabétiques, longueur moyenne des mots, volume de texte.
+
+CODE (OcrService.php, lignes 736-777) :
+    private function estimateConfidence(string $text): float
+    {
+        $text = trim($text);
+        if (empty($text)) return 0;
+
+        $totalChars = mb_strlen($text);
+        if ($totalChars === 0) return 0;
+
+        // Ratio de caractères alphabétiques
+        $alphaCount = preg_match_all(
+            '/[a-zA-Z\x{0600}-\x{06FF}]/u', $text
+        );
+        $alphaRatio = $alphaCount / $totalChars;
+
+        // Longueur moyenne des mots
+        $wordLengths = [];
+        preg_match_all('/\S+/', $text, $words);
+        foreach ($words[0] as $word) {
+            $wordLengths[] = mb_strlen($word);
+        }
+        $avgWordLength = !empty($wordLengths)
+            ? array_sum($wordLengths) / count($wordLengths)
+            : 0;
+
+        // Calcul heuristique du score
+        $confidence = 50.0;  // Score de base
+
+        // Plus il y a de lettres, meilleure est la qualité
+        if ($alphaRatio > 0.5) $confidence += 20;
+        if ($alphaRatio > 0.7) $confidence += 15;
+
+        // Les mots doivent avoir une longueur réaliste
+        if ($avgWordLength > 2 && $avgWordLength < 20) $confidence += 10;
+
+        // Un texte substantiel est plus fiable
+        if ($totalChars > 50) $confidence += 5;
+
+        return min($confidence, 100.0);
+    }
+
+
+================================================================================
+13. STATUTS ET CYCLE DE VIE
+================================================================================
+
+TECHNIQUE :
+-----------
+L'OCR a 4 statuts possibles qui transitent ainsi :
+
+    pending ──> processing ──> completed
+                              ──> failed
+    completed ──(rerun)──> pending
+    failed ──(rerun)──> pending
+
+CODE — Modèle Courrier (lignes 538-561) :
+    // Dans app/Models/Courrier.php
+
+    protected $fillable = [
+        'extracted_text',   // Texte combiné de toutes les PJs
+        'ocr_status',       // pending | processing | completed | failed
+        'summary_source',   // manual | auto_generated
+    ];
+
+    // Méthodes helper pour vérifier l'état
+    public function ocrEstTermine(): bool
+    {
+        return $this->ocr_status === 'completed';
+    }
+
+    public function ocrAEchoue(): bool
+    {
+        return $this->ocr_status === 'failed';
+    }
+
+    public function ocrEstEnCours(): bool
+    {
+        return $this->ocr_status === 'processing';
+    }
+
+    public function ocrEstEnAttente(): bool
+    {
+        return $this->ocr_status === 'pending'
+            || $this->ocr_status === null;
+    }
+
+    // Accesseur pour le résumé automatique
+    public function getResumeAutoGenereAttribute(): ?string
+    {
+        return $this->summary_source === 'auto_generated'
+            ? $this->resume
+            : null;
+    }
+
+
+CODE — Modèle CourrierAttachment (lignes 42-60) :
+    // Dans app/Models/CourrierAttachment.php
+
+    protected $fillable = [
+        'ocr_text',         // Texte extrait de cette PJ
+        'ocr_language',     // ara | fra | eng
+        'ocr_status',       // pending | processing | completed | failed
+        'ocr_confidence',   // 0.00 - 100.00
+        'ocr_error',        // Message d'erreur si échec
+        'ocr_processed_at', // Date de traitement
+    ];
+
+    protected $casts = [
+        'ocr_confidence' => 'decimal:2',
+        'ocr_processed_at' => 'datetime',
+    ];
+
+    // Méthodes helper (identiques au modèle Courrier)
+    public function ocrEstTermine(): bool { ... }
+    public function ocrAEchoue(): bool { ... }
+    public function ocrEstEnCours(): bool { ... }
+    public function ocrEstEnAttente(): bool { ... }
+
+
+================================================================================
+14. SCHÉMA COMPLET DU PIPELINE — AVEC TOUS LES ÉCHANGES
+================================================================================
+
+    CLIENT (React)                     SERVEUR (Laravel)
+    ─────────────                     ─────────────────
+
+    [CRÉATION COURRIER]
+         │
+         │ POST /api/courriers (multipart)
+         │   - fichier.pdf (pièce jointe)
+         │─────────────────────────────────►
+         │                                  │
+         │                          1. Validation StoreCourrierRequest
+         │                          2. Création du courrier en DB
+         │                          3. Sauvegarde fichiers (storage)
+         │                                  │
+         │                          4. Si pièces jointes :
+         │                             dispatch(new ProcessOcrJob)
+         │                                  │
+         │                          5. Réponse HTTP 201
+         │◄─────────────────────────────────│
+         │                                  │
+         │                    ┌─────────────┘
+         │                    ▼   (file d'attente ou synchrone)
+         │              ┌──────────────────────────┐
+         │              │  ProcessOcrJob::handle()  │
+         │              │                          │
+         │              │  1. ocr_status =          │
+         │              │     'processing'          │
+         │              │                          │
+         │              │  2. Pour chaque PJ :      │
+         │              │     OcrService::          │
+         │              │     processAttachment()   │
+         │              │       ↓                  │
+         │              │     extractText()         │
+         │              │       ↓                  │
+         │              │     PDF? → smalot/pdf     │
+         │              │            parser         │
+         │              │         → si échec :      │
+         │              │           Tesseract OCR   │
+         │              │     DOCX? → Zip+XML       │
+         │              │         → si échec :      │
+         │              │           Tesseract OCR   │
+         │              │     JPG/PNG? → Tesseract  │
+         │              │                          │
+         │              │  3. Mise à jour DB        │
+         │              │     attachment.ocr_text   │
+         │              │     attachment.ocr_status  │
+         │              │                          │
+         │              │  4. Combine textes        │
+         │              │     Generate summary      │
+         │              │                          │
+         │              │  5. courrier.ocr_status = │
+         │              │     'completed' ou 'failed'
+         │              └──────────────────────────┘
+
+
+================================================================================
+15. DÉPENDANCES SYSTÈME
+================================================================================
+
+    PHP (obligatoire)
+    ├── smalot/pdfparser     (composer)  → extraction texte natif PDF
+    ├── ext-zip              (PHP)       → lecture DOCX
+    ├── ext-simplexml        (PHP)       → parsing XML DOCX
+    └── ext-mbstring         (PHP)       → multibyte (arabe)
+
+    Système (optionnel, pour images et PDF scannés)
+    ├── Tesseract OCR 5+
+    │   ├── tesseract-ocr-ara     → langue arabe
+    │   ├── tesseract-ocr-fra     → langue française
+    │   └── tesseract-ocr-eng     → langue anglaise
+    ├── Ghostscript           → conversion PDF → images
+    └── Imagick (PHP ext)     → conversion PDF → images (prioritaire)

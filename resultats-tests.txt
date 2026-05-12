@@ -1,0 +1,304 @@
+================================================================================
+                  RAPPORT DE TESTS — SCÉNARIO GLOBAL
+                  Application : Gestion Courrier (courier)
+                  Date : 2026-05-12
+================================================================================
+
+SOMMAIRE
+--------
+1. Résultat d'exécution
+2. Description détaillée du scénario testé
+3. Anomalies détectées
+
+================================================================================
+1. RÉSULTAT D'EXÉCUTION
+================================================================================
+
+   Fichier de test : tests/Feature/GlobalScenarioTest.php
+   Commande        : ./vendor/bin/pest --filter=GlobalScenarioTest
+
+   PASS  Tests\Feature\GlobalScenarioTest
+   ✓ scenario global : cycle de vie complet du courrier      2.17s
+   ✓ scenario global : reponse a un courrier avec notification  1.26s
+
+   Tests:  2 passed (45 assertions)
+   Duration: 3.86s
+
+   Les 45 assertions vérifient :
+   - Codes HTTP (200, 201, 403, 422)
+   - Structures JSON des réponses
+   - Valeurs exactes dans les réponses (statuts, compteurs)
+   - Relations entre entités (parent_courrier_id, repondu_le)
+
+================================================================================
+2. DESCRIPTION DÉTAILLÉE DU SCÉNARIO
+================================================================================
+
+   Ce scénario reproduit le cycle de vie complet d'un courrier dans
+   l'application, en impliquant les rôles : Admin, Chef, Secrétaire.
+   Chaque étape valide à la fois le bon déroulement du circuit et le
+   respect des permissions.
+
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ TEST 1 : Cycle de vie complet du courrier                       │
+   └─────────────────────────────────────────────────────────────────┘
+
+   PRÉPARATION (beforeEach)
+   ─────────────────────────
+   Création de la hiérarchie organisationnelle :
+   - 2 structures (Centrale, Regionale)
+   - 3 services (Direction Generale, Service Courrier, Service Regional Est)
+   - 3 niveaux de confidentialité (Public, Interne, Confidentiel)
+   - 1 source d'expédition (Courrier Depart)
+
+   ÉTAPE 1 — ADMIN : Configuration de l'organisation
+   ──────────────────────────────────────────────────
+   L'admin (créé via factory) appelle POST /api/utilisateurs pour
+   créer 3 utilisateurs avec des rôles différents :
+
+   a) Chef Général (rôle=chef, scope=general, service=1)
+      → Peut créer des courriers entrants et sortants
+      → Peut valider tous les courriers de l'organisation
+      → Peut transmettre et archiver
+
+   b) Chef de Structure (rôle=chef, scope=structure, structure=1)
+      → Gère les courriers de sa structure uniquement
+      → Peut créer des utilisateurs dans sa structure
+
+   c) Secrétaire (rôle=secretaire, scope=service, service=1)
+      → Peut créer des courriers sortants (soumis à validation)
+      → Ne peut PAS créer de courriers entrants
+      → Ne peut PAS valider
+
+   ÉTAPE 2 — AUTH : Vérification de session
+   ─────────────────────────────────────────
+   GET /api/user → retourne l'utilisateur connecté avec ses infos.
+   Valide que le système d'authentification Sanctum fonctionne.
+
+   ÉTAPE 3 — CHEF GÉNÉRAL : Création d'un courrier entrant
+   ─────────────────────────────────────────────────────────
+   POST /api/courriers avec type=entrant, fichier PDF joint
+
+   Règles métier validées :
+   - Seul le chef général (ou admin) peut créer un courrier entrant
+   - Un fichier est obligatoire pour un courrier entrant
+   - Le statut initial est "RECU" (pas de validation nécessaire)
+   - L'expéditeur et le service destinataire sont correctement
+     enregistrés
+
+   Résultat attendu : HTTP 201, statut = "RECU"
+
+   ÉTAPE 4 — SECRÉTAIRE : Création d'un courrier sortant
+   ───────────────────────────────────────────────────────
+   POST /api/courriers avec type=sortant, source_id=1
+
+   Règles métier validées :
+   - Un secrétaire peut créer un courrier sortant
+   - Un courrier sortant doit avoir une source existante
+   - Les courriers sortants créés par un secrétaire ont le statut
+     "CREE" (en attente de validation par un chef)
+   - Un courrier sortant n'a pas de destinataires internes
+
+   Résultat attendu : HTTP 201, statut = "CREE"
+   Vérification : le secrétaire voit le courrier dans ses envoyés
+
+   ÉTAPE 5 — CHEF GÉNÉRAL : Validation du courrier
+   ─────────────────────────────────────────────────
+   a) GET /api/courriers/validation
+      → Le chef général consulte la file d'attente des validations
+      → Vérifie que le courrier du secrétaire y apparaît
+
+   b) PATCH /api/courriers/{id}/valider
+      → Le chef général valide le courrier
+      → Le statut passe à "VALIDE"
+      → Seuls les chefs et admins peuvent valider
+
+   Résultat attendu : HTTP 200, statut = "VALIDE"
+
+   ÉTAPE 6 — STATS : Tableau de bord
+   ──────────────────────────────────
+   GET /api/courriers/stats
+
+   Vérifie la structure des statistiques :
+   {
+     courriers: {
+       recus:      1 (le courrier entrant)
+       envoyes:    1 (le courrier sortant)
+       validation: 0 (plus rien en attente)
+       archives:   0 (pas encore archivé)
+     }
+   }
+
+   ÉTAPE 7 — CHEF GÉNÉRAL : Transmission
+   ──────────────────────────────────────
+   PATCH /api/courriers/{id}/transmettre
+
+   Le courrier validé est transmis au Service Regional Est (service 3)
+   avec une instruction "A traiter en priorite".
+
+   Règles métier validées :
+   - Seul un chef peut transmettre
+   - Le statut passe à "TRANSMIS"
+
+   Résultat attendu : HTTP 200, statut = "TRANSMIS"
+
+   ÉTAPE 8 — CHEF GÉNÉRAL : Archivage
+   ────────────────────────────────────
+   PATCH /api/courriers/{id}/archiver
+
+   Le courrier entrant en statut "RECU" est archivé.
+
+   Règles métier validées :
+   - Un courrier en statut RECU, VALIDE ou TRANSMIS est archivable
+   - Si requiert_reponse=true, il faut d'abord répondre
+   - L'archivage crée un snapshot dans la table archives
+   - Les archives sont visibles via GET /api/courriers/archives
+
+   Résultat attendu : HTTP 200, puis archives.total = 1
+
+   ÉTAPE 9 — MESSAGERIE INTERNE
+   ─────────────────────────────
+   a) POST /api/messages : Le chef général envoie un message au
+      secrétaire.
+      → Vérification : statut = "ENVOYE"
+
+   b) GET /api/messages : Le secrétaire consulte sa boîte de
+      réception et voit le message.
+      → Vérification : messages.total = 1
+
+   c) PATCH /api/messages/{id}/read : Le secrétaire marque le
+      message comme lu.
+      → Vérification : HTTP 200
+
+   ÉTAPE 10 — SÉCURITÉ : Vérification des permissions
+   ───────────────────────────────────────────────────
+   a) Un secrétaire ne peut PAS créer un courrier entrant
+      → Reçoit 422 (erreur de validation)
+
+   b) Un secrétaire ne peut PAS valider un courrier
+      → Même son propre courrier reçoit 403 (forbidden)
+
+   c) Un chef de structure ne peut PAS créer un chef général
+      → Tentative d'escalade de privilèges
+      → Reçoit 403 (forbidden)
+
+   ÉTAPE 11 — SUPPRESSION
+   ──────────────────────
+   a) Un secrétaire ne peut pas supprimer un courrier → 403
+   b) L'admin peut supprimer n'importe quel courrier → 200
+
+   ┌─────────────────────────────────────────────────────────────────┐
+   │ TEST 2 : Réponse à un courrier avec notification                │
+   └─────────────────────────────────────────────────────────────────┘
+
+   PRÉPARATION
+   ───────────
+   Création d'un admin et d'un chef de service (même service 1).
+
+   ÉTAPE 1 — Création d'un courrier entrant avec demande de réponse
+   ─────────────────────────────────────────────────────────────────
+   POST /api/courriers par l'admin, avec requiert_reponse=true,
+   delai_reponse_jours=15, service_destinataire_id=1
+
+   ÉTAPE 2 — Réponse par le chef de service destinataire
+   ──────────────────────────────────────────────────────
+   POST /api/courriers par le chef de service (rôle=chef,
+   scope=service, service_id=1) avec parent_courrier_id
+
+   Le chef de service peut répondre car :
+   - Il est dans le service destinataire (service_id=1)
+   - Il a le rôle chef avec scope=service → estChefService()=true
+   - La méthode peutEtreReponduPar() valide cette permission
+
+   ÉTAPE 3 — Vérification automatique
+   ────────────────────────────────────
+   GET /api/courriers/{id} sur le courrier original
+   → Vérifie que repondu_le a été renseigné automatiquement
+
+
+================================================================================
+3. ANOMALIES DÉTECTÉES
+================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ANOMALIE #1 — Incohérence des codes HTTP pour erreurs de permission       │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ OBSERVATION                                                                │
+│ ───────────                                                                │
+│ Les erreurs de permission sont tantôt retournées en 403 (HTTP Forbidden), │
+│ tantôt en 422 (HTTP Unprocessable Entity / erreur de validation).         │
+│                                                                            │
+│ Exemple :                                                                  │
+│ - Secrétaire tente de valider un courrier → 403 (via contrôleur)          │
+│ - Secrétaire tente de créer un courrier entrant → 422 (via validation)    │
+│                                                                            │
+│ CAUSE                                                                      │
+│ ────                                                                       │
+│ La première vérification se fait dans le contrôleur (retour 403 explicite)│
+│ La seconde se fait dans le StoreCourrierRequest::withValidator() qui      │
+│ ajoute une erreur de validation, produisant un 422.                       │
+│                                                                            │
+│ RECOMMANDATION                                                             │
+│ ──────────────                                                             │
+│ Uniformiser en retournant 403 pour toutes les erreurs de permission.       │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ANOMALIE #2 — Visibilité restreinte du chef général (CORRIGÉ)             │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Fichier  : app/Models/Courrier.php, ligne 254                             │
+│                                                                            │
+│ OBSERVATION INITIALE                                                       │
+│ ───────────────────                                                        │
+│ La méthode visiblePourUser() ne donnait pas au chef général la même       │
+│ visibilité qu'à l'admin. Il ne voyait que les courriers de son service.   │
+│                                                                            │
+│ CORRECTION APPLIQUÉE                                                       │
+│ ────────────────────                                                       │
+│ Ligne 254 : passage de                                                      │
+│   if ($user->estAdmin())                                                   │
+│ à                                                                          │
+│   if ($user->estAdmin() || $user->estChefGeneral())                        │
+│                                                                            │
+│ Le chef général voit désormais tous les courriers (comme l'admin),        │
+│ mais n'a toujours PAS accès à la gestion des utilisateurs.                │
+│                                                                            │
+│ VÉRIFICATION DANS LE TEST                                                  │
+│ ──────────────────────────                                                 │
+│ Le secrétaire est maintenant dans le service 2, le chef général dans le   │
+│ service 1. Le chef général voit et valide quand même le courrier du       │
+│ secrétaire. Test passé avec 45 assertions.                                │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ANOMALIE #3 — Archivage impossible si réponse en attente                  │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ OBSERVATION                                                                │
+│ ───────────                                                                │
+│ La méthode peutEtreArchivePar() bloque l'archivage des courriers qui      │
+│ ont requiert_reponse=true sans réponse :                                  │
+│   if ($this->requiert_reponse && !$this->a_ete_repondu) { return false; } │
+│                                                                            │
+│ L'utilisateur doit d'abord créer une réponse dans le système avant de     │
+│ pouvoir archiver. Comportement probablement intentionnel pour garantir    │
+│ l'intégrité des données.                                                  │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│ ANOMALIE #4 — Incohérence entre commentaire et code dans                  │
+│               peutEtreReponduPar()                                         │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│ Fichier   : app/Models/Courrier.php, ligne 836                            │
+│                                                                            │
+│ Le commentaire dit : "Admin et chef général peuvent toujours répondre",   │
+│ mais le code ne vérifie que estAdmin(). Le chef général n'est pas inclus. │
+│                                                                            │
+│ Ce n'est pas un bug car le comportement actuel (chef général ne peut pas  │
+│ répondre par défaut) est intentionnel. Mais le commentaire est trompeur   │
+│ et devrait être mis à jour pour éviter la confusion :                     │
+│   "Seul l'admin peut toujours répondre"                                   │
+└────────────────────────────────────────────────────────────────────────────┘

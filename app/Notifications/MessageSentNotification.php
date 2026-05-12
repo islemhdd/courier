@@ -20,7 +20,7 @@ class MessageSentNotification extends Notification
             return [];
         }
 
-        return ['broadcast'];
+        return ['broadcast', 'database'];
     }
 
     public function toBroadcast($notifiable): BroadcastMessage
@@ -28,9 +28,18 @@ class MessageSentNotification extends Notification
         return new BroadcastMessage([
             'type' => 'message_sent',
             'titre' => 'Nouveau message',
-            'message' => 'Vous avez reçu un nouveau message de ' . $this->message->emetteur->nom_complet,
+            'message' => 'Vous avez reçu un nouveau message.',
             'message_id' => $this->message->id,
-            'emetteur' => $this->message->emetteur->nom_complet,
         ]);
+    }
+
+    public function toArray($notifiable): array
+    {
+        return [
+            'type' => 'message_sent',
+            'titre' => 'Nouveau message',
+            'message' => 'Vous avez reçu un nouveau message.',
+            'message_id' => $this->message->id,
+        ];
     }
 }

@@ -298,23 +298,3 @@ tr {
     transition-duration: 0.01ms !important;
   }
 }
-
-@media print {
-  body {
-    background: #ffffff !important;
-  }
-
-  .courrier-print-root {
-    color: #0f172a !important;
-  }
-
-  .courrier-print-root,
-  .courrier-print-root * {
-    box-shadow: none !important;
-  }
-
-  .courrier-print-root section,
-  .courrier-print-root header {
-    break-inside: avoid;
-  }
-}

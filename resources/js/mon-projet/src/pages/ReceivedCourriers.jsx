@@ -47,7 +47,7 @@ export default function ReceivedCourriers() {
   const [refreshing, setRefreshing] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [search, setSearch] = useState('')
-  const [filters, setFilters] = useState({ statut: null, type: null })
+  const [filters, setFilters] = useState({ statut: null, type: null, repondu: null })
   const [formOpen, setFormOpen] = useState(false)
   const [replyTo, setReplyTo] = useState(null)
   const [error, setError] = useState('')
@@ -62,7 +62,7 @@ export default function ReceivedCourriers() {
     (err.response?.data?.errors
       ? Object.values(err.response.data.errors).flat()[0]
       : '') ||
-    "L'action a echoue."
+    "L'action a échoué."
 
   const loadData = useCallback(
     async (params = {}, options = {}) => {
@@ -159,11 +159,11 @@ export default function ReceivedCourriers() {
 
   const handleResetFilters = () => {
     setSearch('')
-    setFilters({ statut: null, type: null })
-    loadData({ page: 1 }, { q: '', filterOverrides: { statut: null, type: null } })
+    setFilters({ statut: null, type: null, repondu: null })
+    loadData({ page: 1 }, { q: '', filterOverrides: { statut: null, type: null, repondu: null } })
   }
 
-  const hasActiveFilters = search || filters.statut || filters.type
+  const hasActiveFilters = search || filters.statut || filters.type || filters.repondu
 
   if (initialLoading) {
     return (
@@ -183,7 +183,7 @@ export default function ReceivedCourriers() {
     <div className="max-w-[1600px] mx-auto">
       <div className="flex flex-col gap-4 mb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Courriers recus</h1>
+          <h1 className="text-xl font-bold text-slate-900">Courriers reçus</h1>
           <p className="text-xs text-slate-400 mt-0.5">
             {pagination
               ? `${pagination.total} courrier${pagination.total > 1 ? 's' : ''}`
@@ -218,7 +218,7 @@ export default function ReceivedCourriers() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher par numero, objet..."
+            placeholder="Rechercher par numéro, objet..."
             className="w-full h-9 pl-9 pr-9 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-slate-200 transition"
           />
           {search && (
@@ -235,10 +235,10 @@ export default function ReceivedCourriers() {
         <div className="flex items-center gap-2 flex-wrap">
           <Select
             items={[
-              { value: 'RECU', label: 'Recu' },
+              { value: 'RECU', label: 'Reçu' },
               { value: 'TRANSMIS', label: 'Transmis' },
-              { value: 'VALIDE', label: 'Valide' },
-              { value: 'CREE', label: 'Cree' },
+              { value: 'VALIDE', label: 'Validé' },
+              { value: 'CREE', label: 'Créé' },
               { value: 'NON_VALIDE', label: 'Non valide' },
             ]}
             value={filters.statut}
@@ -250,13 +250,26 @@ export default function ReceivedCourriers() {
           />
           <Select
             items={[
-              { value: 'arrivee', label: 'Arrivee' },
-              { value: 'depart', label: 'Depart' },
+              { value: 'arrivee', label: 'Arrivée' },
+              { value: 'depart', label: 'Départ' },
               { value: 'interne', label: 'Interne' },
             ]}
             value={filters.type}
             onChange={(v) => {
               const newFilters = { ...filters, type: v }
+              setFilters(newFilters)
+              loadData({ page: 1 }, { filterOverrides: newFilters })
+            }}
+          />
+          <Select
+            items={[
+              { value: '1', label: 'Répondu' },
+              { value: '0', label: 'Non répondu' },
+            ]}
+            allLabel="Réponse"
+            value={filters.repondu}
+            onChange={(v) => {
+              const newFilters = { ...filters, repondu: v }
               setFilters(newFilters)
               loadData({ page: 1 }, { filterOverrides: newFilters })
             }}
@@ -267,7 +280,7 @@ export default function ReceivedCourriers() {
               className="h-9 px-3 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors flex items-center gap-1"
             >
               <X size={13} />
-              Reinitialiser
+              Réinitialiser
             </button>
           )}
         </div>
@@ -340,7 +353,7 @@ export default function ReceivedCourriers() {
           <CourrierForm
             type={replyTo ? 'sortant' : 'entrant'}
             onClose={() => { setFormOpen(false); setReplyTo(null) }}
-            initialData={replyTo ? { parent_courrier_id: replyTo.id, objet: 'Reponse: ' + replyTo.objet } : null}
+            initialData={replyTo ? { parent_courrier_id: replyTo.id, objet: 'Réponse: ' + replyTo.objet } : null}
             onSuccess={() => { setFormOpen(false); setReplyTo(null); invalidatePageCache(['dashboard', 'received', 'sent']); loadData() }}
           />
         </Suspense>

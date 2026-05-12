@@ -373,7 +373,7 @@ class MessageController extends Controller
                 ->limit(15)
                 ->get();
         } else {
-            if (strlen($terme) < 2) {
+            if (strlen($terme) < 3) {
                 return response()->json([
                     'utilisateurs' => [],
                 ]);

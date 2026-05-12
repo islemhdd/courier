@@ -1,0 +1,662 @@
+================================================================================
+    EXPLICATION TECHNIQUE — OCR & SÉCURITÉ
+    Application : Gestion Courrier (courier)
+    Date : 2026-05-12
+================================================================================
+
+Ce document couvre deux aspects :
+1. Le fonctionnement technique de l'OCR
+2. Les mesures de sécurité   modifiées/testées
+
+
+================================================================================
+PARTIE 1 : FONCTIONNEMENT DE L'OCR
+================================================================================
+
+TABLE DES MATIÈRES
+------------------
+1. Architecture générale
+2. Déclenchement de l'OCR
+3. Processus d'extraction par type de fichier
+4. OCR via Tesseract (reconnaissance d'image)
+5. Génération automatique de résumé
+6. Détection de langue
+7. Estimation de confiance
+8. Extraction d'informations clés
+9. Statuts et cycle de vie OCR
+10. Recherche full-text dans les archives
+11. Schéma du pipeline complet
+
+
+================================================================================
+1. ARCHITECTURE GÉNÉRALE
+================================================================================
+
+   L'OCR est organisé en 3 couches :
+
+   ┌────────────────────────────────────────────────────────────────────┐
+   │  Contrôleur HTTP  (OcrController)                                 │
+   │  Fichier : app/Http/Controllers/Api/OcrController.php             │
+   │  - POST /api/ocr/preview     (synchrone, prévisualisation)        │
+   │  - GET  /api/courriers/{id}/ocr   (statut)                        │
+   │  - POST /api/courriers/{id}/ocr/rerun  (relance)                  │
+   └───────────────────────┬────────────────────────────────────────────┘
+                           │
+   ┌───────────────────────▼────────────────────────────────────────────┐
+   │  File d'attente      (ProcessOcrJob implements ShouldQueue)        │
+   │  Fichier : app/Jobs/ProcessOcrJob.php                              │
+   │  - Lancé automatiquement après création d'un courrier              │
+   │  - Queue sync en test, Redis/DB en production                      │
+   └───────────────────────┬────────────────────────────────────────────┘
+                           │
+   ┌───────────────────────▼────────────────────────────────────────────┐
+   │  Service métier      (OcrService)                                  │
+   │  Fichier : app/Services/OcrService.php  (826 lignes)              │
+   │  - extractText()     : point d'entrée principal                   │
+   │  - processAttachment(): lecture depuis Storage Laravel             │
+   │  - generateSummary() : résumé automatique                         │
+   │  - detectLanguage()  : arabe, français, anglais                   │
+   │  - estimateConfidence(): score de 0 à 100                         │
+   └──────────┬──────────┬──────────┬───────────────────────────────────┘
+              │          │          │
+              ▼          ▼          ▼
+          PDF/DOCX    Image     Tesseract OCR
+         (extraction  (jpg/png/  (fallback pour
+         native)      webp)      PDF sans texte)
+
+
+================================================================================
+2. DÉCLENCHEMENT DE L'OCR
+================================================================================
+
+   A. LORS DE LA CRÉATION D'UN COURRIER
+   ──────────────────────────────────────
+   Dans CourrierController::store() (lignes 315-317) :
+
+       if ($courrier->attachments()->exists()) {
+           ProcessOcrJob::dispatch($courrier);
+       }
+
+   Après création du courrier en base, si des pièces jointes existent,
+   un job asynchrone est dispatché dans la file d'attente. Le job
+   tourne en arrière-plan pendant que l'utilisateur continue à naviguer.
+
+   B. LORS DE LA MODIFICATION D'UN COURRIER
+   ─────────────────────────────────────────
+   Dans CourrierController::update() (lignes 392-394) :
+
+       if ($request->hasFile('documents') || $request->hasFile('fichier')) {
+           ProcessOcrJob::dispatch($courrier->fresh());
+       }
+
+   Si de nouveaux fichiers sont ajoutés lors d'une modification,
+   le job est redéclenché.
+
+   C. RELANCE MANUELLE (RERUN)
+   ────────────────────────────
+   POST /api/courriers/{courrier}/ocr/rerun
+   - Remet tous les statuts OCR à "pending"
+   - Redispatch un ProcessOcrJob
+   - Vérifie que l'utilisateur peut voir le courrier en détail
+     (peutEtreVuEnDetailPar)
+
+   D. PRÉVISUALISATION SYNCHRONE (PREVIEW)
+   ─────────────────────────────────────────
+   POST /api/ocr/preview (multipart/form-data)
+   - Appelle OcrService::extractText() directement (synchrone)
+   - Retourne le texte extrait + résumé + langue + confiance
+   - Utilisé dans le formulaire de création pour montrer un aperçu
+     du texte avant d'enregistrer le courrier
+   - Aucune vérification de permission avancée (seulement auth:sanctum)
+
+
+================================================================================
+3. PROCESSUS D'EXTRACTION PAR TYPE DE FICHIER
+================================================================================
+
+   A. PDF  →  extractFromPdf()  (ligne 399)
+   ─────────────────────────────────────────
+   1) Essaie d'abord l'extraction native avec smalot/pdfparser :
+        $parser = new PdfParser();
+        $pdf = $parser->parseFile($path);
+        $text = $pdf->getText();
+
+   2) Si texte > 50 caractères → succès (PDF avec texte intégré)
+
+   3) Si texte < 50 caractères (PDF scanné, image seule)
+      → fallback vers Tesseract OCR via ocrImage()
+
+   4) Si smalot/pdfparser échoue (exception) → fallback vers Tesseract
+
+   B. DOCX  →  extractFromDoc()  (ligne 429)
+   ─────────────────────────────────────────
+   1) Ouvre le fichier DOCX avec ZipArchive
+   2) Lit le fichier XML word/document.xml
+   3) Parcourt les balises <w:t> (texte Word) avec XPath
+   4) Concatène tout le texte
+
+   5) Si texte < 20 caractères → fallback vers Tesseract OCR
+
+   C. IMAGE (jpg, jpeg, png, webp)  →  extractFromImage()  (ligne 480)
+   ─────────────────────────────────────────────────────────────────────
+   Appelle directement ocrImage() → Tesseract
+
+   D. FICHIERS NON SUPPORTÉS → message d'erreur explicite
+      Types supportés : jpg, jpeg, png, webp, pdf, doc, docx
+
+
+================================================================================
+4. OCR VIA TESSERACT (RECONNAISSANCE D'IMAGE)
+================================================================================
+
+   4.1. RECHERCHE DE TESSERACT  (findTesseract, ligne 591)
+   ────────────────────────────────────────────────────────
+   Chemins recherchés dans l'ordre :
+   - 'tesseract' / 'tesseract.exe' (PATH système)
+   - C:\Program Files\Tesseract-OCR\tesseract.exe  (Windows)
+   - C:\Program Files (x86)\Tesseract-OCR\tesseract.exe  (Windows 32-bit)
+   - which tesseract  (Linux/macOS)
+   - /usr/bin/tesseract, /usr/local/bin/tesseract  (Linux)
+   - /opt/homebrew/bin/tesseract  (macOS Apple Silicon)
+   - Variable d'environnement TESSERACT_HOME
+
+   4.2. EXÉCUTION DE TESSERACT  (runTesseract, ligne 560)
+   ───────────────────────────────────────────────────────
+   Commande construite :
+       tesseract <image> <output_prefix> -l ara+fra+eng --psm 3
+
+   Paramètres :
+   - -l ara+fra+eng : 3 langues simultanées
+   - --psm 3 : Page Segmentation Mode 3 (détection automatique)
+   - <output_prefix> : répertoire temporaire unique
+
+   Résultat : Tesseract génère un fichier .txt qu'on lit et supprime.
+
+   4.3. CONVERSION PDF → IMAGES  (convertPdfToImages, ligne 641)
+   ──────────────────────────────────────────────────────────────
+   Avant d'OCRiser un PDF sans texte intégré, conversion en images :
+
+   MÉTHODE 1 : Imagick (extension PHP, prioritaire)
+       $imagick = new Imagick();
+       $imagick->setResolution(200, 200);   // 200 DPI
+       $imagick->readImage($pdfPath);
+       foreach pages: convertit en PNG qualité 90
+
+   MÉTHODE 2 : Ghostscript (fallback)
+       gs -dNOPAUSE -dBATCH -sDEVICE=png16m -r200 -o page_%d.png <pdf>
+
+   4.4. NETTOYAGE DES FICHIERS TEMPORAIRES
+   ─────────────────────────────────────────
+   Les fichiers PNG temporaires sont supprimés après traitement.
+
+   4.5. GESTION DES ERREURS TESSERACT
+   ───────────────────────────────────
+   - Tesseract non installé → message d'erreur explicite avec lien
+   - Conversion PDF échouée → message suggérant Ghostscript/Imagick
+   - Aucun texte extrait → "L'OCR n'a pas pu extraire de texte"
+
+
+================================================================================
+5. GÉNÉRATION AUTOMATIQUE DE RÉSUMÉ  (generateSummary, ligne 86)
+================================================================================
+
+   Algorithme en 6 étapes :
+
+   ÉTAPE 1 : NETTOYAGE
+   ────────────────────
+   - Supprime les retours chariot (\r\n → \n)
+   - Remplace espaces multiples → 1 espace
+   - Supprime lignes vides consécutives (max 2)
+
+   ÉTAPE 2 : EXTRACTION DES PHRASES  (extractSentences, ligne 237)
+   ────────────────────────────────────────────────────────────────
+   - Fusionne les lignes sans ponctuation finale
+   - Détection des salutations (Madame, Monsieur, Bonjour...)
+   - Segmentation par . ! ? avec détection de majuscule suivante
+
+   ÉTAPE 3 : FILTRAGE DES PHRASES CANDIDATES
+   ──────────────────────────────────────────
+   Exclusion :
+   - Phrases trop courtes (< 15 caractères)
+   - Lignes purement numériques
+   - Entêtes de document (Objet, Réf, N°, Date...)
+   - Formules de politesse (Cordialement, Merci...)
+
+   ÉTAPE 4 : SCORING DES PHRASES
+   ──────────────────────────────
+   Score initial : 100, puis bonus :
+
+   +150  → contient un mot-clé d'action (sollicite, approuve,
+           accorde, décision, budget, financement...)
+           (Liste bilingue français-arabe, lignes 224-234)
+   +5 × position  → bonus pour les phrases en début de document
+   +50  → si longueur entre 40 et 350 caractères (taille idéale)
+   -50  → si longueur > 500 caractères (trop long)
+   +30  → si contient des chiffres (montants, dates)
+
+   ÉTAPE 5 : SÉLECTION ET DÉDUPLICATION
+   ─────────────────────────────────────
+   - Trie par score décroissant
+   - Prend les 4 meilleures
+   - Déduplication : si similarité > 70% (intersection de mots),
+     la seconde est ignorée
+   - Re-tri par ordre d'apparition
+
+   ÉTAPE 6 : ASSEMBLAGE
+   ─────────────────────
+   - Concatène les phrases sélectionnées
+   - Si objet absent du résumé → préfixe
+   - Troncature à 700 caractères max
+   - stocké avec summary_source = 'auto_generated'
+
+   DÉDUPLICATION DES PIÈCES JOINTES  (combineAttachmentTexts, ligne 334)
+   ──────────────────────────────────────────────────────────────────────
+   - MD5 de chaque texte normalisé
+   - Ignore les doublons et textes < 20 caractères
+   - Sépare par "---"
+
+
+================================================================================
+6. DÉTECTION DE LANGUE  (detectLanguage, ligne 352)
+================================================================================
+
+   Méthode hybride (comptage de caractères + mots-clés) :
+
+   1. Compte les caractères arabes (Unicode \x{0600}-\x{06FF} et plages
+      étendues)
+
+   2. Compte les mots français (liste de 50 mots : le, la, les, un,
+      une, des, du, de, et, est, sont, dans, pour, sur, avec...)
+
+   3. Compte les mots anglais (liste de 70 mots : the, a, an, is, are,
+      was, were, be, been, have, has, had...)
+
+   RÈGLE :
+   - Arabe > 10 ET > max(français, anglais) → 'ara'
+   - Français > Anglais → 'fra'
+   - Anglais > Français → 'eng'
+   - Défaut → 'fra'
+
+
+================================================================================
+7. ESTIMATION DE CONFIANCE  (estimateConfidence, ligne 736)
+================================================================================
+
+   Score de 0 à 100 basé sur la qualité du texte extrait :
+
+   Base : 50
+   +20  → ratio alphabétique > 50%
+   +15  → ratio alphabétique > 70%
+   +10  → longueur moyenne des mots entre 2 et 20
+   +5   → texte > 50 caractères
+
+   Max : 100 (texte parfait)
+   Min : 50 (bruit, pas de mots identifiables)
+
+
+================================================================================
+8. EXTRACTION D'INFORMATIONS CLÉS  (extractKeyInformation, ligne 779)
+================================================================================
+
+   Analyse le texte OCR pour extraire :
+
+   DATES       → format JJ/MM/AAAA, MM/JJ/AAAA...
+   RÉFÉRENCES  → N°, n°, No., numéro, COUR-XXXXXX
+   ORGANISATIONS  → Ministère, Direction, Service..., SARL, SPA, EURL
+   PERSONNES   → deux mots ou plus avec majuscule (filtré)
+
+
+================================================================================
+9. STATUTS ET CYCLE DE VIE OCR
+================================================================================
+
+   A. AU NIVEAU DU COURRIER  (courrier.ocr_status)
+   ─────────────────────────────────────────────────
+   pending → processing → completed / failed
+
+   B. AU NIVEAU DE CHAQUE PIÈCE JOINTE
+   ─────────────────────────────────────
+   pending → processing → completed / failed
+
+   C. TRANSITIONS
+   ──────────────
+   pending ──(job start)──→ processing ──(succès)──→ completed
+                                         ──(échec)──→ failed
+   completed ──(rerun)──→ pending
+   failed ──(rerun)──→ pending
+
+   D. CHAMPS PAR PIÈCE JOINTE
+      ocr_text, ocr_language, ocr_status, ocr_confidence,
+      ocr_error, ocr_processed_at
+
+   E. DÉROULEMENT DU JOB  (ProcessOcrJob, 127 lignes)
+      1. courrier.ocr_status = 'processing'
+      2. Pour chaque attachment : OcrService::processAttachment()
+      3. Si au moins un succès → combine textes, génère résumé,
+         courrier.ocr_status = 'completed'
+      4. Si tous échoués → courrier.ocr_status = 'failed'
+
+
+================================================================================
+10. RECHERCHE FULL-TEXT DANS LES ARCHIVES
+================================================================================
+
+   Lors de l'archivage, toutes les données OCR sont sauvegardées
+   dans la table archives (snapshot) :
+   - extracted_text, ocr_status, summary_source
+   - Chaque attachment avec ocr_text
+
+   La recherche utilise un algorithme Damerau-Levenshtein amélioré
+   pour trouver des correspondances même avec des fautes de frappe
+   ou OCR imparfait (seuils de distance jusqu'à 5, transpositions
+   de lettres supportées).
+
+
+================================================================================
+11. SCHÉMA DU PIPELINE COMPLET
+================================================================================
+
+   CRÉATION D'UN COURRIER AVEC PIÈCE JOINTE
+
+   Utilisateur         Serveur              File d'attente
+   ──────────         ────────              ─────────────
+       │                  │                      │
+       │ POST /api/courriers                     │
+       │ (multipart)       │                      │
+       │─────────────────►│                      │
+       │                  │ Sauvegarde fichier + │
+       │                  │ création courrier DB │
+       │                  │                      │
+       │                  │ Dispatch ProcessOcrJob
+       │                  │─────────────────────►│
+       │                  │                      │
+       │   201 + courrier │                      │
+       │◄─────────────────│                      │
+       │                  │              ┌───────┘
+       │                  │              ▼
+       │                  │    ProcessOcrJob::handle()
+       │                  │    ┌────────────────────┐
+       │                  │    │status='processing'  │
+       │                  │    │Pour chaque att. :   │
+       │                  │    │ OcrService::        │
+       │                  │    │  processAttachment  │
+       │                  │    │  → PDF/DOC/Image    │
+       │                  │    │                    │
+       │                  │    │Combine textes       │
+       │                  │    │Génère résumé        │
+       │                  │    │Update DB            │
+       │                  │    └────────────────────┘
+
+   PRÉVISUALISATION SYNCHRONE
+
+   Utilisateur         Serveur
+   ┌────────────────────────────────────────┐
+   │ POST /api/ocr/preview                  │
+   │ (multipart)        │                   │
+   │───────────────────►│                   │
+   │                    │ OcrService::      │
+   │                    │  extractText()    │
+   │                    │  → PDF/DOC/Image  │
+   │                    │                   │
+   │ 200 + texte + résumé                   │
+   │◄───────────────────│                   │
+   └────────────────────────────────────────┘
+
+
+================================================================================
+RÉSUMÉ DES DÉPENDANCES SYSTÈME
+================================================================================
+
+   PHP (obligatoire)
+   ├── smalot/pdfparser        → extraction texte natif PDF
+   ├── ext-zip                 → lecture DOCX
+   ├── ext-simplexml           → parsing XML DOCX
+   └── ext-mbstring            → multibyte (arabe)
+
+   Système (optionnel)
+   ├── Tesseract OCR 5+        → reconnaissance optique
+   │   ├── tesseract-ocr-ara   → langue arabe
+   │   ├── tesseract-ocr-fra   → langue française
+   │   └── tesseract-ocr-eng   → langue anglaise
+   ├── Ghostscript             → conversion PDF → images (fallback)
+   └── Imagick (PHP ext)       → conversion PDF → images (prioritaire)
+
+
+================================================================================
+PARTIE 2 : SÉCURITÉ — MODIFICATIONS ET TESTS EFFECTUÉS
+================================================================================
+
+TABLE DES MATIÈRES
+------------------
+1. Modifications apportées au code
+2. Tests de sécurité dans le scénario global
+3. Tests de sécurité existants (SecurityTest.php)
+4. Anomalies de sécurité détectées
+
+
+================================================================================
+1. MODIFICATIONS APPORTÉES AU CODE
+================================================================================
+
+   A. VISIBILITÉ DU CHEF GÉNÉRAL  (Correction appliquée)
+   ────────────────────────────────────────────────────────
+   Fichier : app/Models/Courrier.php
+   Ligne   : 254
+   Méthode : scopeVisiblePourUser()
+
+   PROBLÈME :
+   ──────────
+   Le chef général (rôle=chef, scope=general) ne voyait que les
+   courriers de son propre service. Il ne pouvait pas voir les
+   courriers créés par les secrétaires des autres services, même
+   s'il devait les valider. Cela bloquait la chaîne de validation.
+
+   CODE AVANT :
+       if ($user->estAdmin()) {
+           return $query;
+       }
+
+   CODE APRÈS :
+       if ($user->estAdmin() || $user->estChefGeneral()) {
+           return $query;
+       }
+
+   EFFET :
+   ───────
+   Le chef général voit désormais TOUS les courriers de
+   l'organisation, exactement comme l'admin.
+
+   LIMITATION (intentionnelle) :
+   ─────────────────────────────
+   Le chef général n'a PAS accès à la gestion des utilisateurs.
+   Seul l'admin peut créer/modifier/supprimer des comptes.
+   Cette distinction est assurée par les Policies :
+   - UserPolicy → seul l'admin peut créer/modifier/supprimer
+   - ServicePolicy → idem
+   - Les contrôleurs admin (AdminStructureController,
+     AdminServiceController, AdminChefAffectationController)
+     sont protégés par le middleware 'admin' (routes/api.php ligne 82)
+
+   B. AMÉLIORATION DE LA RECHERCHE FLOUE (Damerau-Levenshtein)
+   ────────────────────────────────────────────────────────────
+   Fichier : app/Http/Controllers/CourrierController.php
+   Ligne   : 1482 (nouvelle méthode)
+
+   Remplacement de levenshtein() standard par Damerau-Levenshtein
+   qui prend en compte les transpositions de lettres (ex: "ministre"
+   → "minister" = distance 1 au lieu de 2).
+
+   Seuils de distance augmentés (archiveLevenshteinMaxDistance) :
+       Avant : ≤5→1, ≤10→2, >10→3
+       Après : ≤3→0, ≤5→1, ≤8→2, ≤12→3, ≤16→4, >16→5
+
+   C. INCOHÉRENCE DE COMMENTAIRE (Non modifié, signalé)
+   ─────────────────────────────────────────────────────
+   Fichier : app/Models/Courrier.php, ligne 836
+   Méthode : peutEtreReponduPar()
+
+   Le commentaire dit "Admin et chef général peuvent toujours
+   répondre" mais le code ne vérifie que estAdmin(). Le chef
+   général n'est pas inclus. Comportement confirmé comme
+   intentionnel par le responsable. Le commentaire devrait
+   être mis à jour pour éviter la confusion.
+
+
+================================================================================
+2. TESTS DE SÉCURITÉ DANS LE SCÉNARIO GLOBAL
+================================================================================
+
+   Fichier : tests/Feature/GlobalScenarioTest.php
+   45 assertions au total, dont les vérifications de sécurité
+   suivantes :
+
+   2.1. CRÉATION D'UN COURRIER ENTRANT PAR UN SECRÉTAIRE
+   ───────────────────────────────────────────────────────
+   Testé à la ligne 195-203 :
+       $secretaire->postJson('/api/courriers', [
+           'type' => 'entrant', ...
+       ])->assertStatus(422);
+
+   RÈGLE : Seul l'admin, le chef général ou le secrétaire
+   général peut créer un courrier entrant.
+   RÉSULTAT : 422 (validation rejetée)
+   NOTE : Devrait être 403 pour être cohérent avec le reste
+   de l'application.
+
+   2.2. VALIDATION D'UN COURRIER PAR UN SECRÉTAIRE
+   ─────────────────────────────────────────────────
+   Testé à la ligne 218-219 :
+       $secretaire->patchJson("/api/courriers/{$id}/valider")
+           ->assertStatus(403);
+
+   RÈGLE : Seuls les chefs (et l'admin) peuvent valider.
+   Un secrétaire reçoit 403 même sur son propre courrier.
+   RÉSULTAT : 403 (forbidden) ✓
+
+   2.3. ESCALADE DE PRIVILÈGES
+   ────────────────────────────
+   Testé à la ligne 222-232 :
+       $chefStructure->postJson('/api/utilisateurs', [
+           'role' => 'chef', 'role_scope' => 'general', ...
+       ])->assertStatus(403);
+
+   RÈGLE : Un chef de structure ne peut pas créer un compte
+   avec un scope supérieur (general). Protection contre
+   l'escalade de privilèges.
+   RÉSULTAT : 403 (forbidden) ✓
+
+   2.4. SUPPRESSION D'UN COURRIER
+   ───────────────────────────────
+   Testé à la ligne 237-242 :
+       $secretaire->deleteJson("/api/courriers/{$id}") → 403
+       $admin->deleteJson("/api/courriers/{$id}")     → 200
+
+   RÈGLE : Seul l'admin peut supprimer un courrier.
+   RÉSULTAT : Secrétaire 403, Admin 200 ✓
+
+   2.5. AUTHENTIFICATION
+   ──────────────────────
+   Testé à la ligne 87 :
+       $admin->getJson('/api/user')->assertOk()
+                ->assertJsonPath('user.id', $admin->id);
+
+   Vérifie que le système d'authentification Sanctum fonctionne
+   correctement et retourne l'utilisateur connecté.
+
+
+================================================================================
+3. TESTS DE SÉCURITÉ EXISTANTS  (SecurityTest.php)
+================================================================================
+
+   Le fichier tests/Feature/SecurityTest.php (307 lignes) contient
+   des tests de sécurité préexistants que nous n'avons pas modifiés :
+
+   CRITIQUE-1 : ESCALADE DE PRIVILÈGES (6 tests)
+   ──────────────────────────────────────────────
+   - Chef de structure ne peut pas créer un chef général ✓
+   - Chef de structure ne peut pas créer un autre chef de structure ✓
+   - Chef de structure peut créer un secrétaire de service ✓
+   - Chef de service ne peut pas créer un chef de structure ✓
+   - Chef de service peut créer un secrétaire de service ✓
+   - Admin peut créer tous les rôles ✓
+
+   CRITIQUE-2 : VISIBILITÉ DES COURRIERS (5 tests)
+   ───────────────────────────────────────────────
+   - Chef de structure A ne voit pas les courriers de la structure B ✓
+   - Chef de service ne voit que les courriers de son service ✓
+   - Chef général voit tous les courriers ✓
+   - Admin voit tous les courriers ✓
+   - Secrétaire ne voit que les courriers de son service ✓
+
+   CRITIQUE-3 : CONFIDENTIALITÉ (3 tests)
+   ──────────────────────────────────────
+   - Un utilisateur avec un niveau bas ne voit pas les courriers
+     de niveau supérieur ✓
+   - Les détails sont cachés (contenu restreint) ✓
+   - L'existence du courrier est masquée si le niveau est trop
+     bas (404 au lieu de 403 pour ne pas révéler l'existence) ✓
+
+   CRITIQUE-4 : ACTIONS SUR LES COURRIERS (4 tests)
+   ─────────────────────────────────────────────────
+   - Seul l'admin peut supprimer ✓
+   - Seul l'admin peut modifier un courrier validé ✓
+   - Seul un chef peut valider ✓
+   - Seul le créateur ou l'admin peut demander une validation ✓
+
+
+================================================================================
+4. ANOMALIES DE SÉCURITÉ DÉTECTÉES
+================================================================================
+
+   ANOMALIE #1 — Codes HTTP incohérents
+   ─────────────────────────────────────
+   Certaines erreurs de permission retournent 403, d'autres 422 :
+   - Secrétaire tente de valider → 403 (via contrôleur)
+   - Secrétaire tente de créer un entrant → 422 (via validation)
+
+   Impact : Faible. Le comportement est correct (refus), seul le
+   code HTTP diffère. Mais pour un client API, c'est déroutant.
+
+   ANOMALIE #2 — Commentaire trompeur dans peutEtreReponduPar()
+   ─────────────────────────────────────────────────────────────
+   Ligne 836 : "Admin et chef général peuvent toujours répondre"
+   mais le code n'inclut pas le chef général.
+
+   Impact : Faible. Le comportement est intentionnel, mais le
+   commentaire induit en erreur les développeurs qui maintiennent
+   le code.
+
+
+================================================================================
+RÉCAPITULATIF DES FICHIERS MODIFIÉS
+================================================================================
+
+   Fichier modifié                    | Nature du changement
+   ───────────────────────────────────┼────────────────────────────────────
+   app/Models/Courrier.php (l.254)    | Ajout estChefGeneral() dans
+                                      | scopeVisiblePourUser()
+   ───────────────────────────────────┼────────────────────────────────────
+   app/Http/Controllers/             │ Ajout Damerau-Levenshtein,
+   CourrierController.php            │ seuils de distance augmentés
+   ───────────────────────────────────┼────────────────────────────────────
+   tests/Feature/GlobalScenarioTest  | NOUVEAU : 2 tests, 45 assertions
+   .php (297 lignes)                 │ couvrant le cycle de vie complet
+                                      │ et les vérifications de sécurité
+   ───────────────────────────────────┼────────────────────────────────────
+   resultats-tests.txt               | NOUVEAU : rapport d'exécution
+   ───────────────────────────────────┼────────────────────────────────────
+   explication-ocr.txt               | NOUVEAU : documentation technique
+
+
+================================================================================
+COMMENT EXÉCUTER LES TESTS DE SÉCURITÉ
+================================================================================
+
+   Scénario global (nos tests) :
+       ./vendor/bin/pest --filter=GlobalScenarioTest
+
+   Tests de sécurité existants :
+       ./vendor/bin/pest tests/Feature/SecurityTest.php
+
+   Tous les tests :
+       ./vendor/bin/pest
