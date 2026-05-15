@@ -1,0 +1,195 @@
+% ============================================================================
+% Chapitre de sécurité prêt à inclure dans le rapport principal.
+%
+% Packages nécessaires dans le préambule du rapport principal :
+% \usepackage[french]{babel}
+% \usepackage{graphicx}
+% \usepackage{xcolor}
+% \usepackage{booktabs}
+% \usepackage{tabularx}
+% \usepackage{array}
+% \usepackage{float}
+% \usepackage{enumitem}
+% \usepackage[most]{tcolorbox}
+% \usepackage{tikz}
+% \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+% ============================================================================
+
+\providecommand{\SecurityAppName}{Gestion Courrier}
+\providecommand{\SecurityStack}{Laravel 12, Sanctum, React, API REST}
+\providecommand{\SecurityChapterTitle}{Sécurité globale de l'application}
+
+\makeatletter
+\@ifundefined{chapter}
+  {\section{\SecurityChapterTitle}}
+  {\chapter{\SecurityChapterTitle}}
+\makeatother
+\label{chap:securite-globale}
+
+\section{Introduction}
+\label{sec:securite-introduction}
+
+Une application de gestion de courrier administratif manipule des données sensibles : utilisateurs, courriers entrants et sortants, pièces jointes, archives, messages internes, notifications et textes extraits par OCR. La sécurité doit donc être intégrée dès la conception, au niveau de l'architecture, de l'API, des règles d'accès, de la validation des données et de la configuration de production.
+
+Dans ce projet, la sécurité repose sur trois objectifs principaux : confidentialité, intégrité et disponibilité, souvent regroupés sous le sigle CIA dans la terminologie du NIST \cite{nist-cia}. La confidentialité signifie qu'un utilisateur ne consulte que les courriers et fichiers autorisés. L'intégrité garantit qu'un courrier ne peut pas être modifié, validé, transmis ou supprimé hors des règles prévues. La disponibilité vise à maintenir l'application utilisable malgré les erreurs, les traitements lourds ou les tentatives d'abus.
+
+Ces objectifs rejoignent aussi plusieurs risques de l'OWASP Top 10, notamment le contrôle d'accès insuffisant, les injections, les erreurs de configuration et l'utilisation de composants vulnérables \cite{owasp-top10}.
+
+Selon les documents techniques du projet, l'architecture de \SecurityAppName{} repose sur un frontend React de type SPA, une API REST Laravel et une base de données relationnelle \cite{rapport-technique}. Les échanges passent par HTTP/JSON et sont authentifiés avec Laravel Sanctum. Le frontend améliore l'expérience utilisateur, mais la sécurité réelle doit toujours être appliquée côté backend.
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  >=Latex,
+  node distance=1.75cm,
+  every node/.style={font=\scriptsize},
+  box/.style={draw, rounded corners=2pt, align=center, text width=3.15cm, minimum height=1.0cm, fill=gray!5, inner sep=4pt},
+  guard/.style={draw, rounded corners=2pt, align=center, text width=3.65cm, minimum height=1.0cm, fill=blue!7, inner sep=4pt},
+  edgeLabel/.style={font=\tiny, fill=white, inner sep=1pt}
+]
+\node[box] (react) {Frontend React\\SPA};
+\node[guard, right=of react] (api) {API REST\\Laravel};
+\node[guard, right=of api] (policy) {Policies + modèles\\RBAC + confidentialité};
+\node[box, right=of policy] (db) {Base de données\\courriers, utilisateurs};
+\node[box, below=1.2cm of policy] (storage) {Stockage privé\\pièces jointes + OCR};
+
+\draw[->] (react) -- node[edgeLabel, above=3pt]{HTTPS/JSON} (api);
+\draw[->] (api) -- node[edgeLabel, above=3pt]{Sanctum} (policy);
+\draw[->] (policy) -- node[edgeLabel, above=3pt]{requêtes contrôlées} (db);
+\draw[->] (policy) -- node[edgeLabel, right=3pt]{accès contrôlé} (storage);
+\draw[->, dashed] (storage.west) -| node[edgeLabel, near start, below=3pt]{fichiers privés} (api.south);
+\end{tikzpicture}%
+}
+\caption{Principe de défense en profondeur appliqué à l'architecture web}
+\label{fig:defense-profondeur}
+\end{figure}
+
+\section{Authentification et gestion des utilisateurs}
+\label{sec:authentification-gestion-utilisateurs}
+
+L'authentification vérifie l'identité de l'utilisateur avant l'accès aux ressources protégées. Le NIST la définit comme la vérification de l'identité d'un utilisateur, d'un processus ou d'un équipement avant l'autorisation d'accès à un système \cite{nist-auth}. Dans \SecurityAppName{}, cette fonction est assurée par Laravel Sanctum et les sessions Laravel.
+
+Sanctum est adapté aux applications SPA, car il permet d'utiliser des cookies de session avec protection CSRF, sans imposer le stockage d'un jeton sensible dans le navigateur \cite{laravel-sanctum}. Après une connexion réussie, la session doit être régénérée afin de réduire le risque de fixation de session. À la déconnexion, elle est invalidée et le jeton CSRF est renouvelé.
+
+Les mots de passe ne sont jamais stockés en clair. Ils sont hachés avec les mécanismes standards de Laravel, et le champ \texttt{password} doit être masqué dans les réponses JSON. Le modèle utilisateur contient aussi un attribut \texttt{actif}, ce qui permet de désactiver un compte sans le supprimer.
+
+La protection contre la force brute repose sur deux niveaux : la limitation des tentatives, par exemple avec \texttt{throttle:5,1}, et un verrouillage progressif par adresse électronique et adresse IP. Cette combinaison limite les essais automatisés sans bloquer définitivement les utilisateurs légitimes.
+
+Dans un contexte administratif, l'inscription publique représente un risque. Il est donc préférable de désactiver les routes \texttt{/register} en production, ou de créer les comptes avec \texttt{actif=false} jusqu'à validation par un administrateur.
+
+\section{Sécurité native offerte par Laravel}
+\label{sec:securite-native-laravel}
+
+Laravel fournit plusieurs protections utiles, mais elles doivent être accompagnées d'une bonne conception applicative. La validation des entrées est assurée par les \texttt{FormRequest}, qui regroupent les règles de format, de présence, de type, de taille, d'existence en base et d'autorisation. Laravel permet aussi de valider les fichiers selon leur extension, leur taille et leur type MIME \cite{laravel-validation}.
+
+L'autorisation côté backend repose sur les \textit{gates} et les \textit{policies}, qui déterminent si un utilisateur peut consulter, modifier ou supprimer une ressource \cite{laravel-authorization}. Dans le projet, ces policies sont complétées par des méthodes métier dans les modèles \texttt{User}, \texttt{Courrier}, \texttt{Message} et \texttt{Archive}. Cela évite qu'un simple identifiant transmis dans une URL donne automatiquement accès au contenu.
+
+Laravel réduit également les risques d'injection SQL grâce à Eloquent ORM et au Query Builder, qui utilisent des requêtes paramétrées. Côté interface, React échappe par défaut le contenu affiché dans le JSX. Ces protections ne dispensent pas de nettoyer les noms de fichiers, d'éviter le HTML brut et de limiter strictement les champs acceptés par l'API.
+
+Enfin, Laravel propose des mécanismes importants comme la protection CSRF, les sessions, le rate limiting, la journalisation et les queues. Ces éléments sont essentiels pour une application web, en particulier lorsqu'elle traite des opérations lourdes comme l'OCR.
+
+\section{Rôles, autorisations et confidentialité des courriers}
+\label{sec:roles-autorisations-confidentialite}
+
+Le contrôle d'accès consiste à autoriser ou refuser une demande selon des règles définies. Le NIST le décrit comme un processus permettant de restreindre l'accès aux ressources selon des politiques établies \cite{nist-access}. Dans \SecurityAppName{}, ce contrôle repose sur une logique RBAC enrichie par le périmètre et le niveau de confidentialité.
+
+Les rôles principaux sont \texttt{admin}, \texttt{chef} et \texttt{secretaire}. Les périmètres sont \texttt{general}, \texttt{structure} et \texttt{service}. Ainsi, un chef de service peut exercer ses responsabilités sans obtenir automatiquement les droits d'un chef général.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXXXX}
+\toprule
+\textbf{Profil} & \textbf{Portée} & \textbf{Actions typiques} & \textbf{Limite de sécurité} & \textbf{Contrôle technique} \\
+\midrule
+Admin & Globale & Administration, suppression, correction & Risque élevé si compte compromis & Middleware admin + policies \\
+Chef général & Organisation & Validation et supervision globale & Ne doit pas remplacer l'admin système & Policies + méthodes modèle \\
+Chef structure/service & Structure ou service & Validation dans son périmètre & Pas d'accès aux autres structures/services & Filtrage par structure/service \\
+Secrétaire & Service ou structure & Création et suivi & Pas de validation finale sensible & Soumission sous contrôle chef \\
+\bottomrule
+\end{tabularx}
+\caption{Synthèse des profils de sécurité et des limites associées}
+\label{tab:profils-securite}
+\end{table}
+
+La confidentialité ajoute une couche supplémentaire. Même si un utilisateur appartient au bon service ou à la bonne structure, il ne doit pas consulter un courrier dont le niveau de confidentialité dépasse son rang. Le modèle \texttt{Courrier} doit donc comparer le rang de confidentialité du courrier avec celui de l'utilisateur avant d'autoriser l'accès.
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  >=Latex,
+  node distance=.75cm,
+  every node/.style={font=\small},
+  stage/.style={draw, rounded corners, fill=green!6, align=center, minimum width=5.3cm, minimum height=.7cm},
+  stop/.style={draw, rounded corners, fill=red!8, align=center, minimum width=4.6cm, minimum height=.75cm}
+]
+\node[stage] (a) {1. Utilisateur authentifié ?};
+\node[stage, below=of a] (b) {2. Ressource dans son périmètre ?};
+\node[stage, below=of b] (c) {3. Rôle autorisé pour l'action ?};
+\node[stage, below=of c] (d) {4. Rang de confidentialité suffisant ?};
+\node[stage, below=of d] (e) {Accès accordé};
+\node[stop, right=1.5cm of c] (x) {Refus 403 ou 404};
+
+\draw[->] (a) -- (b);
+\draw[->] (b) -- (c);
+\draw[->] (c) -- (d);
+\draw[->] (d) -- (e);
+
+\draw[->, dashed] (a.east) -- node[above, font=\scriptsize]{non} (x.north west);
+\draw[->, dashed] (b.east) -- node[above, font=\scriptsize]{hors périmètre} (x.west);
+\draw[->, dashed] (c.east) -- node[below, font=\scriptsize]{rôle refusé} (x.west);
+\draw[->, dashed] (d.east) -- node[below, font=\scriptsize]{rang insuffisant} (x.south west);
+\end{tikzpicture}%
+}
+\caption{Chaîne de décision pour la consultation d'un courrier}
+\label{fig:decision-acces}
+\end{figure}
+
+La figure~\ref{fig:decision-acces} illustre les contrôles appliqués avant la consultation d'un courrier. Lorsqu'une condition échoue, la demande est refusée avec une réponse adaptée : \texttt{403} si l'accès est interdit, ou \texttt{404} si la ressource ne doit pas être révélée.
+
+Cette approche répond à deux risques importants : le contrôle d'accès cassé dans les applications web et le \textit{Broken Object Level Authorization} dans les API \cite{owasp-api}. Pour éviter l'IDOR, chaque route qui reçoit un identifiant de courrier, message, archive ou pièce jointe doit vérifier les droits sur l'objet avant de retourner les données.
+
+\section{Sécurité côté web, API et fichiers}
+\label{sec:securite-web-api-fichiers}
+
+Les routes API sensibles doivent rester protégées par \texttt{auth:sanctum}. Cela concerne la consultation des courriers, les détails, la validation, la transmission, l'archivage, la messagerie, les utilisateurs, les notifications et l'OCR. Masquer un bouton côté React ne suffit pas : chaque action doit être contrôlée côté Laravel, car un utilisateur peut appeler directement un endpoint.
+
+Côté web, trois points sont prioritaires. La configuration CORS doit être stricte en production, avec uniquement les origines officielles de l'application. L'application doit être servie en HTTPS, avec des cookies \texttt{Secure}, \texttt{HttpOnly} et \texttt{SameSite}. Les en-têtes de sécurité doivent aussi être activés, notamment \texttt{Content-Security-Policy}, \texttt{Strict-Transport-Security}, \texttt{X-Frame-Options}, \texttt{X-Content-Type-Options}, \texttt{Referrer-Policy} et \texttt{Permissions-Policy}.
+
+Les fichiers représentent une zone sensible, car les pièces jointes peuvent contenir des informations confidentielles ou des contenus malveillants. Les formats acceptés doivent être limités, avec contrôle du type MIME, de la taille et du nombre maximal de fichiers. Le stockage doit rester privé, par exemple dans \texttt{storage/app/private}, et le téléchargement doit passer par une route Laravel qui vérifie les droits de consultation.
+
+Il faut éviter les liens directs vers \texttt{/storage/...} pour les documents sensibles. Ces liens peuvent contourner la logique d'autorisation de l'application si le dossier est exposé publiquement.
+
+Le module OCR augmente aussi la surface d'attaque, car il traite des PDF, images et documents Word avec des outils externes. Il doit fonctionner avec des limites de mémoire, de temps et de taille de fichier. Les erreurs techniques doivent être journalisées sans être affichées directement à l'utilisateur. Le texte extrait par OCR doit hériter des mêmes règles d'accès que le courrier et ses pièces jointes \cite{documentation-ocr}.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabularx}{\textwidth}{lXl}
+\toprule
+\textbf{Zone technique} & \textbf{Protection recommandée} & \textbf{Risque réduit} \\
+\midrule
+API REST & \texttt{auth:sanctum}, policies, validation objet par objet & IDOR, actions non autorisées \\
+Sessions & Régénération, cookies \texttt{HttpOnly}, \texttt{Secure}, \texttt{SameSite} & Vol ou fixation de session \\
+CORS & Origines officielles uniquement en production & Appels cross-origin abusifs \\
+Fichiers & MIME, taille, stockage privé, téléchargement contrôlé & Fuite ou dépôt malveillant \\
+OCR & Queue, limites ressources, outils à jour, erreurs filtrées & Déni de service ou exposition interne \\
+Headers & CSP, HSTS, X-Frame-Options, X-Content-Type-Options & XSS, clickjacking, sniffing \\
+\bottomrule
+\end{tabularx}
+\caption{Synthèse des protections web, API et fichiers}
+\label{tab:protections-web}
+\end{table}
+
+Le tableau~\ref{tab:protections-web} résume les protections principales à appliquer pour réduire les risques liés à l'API, aux sessions, aux fichiers, à l'OCR et à la configuration web.
+
+\section{Conclusion}
+\label{sec:securite-conclusion}
+
+La sécurité de \SecurityAppName{} repose sur une défense en profondeur. Elle combine l'authentification par session protégée, l'autorisation par rôles et périmètres, la confidentialité par rang, la validation des entrées, le stockage privé des fichiers, le rate limiting, le contrôle des notifications temps réel et les tests automatisés.
+
+Cette stratégie correspond aux besoins d'une application administrative, car elle prend en compte la hiérarchie de l'organisation, la sensibilité des documents et les risques propres aux applications web modernes.
+
+La sécurité ne se limite donc pas à la page de connexion. Elle doit être présente dans les routes API, les policies, les modèles, les requêtes de validation, le stockage des fichiers et la configuration serveur. Les derniers points à renforcer concernent surtout la mise en production : gestion des secrets, configuration CORS, en-têtes HTTP, suppression des routes de test, durée des tokens, logs et durcissement du module OCR.

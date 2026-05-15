@@ -1,0 +1,60 @@
+@startuml usecase_global
+left to right direction
+skinparam shadowing false
+
+' --- Acteurs avec Héritage ---
+
+actor "Agent" as Agent
+actor "Secrétaire" as Sec
+actor "Secrétaire Générale" as SG
+actor "Chef d'Organe" as CO
+actor "Chef Général" as CG
+actor "Administrateur" as Admin
+
+' Héritage de base
+Sec --|> Agent
+CO --|> Agent
+Admin --|> CG
+
+' Spécialisations de haut niveau
+SG --|> Sec
+CG --|> CO
+
+' --- Système ---
+
+rectangle "Système de Gestion de Courrier" {
+
+    usecase "Authentification" as Auth
+
+    usecase "Consulter et traiter les dossiers qui le concernent\n(use case <<Agent>>)" as UCA
+    
+    usecase "Enregistrer et numériser le courrier local\n(use case <<Secrétaire>>)" as UCS
+    
+    usecase "Gérer l'arrivée globale et la diffusion\n(use case <<Secrétaire Générale>>)" as UCSG
+    
+    usecase "Valider et orienter le courrier de l'organe\n(use case <<Chef Organe>>)" as UCO
+    
+    usecase "Superviser et piloter la gouvernance globale\n(use case <<Chef Général>>)" as UCG
+    
+    usecase "Administrer le référentiel et la configuration\n(use case <<Admin>>)" as UCAd
+}
+
+' --- Relations Acteurs / Use cases ---
+
+Agent --> UCA
+Sec --> UCS
+SG --> UCSG
+CO --> UCO
+CG --> UCG
+Admin --> UCAd
+
+' --- Relations <<include>> vers Authentification ---
+
+UCA ..> Auth : <<include>>
+UCS ..> Auth : <<include>>
+UCSG ..> Auth : <<include>>
+UCO ..> Auth : <<include>>
+UCG ..> Auth : <<include>>
+UCAd ..> Auth : <<include>>
+
+@enduml

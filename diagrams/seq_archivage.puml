@@ -1,0 +1,78 @@
+@startuml sequence_archivage_courrier
+title Diagramme de séquence - Archivage d'un courrier
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Utilisateur" as User
+actor "Commande système\nmensuelle" as Cmd
+
+participant "Interface" as UI
+participant "Système de Gestion\nde Courrier" as Sys
+database "Base de données" as DB
+
+alt Archivage par interface
+    User -> UI : sélectionner le courrier
+    User -> UI : demander l'archivage
+
+    UI -> Sys : envoyer la demande d'archivage
+
+else Archivage automatique par commande système
+    Cmd -> Sys : lancer l'archivage automatique
+    Sys -> DB : rechercher les courriers archivables
+    DB --> Sys : liste des courriers éligibles
+end
+
+Sys -> DB : vérifier l'état du courrier
+DB --> Sys : état du courrier
+
+alt Courrier à l'état "Reçu"
+    Sys -> DB : vérifier si le courrier nécessite une réponse
+    DB --> Sys : besoin de réponse ou non
+
+    alt Réponse requise
+        Sys -> DB : vérifier si le courrier est répondu
+        DB --> Sys : statut de réponse
+
+        alt Courrier répondu
+            Sys -> DB : commencer une transaction
+
+            Sys -> DB : insérer le courrier dans la table archive
+            DB --> Sys : courrier archivé
+
+            Sys -> DB : supprimer le courrier de la table courrier
+            DB --> Sys : courrier supprimé
+
+            Sys -> DB : valider la transaction
+            DB --> Sys : transaction validée
+
+            Sys --> UI : confirmer l'archivage
+            UI --> User : afficher le message de succès
+
+        else Courrier non répondu
+            Sys --> UI : refuser l'archivage
+            UI --> User : afficher que le courrier doit être répondu
+        end
+
+    else Aucune réponse requise
+        Sys -> DB : commencer une transaction
+
+        Sys -> DB : insérer le courrier dans la table archive
+        DB --> Sys : courrier archivé
+
+        Sys -> DB : supprimer le courrier de la table courrier
+        DB --> Sys : courrier supprimé
+
+        Sys -> DB : valider la transaction
+        DB --> Sys : transaction validée
+
+        Sys --> UI : confirmer l'archivage
+        UI --> User : afficher le message de succès
+    end
+
+else Courrier non reçu
+    Sys --> UI : refuser l'archivage
+    UI --> User : afficher que le courrier n'est pas encore reçu
+end
+
+@enduml

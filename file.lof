@@ -1,0 +1,77 @@
+\babel@toc {french}{}\relax 
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {1.1}{\ignorespaces Organigramme de la structure organisationnelle de l’ECRMT.}}{8}{figure.1.1}%
+\contentsline {figure}{\numberline {1.2}{\ignorespaces Vue du magasin (Warehouse) de l'ECRMT}}{9}{figure.1.2}%
+\contentsline {figure}{\numberline {1.3}{\ignorespaces Interface du système de Gestion ERP utilisé à l'ECRMT}}{9}{figure.1.3}%
+\contentsline {figure}{\numberline {1.4}{\ignorespaces Système de stockage automatisé de la chaîne d'assemblage des moyens radio}}{10}{figure.1.4}%
+\contentsline {figure}{\numberline {1.5}{\ignorespaces Vue générale de la ligne d'assemblage SMT}}{10}{figure.1.5}%
+\contentsline {figure}{\numberline {1.6}{\ignorespaces Machine de sérigraphie pour l’application de la pâte à braser}}{11}{figure.1.6}%
+\contentsline {figure}{\numberline {1.7}{\ignorespaces Machine de placement automatique des composants (Pick \& Place)}}{11}{figure.1.7}%
+\contentsline {figure}{\numberline {1.8}{\ignorespaces Vue générale de la ligne d’assemblage THT}}{12}{figure.1.8}%
+\contentsline {figure}{\numberline {1.9}{\ignorespaces Placement semi-automatique des composants THT}}{12}{figure.1.9}%
+\contentsline {figure}{\numberline {1.10}{\ignorespaces Placement manuel des composants THT}}{12}{figure.1.10}%
+\contentsline {figure}{\numberline {1.11}{\ignorespaces Processus de soudure des composants THT}}{13}{figure.1.11}%
+\contentsline {figure}{\numberline {1.12}{\ignorespaces Exemples d'inspection visuelle des soudures THT}}{13}{figure.1.12}%
+\contentsline {figure}{\numberline {1.13}{\ignorespaces Station de nettoyage des cartes électroniques}}{14}{figure.1.13}%
+\contentsline {figure}{\numberline {1.14}{\ignorespaces Station de test automatisé des cartes électroniques}}{14}{figure.1.14}%
+\contentsline {figure}{\numberline {1.15}{\ignorespaces Ligne d'assemblage final des produits}}{15}{figure.1.15}%
+\contentsline {figure}{\numberline {1.16}{\ignorespaces Chambre de test environnemental pour les tests finaux}}{15}{figure.1.16}%
+\contentsline {figure}{\numberline {1.17}{\ignorespaces Organigramme fonctionnel du Laboratoire Central R\&D}}{17}{figure.1.17}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {2.1}{\ignorespaces Interface du système actuel basé sur Redmine \cite {redmineup_themes_2025}.}}{20}{figure.2.1}%
+\contentsline {figure}{\numberline {2.2}{\ignorespaces Comparaison entre le modèle Redmine et le circuit de gestion du courrier voulus}}{21}{figure.2.2}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {3.1}{\ignorespaces Évolution du courrier traditionnel vers le courrier électronique}}{23}{figure.3.1}%
+\contentsline {figure}{\numberline {3.2}{\ignorespaces Exemple de surcharge dans la gestion des courriels}}{24}{figure.3.2}%
+\contentsline {figure}{\numberline {3.3}{\ignorespaces Le courrier électronique dans la communication professionnelle}}{25}{figure.3.3}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {4.1}{\ignorespaces Diagramme de classes de l’application}}{28}{figure.4.1}%
+\contentsline {figure}{\numberline {4.2}{\ignorespaces Diagramme de cas d’utilisation global}}{29}{figure.4.2}%
+\contentsline {figure}{\numberline {4.3}{\ignorespaces Diagramme de cas d’utilisation de l’administrateur}}{29}{figure.4.3}%
+\contentsline {figure}{\numberline {4.4}{\ignorespaces Diagramme de cas d’utilisation du chef général}}{30}{figure.4.4}%
+\contentsline {figure}{\numberline {4.5}{\ignorespaces Diagramme de cas d’utilisation de la secrétaire générale}}{30}{figure.4.5}%
+\contentsline {figure}{\numberline {4.6}{\ignorespaces Diagramme de cas d’utilisation du chef d’organe}}{31}{figure.4.6}%
+\contentsline {figure}{\numberline {4.7}{\ignorespaces Diagramme de cas d’utilisation de la secrétaire d’organe}}{31}{figure.4.7}%
+\contentsline {figure}{\numberline {4.8}{\ignorespaces Diagramme de cas d’utilisation de l’agent}}{31}{figure.4.8}%
+\contentsline {figure}{\numberline {4.9}{\ignorespaces Diagramme de séquence d’authentification}}{32}{figure.4.9}%
+\contentsline {figure}{\numberline {4.10}{\ignorespaces Diagramme de séquence de création d’un courrier}}{32}{figure.4.10}%
+\contentsline {figure}{\numberline {4.11}{\ignorespaces Diagramme de séquence de transmission d’un courrier}}{33}{figure.4.11}%
+\contentsline {figure}{\numberline {4.12}{\ignorespaces Diagramme de séquence de réponse à un courrier}}{33}{figure.4.12}%
+\contentsline {figure}{\numberline {4.13}{\ignorespaces Diagramme de séquence d’archivage d’un courrier}}{34}{figure.4.13}%
+\contentsline {figure}{\numberline {4.14}{\ignorespaces Diagramme de séquence de recherche d’un courrier}}{35}{figure.4.14}%
+\contentsline {figure}{\numberline {4.15}{\ignorespaces Diagramme de séquence de validation d’un courrier}}{35}{figure.4.15}%
+\contentsline {figure}{\numberline {4.16}{\ignorespaces Diagramme d’états-transitions d’un courrier}}{36}{figure.4.16}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {5.1}{\ignorespaces Logo du framework Laravel}}{37}{figure.5.1}%
+\contentsline {figure}{\numberline {5.2}{\ignorespaces Logo de Laravel Reverb}}{40}{figure.5.2}%
+\contentsline {figure}{\numberline {5.3}{\ignorespaces Logo de React}}{41}{figure.5.3}%
+\contentsline {figure}{\numberline {5.4}{\ignorespaces Logo d’Axios}}{41}{figure.5.4}%
+\contentsline {figure}{\numberline {5.5}{\ignorespaces Logo de Tailwind CSS}}{41}{figure.5.5}%
+\contentsline {figure}{\numberline {5.6}{\ignorespaces Logo de PlantUML}}{42}{figure.5.6}%
+\contentsline {figure}{\numberline {5.7}{\ignorespaces Logo de XAMPP}}{42}{figure.5.7}%
+\contentsline {figure}{\numberline {5.8}{\ignorespaces Logo de MariaDB}}{42}{figure.5.8}%
+\contentsline {figure}{\numberline {5.9}{\ignorespaces Logo d'Apache HTTP Server}}{42}{figure.5.9}%
+\contentsline {figure}{\numberline {5.10}{\ignorespaces Logo de Tesseract OCR}}{43}{figure.5.10}%
+\contentsline {figure}{\numberline {5.11}{\ignorespaces Cycle de traitement d’une requête Laravel\cite {patel_laravel_lifecycle}}}{43}{figure.5.11}%
+\contentsline {figure}{\numberline {5.12}{\ignorespaces Vue du tableau de bord}}{44}{figure.5.12}%
+\contentsline {figure}{\numberline {5.13}{\ignorespaces Liste des courriers reçus}}{45}{figure.5.13}%
+\contentsline {figure}{\numberline {5.14}{\ignorespaces Formulaire de création d’un courrier reçu}}{45}{figure.5.14}%
+\contentsline {figure}{\numberline {5.15}{\ignorespaces Écran de transmission d’un courrier}}{46}{figure.5.15}%
+\contentsline {figure}{\numberline {5.16}{\ignorespaces Interface de réponse à un courrier}}{46}{figure.5.16}%
+\contentsline {figure}{\numberline {5.17}{\ignorespaces Archivage d’un courrier}}{47}{figure.5.17}%
+\contentsline {figure}{\numberline {5.18}{\ignorespaces Liste des courriers envoyés}}{47}{figure.5.18}%
+\contentsline {figure}{\numberline {5.19}{\ignorespaces Formulaire de création d’un courrier envoyé}}{48}{figure.5.19}%
+\contentsline {figure}{\numberline {5.20}{\ignorespaces Messagerie interne}}{48}{figure.5.20}%
+\contentsline {figure}{\numberline {5.21}{\ignorespaces Création d’un nouveau message}}{49}{figure.5.21}%
+\contentsline {figure}{\numberline {5.22}{\ignorespaces Consultation des messages}}{49}{figure.5.22}%
+\contentsline {figure}{\numberline {5.23}{\ignorespaces Vue de la gestion des archives}}{50}{figure.5.23}%
+\contentsline {figure}{\numberline {5.24}{\ignorespaces Recherche et filtrage des archives}}{50}{figure.5.24}%
+\contentsline {figure}{\numberline {5.25}{\ignorespaces Gestion des utilisateurs}}{51}{figure.5.25}%
+\contentsline {figure}{\numberline {5.26}{\ignorespaces Affichage des structures}}{51}{figure.5.26}%
+\contentsline {figure}{\numberline {5.27}{\ignorespaces Création d’une structure}}{52}{figure.5.27}%
+\contentsline {figure}{\numberline {5.28}{\ignorespaces Affichage des services}}{52}{figure.5.28}%
+\contentsline {figure}{\numberline {5.29}{\ignorespaces Création d’un service}}{53}{figure.5.29}%
+\contentsline {figure}{\numberline {5.30}{\ignorespaces Affectation des responsables}}{53}{figure.5.30}%
+\addvspace {10\p@ }
+\contentsline {figure}{\numberline {6.1}{\ignorespaces Principe de défense en profondeur appliqué à l'architecture web}}{55}{figure.6.1}%
+\contentsline {figure}{\numberline {6.2}{\ignorespaces Chaîne de décision pour la consultation d'un courrier}}{57}{figure.6.2}%

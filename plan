@@ -1,0 +1,74 @@
+introdution
+    introduction ecole 
+    problematique ✅
+    system existant ✅
+     redmine
+        limite
+    proposition✅
+    
+
+generalite de courrier ✅
+    definition de courrier
+    les types de courriers
+        courrier entrant
+        courrier sortant
+        message
+conception
+
+    genralite uml
+    concetption 
+
+implementaion
+    parler sur les outier de developement 
+        laravel
+            sanctum
+            reverb 
+            ORMs
+        react
+            react-router-dom
+            axios
+        tailwind
+        plantUml
+        xmapp
+            mysql(mariadb)
+            apatch server
+        pusher js (notification and shit)
+        OCR
+
+    parler de restfull api 
+    fonctionnement de une application laravel/react :dire que une telle application utilise inersia , mais on a utuliser axios
+
+        le fetch avec axios
+
+        CORS file (csrf)
+
+        cycle de une requete en laravel 
+            enpoint
+            request
+            validateur
+            controller
+            model
+            view
+            response
+    apersu de application 
+        les page 
+            dashboard
+            les recus
+                creation de un nouvaux courrier 
+                transmetter
+                repondre a un courrier 
+                archivation
+                ocr
+            envoye  
+                creation de un nouvaux courrier
+            messagerie
+                creation de un nouvau message
+                consultaion des message
+            archive
+                recherche et filtre
+            page des utilisateur 
+        
+
+
+                
+

@@ -1,0 +1,63 @@
+@startuml use_cases_courrier
+
+skinparam shadowing false
+left to right direction
+
+' --- Acteurs ---
+
+actor "Administrateur" as Admin
+actor "Chef (Général/Structure/Service)" as Chef
+actor "Secrétaire" as Secretaire
+actor "Utilisateur / Agent" as Agent
+
+' --- Système ---
+
+rectangle "Système de Gestion de Courrier" {
+    
+    ' Gestion des Courriers
+    usecase "Créer un courrier (Entrant/Sortant)" as UC1
+    usecase "Valider un courrier" as UC2
+    usecase "Transmettre / Orienter un courrier" as UC3
+    usecase "Répondre à un courrier" as UC4
+    usecase "Numériser & OCR" as UC5
+    usecase "Archiver un courrier" as UC6
+    
+    ' Consultation & Recherche
+    usecase "Rechercher un courrier" as UC7
+    usecase "Consulter les détails" as UC8
+    
+    ' Communication
+    usecase "Ajouter un commentaire" as UC9
+    usecase "Messagerie interne" as UC10
+    
+    ' Administration
+    usecase "Gérer les utilisateurs" as UC11
+    usecase "Gérer l'organisation (Structures/Services)" as UC12
+}
+
+' --- Relations ---
+
+' Utilisateur de base (Agent)
+Agent --> UC7
+Agent --> UC8
+Agent --> UC9
+Agent --> UC10
+Agent --> UC4
+
+' Secrétaire
+Secretaire --> UC1
+Secretaire --> UC5
+Secretaire --> UC6
+Secretaire --|> Agent
+
+' Chef
+Chef --> UC2
+Chef --> UC3
+Chef --|> Agent
+
+' Admin
+Admin --> UC11
+Admin --> UC12
+Admin --|> Chef
+
+@enduml

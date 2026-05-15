@@ -1,0 +1,28 @@
+@startuml usecase_agent
+left to right direction
+skinparam shadowing false
+
+actor "Agent / Secrétaire / Utilisateur" as Agent
+
+rectangle "Opérations Courantes" {
+       usecase "Autentification" as Auth
+
+    usecase "Rechercher et consulter un courrier dans l'archive" as UC3
+
+    usecase "Répondre à un courrier qui le concerne " as UC5
+    usecase "Échanger par messagerie interne" as UC6
+
+}
+
+
+
+Agent --> UC3
+
+Agent --> UC5
+Agent --> UC6
+UC3 ..> Auth : <<include>>
+UC5 ..> Auth : <<include>>
+UC6 ..> Auth : <<include>>
+
+
+@enduml

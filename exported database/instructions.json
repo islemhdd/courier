@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "libelle": "demand",
+    "created_at": "2026-05-05 10:55:12",
+    "updated_at": "2026-05-05 10:55:12"
+  },
+  {
+    "id": 2,
+    "libelle": "a voire",
+    "created_at": "2026-05-05 10:55:45",
+    "updated_at": "2026-05-05 10:55:45"
+  },
+  {
+    "id": 3,
+    "libelle": "ordre",
+    "created_at": "2026-05-05 10:55:45",
+    "updated_at": "2026-05-05 10:55:45"
+  }
+]

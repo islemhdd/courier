@@ -1,0 +1,162 @@
+[
+  {
+    "id": 33,
+    "courrier_id": 27,
+    "recipient_type": "service",
+    "structure_id": 5,
+    "service_id": 7,
+    "user_id": null,
+    "created_at": "2026-05-08 15:00:31",
+    "updated_at": "2026-05-08 15:00:31"
+  },
+  {
+    "id": 35,
+    "courrier_id": 28,
+    "recipient_type": "service",
+    "structure_id": 3,
+    "service_id": 3,
+    "user_id": null,
+    "created_at": "2026-05-08 15:27:39",
+    "updated_at": "2026-05-08 15:27:39"
+  },
+  {
+    "id": 37,
+    "courrier_id": 29,
+    "recipient_type": "service",
+    "structure_id": 3,
+    "service_id": 3,
+    "user_id": null,
+    "created_at": "2026-05-08 15:30:05",
+    "updated_at": "2026-05-08 15:30:05"
+  },
+  {
+    "id": 38,
+    "courrier_id": 30,
+    "recipient_type": "structure",
+    "structure_id": 3,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-08 15:30:46",
+    "updated_at": "2026-05-08 15:30:46"
+  },
+  {
+    "id": 39,
+    "courrier_id": 31,
+    "recipient_type": "structure",
+    "structure_id": 3,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-08 15:55:49",
+    "updated_at": "2026-05-08 15:55:49"
+  },
+  {
+    "id": 40,
+    "courrier_id": 33,
+    "recipient_type": "structure",
+    "structure_id": 3,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-08 16:02:18",
+    "updated_at": "2026-05-08 16:02:18"
+  },
+  {
+    "id": 42,
+    "courrier_id": 35,
+    "recipient_type": "structure",
+    "structure_id": 3,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-08 16:29:12",
+    "updated_at": "2026-05-08 16:29:12"
+  },
+  {
+    "id": 43,
+    "courrier_id": 34,
+    "recipient_type": "service",
+    "structure_id": null,
+    "service_id": 3,
+    "user_id": null,
+    "created_at": "2026-05-08 16:32:26",
+    "updated_at": "2026-05-08 16:32:26"
+  },
+  {
+    "id": 44,
+    "courrier_id": 36,
+    "recipient_type": "structure",
+    "structure_id": 3,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-08 16:34:24",
+    "updated_at": "2026-05-08 16:34:24"
+  },
+  {
+    "id": 45,
+    "courrier_id": 37,
+    "recipient_type": "user",
+    "structure_id": null,
+    "service_id": null,
+    "user_id": 2,
+    "created_at": "2026-05-08 16:35:46",
+    "updated_at": "2026-05-08 16:35:46"
+  },
+  {
+    "id": 46,
+    "courrier_id": 37,
+    "recipient_type": "user",
+    "structure_id": null,
+    "service_id": null,
+    "user_id": 3,
+    "created_at": "2026-05-08 16:35:46",
+    "updated_at": "2026-05-08 16:35:46"
+  },
+  {
+    "id": 47,
+    "courrier_id": 37,
+    "recipient_type": "user",
+    "structure_id": null,
+    "service_id": null,
+    "user_id": 12,
+    "created_at": "2026-05-08 16:35:46",
+    "updated_at": "2026-05-08 16:35:46"
+  },
+  {
+    "id": 48,
+    "courrier_id": 38,
+    "recipient_type": "structure",
+    "structure_id": 1,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-08 18:49:29",
+    "updated_at": "2026-05-08 18:49:29"
+  },
+  {
+    "id": 49,
+    "courrier_id": 38,
+    "recipient_type": "service",
+    "structure_id": 3,
+    "service_id": 4,
+    "user_id": null,
+    "created_at": "2026-05-08 18:49:29",
+    "updated_at": "2026-05-08 18:49:29"
+  },
+  {
+    "id": 52,
+    "courrier_id": 42,
+    "recipient_type": "service",
+    "structure_id": null,
+    "service_id": 1,
+    "user_id": null,
+    "created_at": "2026-05-09 23:46:20",
+    "updated_at": "2026-05-09 23:46:20"
+  },
+  {
+    "id": 54,
+    "courrier_id": 43,
+    "recipient_type": "structure",
+    "structure_id": 3,
+    "service_id": null,
+    "user_id": null,
+    "created_at": "2026-05-10 01:35:42",
+    "updated_at": "2026-05-10 01:35:42"
+  }
+]

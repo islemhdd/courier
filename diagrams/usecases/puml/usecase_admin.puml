@@ -1,0 +1,35 @@
+@startuml usecase_admin
+left to right direction
+skinparam shadowing false
+
+actor "Administrateur" as Admin
+
+rectangle "Module Administration" {
+    usecase "Gérer les comptes utilisateurs" as UC1
+    usecase "Gérer les structures organisationnelles" as UC2
+    usecase "Gérer les services" as UC3
+    usecase "Définir les types de courrier" as UC4
+    usecase "Configurer les niveaux de confidentialité" as UC5
+    usecase "Gérer les sources externes" as UC6
+    usecase "Autentification" as Auth
+    ' usecase "Suivre l'activité du système" as UC7
+    ' usecase "Gérer les paramètres globaux" as UC8
+}
+
+Admin --> UC1
+Admin --> UC2
+Admin --> UC3
+Admin --> UC4
+Admin --> UC5
+Admin --> UC6
+
+UC1 ..> Auth : <<include>>
+UC2 ..> Auth : <<include>>
+UC3 ..> Auth : <<include>>
+UC4 ..> Auth : <<include>>
+UC5 ..> Auth : <<include>>
+UC6 ..> Auth : <<include>>
+
+' Admin --> UC7
+' Admin --> UC8
+@enduml

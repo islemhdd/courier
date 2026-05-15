@@ -1,0 +1,36 @@
+@startuml seq_creation_courrier
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Secrétaire" as Sec
+participant "Interface Web" as Front
+participant "Contrôleur\nCourrier" as Ctrl
+participant "Service OCR\n(Background Job)" as OCR
+database "Base de Données" as DB
+
+Sec -> Front : Remplit le formulaire et\ntéléverse le document numérisé
+activate Front
+
+Front -> Ctrl : POST /courriers (données + fichier)
+activate Ctrl
+
+Ctrl -> Ctrl : Valide les données (Request)
+Ctrl -> DB : INSERT INTO courriers (statut="CREE", ...)
+activate DB
+DB --> Ctrl : Retourne l'ID du Courrier
+deactivate DB
+
+Ctrl -> DB : Sauvegarde le chemin du fichier (CourrierAttachment)
+Ctrl -> OCR : Déclenche le Job OCR (en asynchrone)
+activate OCR
+Ctrl --> Front : 201 Created (Succès)
+deactivate Ctrl
+
+Front --> Sec : Affiche "Courrier enregistré avec succès"
+deactivate Front
+
+== Traitement Asynchrone (En arrière-plan) ==
+OCR -> OCR : Extrait le texte de l'image/PDF
+OCR -> DB : UPDATE courriers SET extracted_text = ..., ocr_status = "COMPLETED"
+deactivate OCR
+@enduml

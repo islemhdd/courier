@@ -1,0 +1,1802 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.28 (TeX Live 2025/Debian) (preloaded format=pdflatex 2026.5.10)  14 MAY 2026 12:21
+entering extended mode
+ restricted \write18 enabled.
+ file:line:error style messages enabled.
+ %&-line parsing enabled.
+**"/mnt/c/Users/ENPEI/Desktop/courrier project/courier/file.tex"
+(/mnt/c/Users/ENPEI/Desktop/courrier project/courier/file.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/share/texlive/texmf-dist/tex/latex/base/report.cls
+Document Class: report 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/share/texlive/texmf-dist/tex/latex/base/size12.clo
+File: size12.clo 2025/01/22 v1.4n Standard LaTeX file (size option)
+)
+\c@part=\count275
+\c@chapter=\count276
+\c@section=\count277
+\c@subsection=\count278
+\c@subsubsection=\count279
+\c@paragraph=\count280
+\c@subparagraph=\count281
+\c@figure=\count282
+\c@table=\count283
+\abovecaptionskip=\skip49
+\belowcaptionskip=\skip50
+\bibindent=\dimen148
+) (/usr/share/texlive/texmf-dist/tex/latex/base/inputenc.sty
+Package: inputenc 2024/02/08 v1.3d Input encoding file
+\inpenc@prehook=\toks17
+\inpenc@posthook=\toks18
+) (/usr/share/texlive/texmf-dist/tex/generic/babel/babel.sty
+Package: babel 2026/01/18 v26.1 The multilingual framework for LuaLaTeX, pdfLaTeX and XeLaTeX
+\babel@savecnt=\count284
+LaTeX Encoding Info:    Redeclaring text command \ij (encoding OT1) on input line 2078.
+LaTeX Encoding Info:    Redeclaring text command \IJ (encoding OT1) on input line 2080.
+LaTeX Encoding Info:    Redeclaring text command \ij (encoding T1) on input line 2082.
+LaTeX Encoding Info:    Redeclaring text command \IJ (encoding T1) on input line 2083.
+LaTeX Encoding Info:    Ignoring declaration for text command \ij (encoding ?) on input line 2084.
+LaTeX Encoding Info:    Ignoring declaration for text command \IJ (encoding ?) on input line 2086.
+LaTeX Encoding Info:    Ignoring declaration for text command \SS (encoding ?) on input line 2111.
+\U@D=\dimen149
+\l@unhyphenated=\language90
+ (/usr/share/texlive/texmf-dist/tex/generic/babel/txtbabel.def)
+\bbl@readstream=\read2
+\bbl@dirlevel=\count285
+ (/usr/share/texlive/texmf-dist/tex/generic/babel/locale/fr/babel-french.tex)
+Package babel Info: Importing font and identification data for french
+(babel)             from babel-fr.ini. Reported on input line 4330.
+ (/usr/share/texlive/texmf-dist/tex/generic/babel-french/french.ldf
+Language: french 2025-08-15 v4.0e French support from the babel system
+ (/usr/share/texlive/texmf-dist/tex/generic/babel-french/french3.ldf
+Language: french 2025-08-15 v3.7e French support from the babel system
+\FB@stdchar=\count286
+Package babel Info: Making : an active character on input line 273.
+Package babel Info: Making ; an active character on input line 274.
+Package babel Info: Making ! an active character on input line 275.
+Package babel Info: Making ? an active character on input line 276.
+\FBguill@level=\count287
+\FBold@everypar=\toks19
+\FB@Mht=\dimen150
+\mc@charclass=\count288
+\mc@charfam=\count289
+\mc@charslot=\count290
+\std@mcc=\count291
+\dec@mcc=\count292
+\FB@pardim=\dimen151
+\listindentFB=\dimen152
+\descindentFB=\dimen153
+\labelindentFB=\dimen154
+\labelwidthFB=\dimen155
+\leftmarginFB=\dimen156
+\parindentFFN=\dimen157
+\FBfnindent=\dimen158
+))) (/usr/share/texlive/texmf-dist/tex/latex/carlisle/scalefnt.sty) (/usr/share/texlive/texmf-dist/tex/latex/base/fontenc.sty
+Package: fontenc 2025/07/18 v2.1d Standard LaTeX package
+) (/usr/share/texlive/texmf-dist/tex/latex/graphics/graphicx.sty
+Package: graphicx 2024/12/31 v1.2e Enhanced LaTeX Graphics (DPC,SPQR)
+ (/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty
+Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
+\KV@toks@=\toks20
+) (/usr/share/texlive/texmf-dist/tex/latex/graphics/graphics.sty
+Package: graphics 2024/08/06 v1.4g Standard LaTeX Graphics (DPC,SPQR)
+ (/usr/share/texlive/texmf-dist/tex/latex/graphics/trig.sty
+Package: trig 2023/12/02 v1.11 sin cos tan (DPC)
+) (/usr/share/texlive/texmf-dist/tex/latex/graphics-cfg/graphics.cfg
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: pdftex.def on input line 106.
+ (/usr/share/texlive/texmf-dist/tex/latex/graphics-def/pdftex.def
+File: pdftex.def 2025/09/29 v1.2d Graphics/color driver for pdftex
+))
+\Gin@req@height=\dimen159
+\Gin@req@width=\dimen160
+) (/usr/share/texlive/texmf-dist/tex/latex/hyperref/hyperref.sty
+Package: hyperref 2025-07-12 v7.01o Hypertext links for LaTeX
+ (/usr/share/texlive/texmf-dist/tex/generic/iftex/iftex.sty
+Package: iftex 2024/12/12 v1.0g TeX engine tests
+) (/usr/share/texlive/texmf-dist/tex/latex/kvsetkeys/kvsetkeys.sty
+Package: kvsetkeys 2022-10-05 v1.19 Key value parser (HO)
+) (/usr/share/texlive/texmf-dist/tex/generic/kvdefinekeys/kvdefinekeys.sty
+Package: kvdefinekeys 2019-12-19 v1.6 Define keys (HO)
+) (/usr/share/texlive/texmf-dist/tex/generic/pdfescape/pdfescape.sty
+Package: pdfescape 2019/12/09 v1.15 Implements pdfTeX's escape features (HO)
+ (/usr/share/texlive/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty
+Package: ltxcmds 2023-12-04 v1.26 LaTeX kernel commands for general use (HO)
+) (/usr/share/texlive/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
+Package: pdftexcmds 2020-06-27 v0.33 Utility functions of pdfTeX for LuaTeX (HO)
+ (/usr/share/texlive/texmf-dist/tex/generic/infwarerr/infwarerr.sty
+Package: infwarerr 2019/12/03 v1.5 Providing info/warning/error messages (HO)
+)
+Package pdftexcmds Info: \pdf@primitive is available.
+Package pdftexcmds Info: \pdf@ifprimitive is available.
+Package pdftexcmds Info: \pdfdraftmode found.
+)) (/usr/share/texlive/texmf-dist/tex/latex/hycolor/hycolor.sty
+Package: hycolor 2020-01-27 v1.10 Color options for hyperref/bookmark (HO)
+) (/usr/share/texlive/texmf-dist/tex/latex/hyperref/nameref.sty
+Package: nameref 2025-06-21 v2.57 Cross-referencing by name of section
+ (/usr/share/texlive/texmf-dist/tex/latex/refcount/refcount.sty
+Package: refcount 2019/12/15 v3.6 Data extraction from label references (HO)
+) (/usr/share/texlive/texmf-dist/tex/generic/gettitlestring/gettitlestring.sty
+Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
+ (/usr/share/texlive/texmf-dist/tex/latex/kvoptions/kvoptions.sty
+Package: kvoptions 2022-06-15 v3.15 Key value format for package options (HO)
+))
+\c@section@level=\count293
+) (/usr/share/texlive/texmf-dist/tex/latex/etoolbox/etoolbox.sty
+Package: etoolbox 2025/10/02 v2.5m e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count294
+) (/usr/share/texlive/texmf-dist/tex/generic/stringenc/stringenc.sty
+Package: stringenc 2019/11/29 v1.12 Convert strings between diff. encodings (HO)
+)
+\@linkdim=\dimen161
+\Hy@linkcounter=\count295
+\Hy@pagecounter=\count296
+ (/usr/share/texlive/texmf-dist/tex/latex/hyperref/pd1enc.def
+File: pd1enc.def 2025-07-12 v7.01o Hyperref: PDFDocEncoding definition (HO)
+Now handling font encoding PD1 ...
+... no UTF-8 mapping file for font encoding PD1
+) (/usr/share/texlive/texmf-dist/tex/generic/intcalc/intcalc.sty
+Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
+)
+\Hy@SavedSpaceFactor=\count297
+ (/usr/share/texlive/texmf-dist/tex/latex/hyperref/puenc.def
+File: puenc.def 2025-07-12 v7.01o Hyperref: PDF Unicode definition (HO)
+Now handling font encoding PU ...
+... no UTF-8 mapping file for font encoding PU
+)
+Package hyperref Info: Hyper figures OFF on input line 4195.
+Package hyperref Info: Link nesting OFF on input line 4200.
+Package hyperref Info: Hyper index ON on input line 4203.
+Package hyperref Info: Plain pages OFF on input line 4210.
+Package hyperref Info: Backreferencing OFF on input line 4215.
+Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
+Package hyperref Info: Bookmarks ON on input line 4462.
+\c@Hy@tempcnt=\count298
+ (/usr/share/texlive/texmf-dist/tex/latex/url/url.sty
+\Urlmuskip=\muskip17
+Package: url 2013/09/16  ver 3.4  Verb mode for urls, etc.
+)
+LaTeX Info: Redefining \url on input line 4801.
+\XeTeXLinkMargin=\dimen162
+ (/usr/share/texlive/texmf-dist/tex/generic/bitset/bitset.sty
+Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
+ (/usr/share/texlive/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty
+Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO)
+))
+\Fld@menulength=\count299
+\Field@Width=\dimen163
+\Fld@charsize=\dimen164
+Package hyperref Info: Hyper figures OFF on input line 6078.
+Package hyperref Info: Link nesting OFF on input line 6083.
+Package hyperref Info: Hyper index ON on input line 6086.
+Package hyperref Info: backreferencing OFF on input line 6093.
+Package hyperref Info: Link coloring OFF on input line 6098.
+Package hyperref Info: Link coloring with OCG OFF on input line 6103.
+Package hyperref Info: PDF/A mode OFF on input line 6108.
+\Hy@abspage=\count300
+\c@Item=\count301
+\c@Hfootnote=\count302
+)
+Package hyperref Info: Driver (autodetected): hpdftex.
+ (/usr/share/texlive/texmf-dist/tex/latex/hyperref/hpdftex.def
+File: hpdftex.def 2025-07-12 v7.01o Hyperref driver for pdfTeX
+\Fld@listcount=\count303
+\c@bookmark@seq@number=\count304
+ (/usr/share/texlive/texmf-dist/tex/latex/rerunfilecheck/rerunfilecheck.sty
+Package: rerunfilecheck 2025-06-21 v1.11 Rerun checks for auxiliary files (HO)
+ (/usr/share/texlive/texmf-dist/tex/generic/uniquecounter/uniquecounter.sty
+Package: uniquecounter 2019/12/15 v1.4 Provide unlimited unique counter (HO)
+)
+Package uniquecounter Info: New unique counter `rerunfilecheck' on input line 284.
+)
+\Hy@SectionHShift=\skip51
+) (/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty
+Package: geometry 2020/01/02 v5.9 Page Geometry
+ (/usr/share/texlive/texmf-dist/tex/generic/iftex/ifvtex.sty
+Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
+)
+\Gm@cnth=\count305
+\Gm@cntv=\count306
+\c@Gm@tempcnt=\count307
+\Gm@bindingoffset=\dimen165
+\Gm@wd@mp=\dimen166
+\Gm@odd@mp=\dimen167
+\Gm@even@mp=\dimen168
+\Gm@layoutwidth=\dimen169
+\Gm@layoutheight=\dimen170
+\Gm@layouthoffset=\dimen171
+\Gm@layoutvoffset=\dimen172
+\Gm@dimlist=\toks21
+) (/usr/share/texlive/texmf-dist/tex/latex/float/float.sty
+Package: float 2001/11/08 v1.3d Float enhancements (AL)
+\c@float@type=\count308
+\float@exts=\toks22
+\float@box=\box53
+\@float@everytoks=\toks23
+\@floatcapt=\box54
+) (/usr/share/texlive/texmf-dist/tex/latex/listings/listings.sty
+\lst@mode=\count309
+\lst@gtempboxa=\box55
+\lst@token=\toks24
+\lst@length=\count310
+\lst@currlwidth=\dimen173
+\lst@column=\count311
+\lst@pos=\count312
+\lst@lostspace=\dimen174
+\lst@width=\dimen175
+\lst@newlines=\count313
+\lst@lineno=\count314
+\lst@maxwidth=\dimen176
+ (/usr/share/texlive/texmf-dist/tex/latex/listings/lstpatch.sty
+File: lstpatch.sty 2025/11/14 1.11b (Carsten Heinz)
+) (/usr/share/texlive/texmf-dist/tex/latex/listings/lstmisc.sty
+File: lstmisc.sty 2025/11/14 1.11b (Carsten Heinz)
+\c@lstnumber=\count315
+\lst@skipnumbers=\count316
+\lst@framebox=\box56
+) (/usr/share/texlive/texmf-dist/tex/latex/listings/listings.cfg
+File: listings.cfg 2025/11/14 1.11b listings configuration
+))
+Package: listings 2025/11/14 1.11b (Carsten Heinz)
+
+==> First Aid for listings.sty no longer applied!
+    Expected:
+        2024/09/23 1.10c (Carsten Heinz)
+    but found:
+        2025/11/14 1.11b (Carsten Heinz)
+    so I'm assuming it got fixed.
+(/usr/share/texlive/texmf-dist/tex/latex/xcolor/xcolor.sty
+Package: xcolor 2024/09/29 v3.02 LaTeX color extensions (UK)
+ (/usr/share/texlive/texmf-dist/tex/latex/graphics-cfg/color.cfg
+File: color.cfg 2016/01/02 v1.6 sample color configuration
+)
+Package xcolor Info: Driver file: pdftex.def on input line 274.
+ (/usr/share/texlive/texmf-dist/tex/latex/graphics/mathcolor.ltx)
+Package xcolor Info: Model `cmy' substituted by `cmy0' on input line 1349.
+Package xcolor Info: Model `hsb' substituted by `rgb' on input line 1353.
+Package xcolor Info: Model `RGB' extended on input line 1365.
+Package xcolor Info: Model `HTML' substituted by `rgb' on input line 1367.
+Package xcolor Info: Model `Hsb' substituted by `hsb' on input line 1368.
+Package xcolor Info: Model `tHsb' substituted by `hsb' on input line 1369.
+Package xcolor Info: Model `HSB' substituted by `hsb' on input line 1370.
+Package xcolor Info: Model `Gray' substituted by `gray' on input line 1371.
+Package xcolor Info: Model `wave' substituted by `hsb' on input line 1372.
+) (/usr/share/texlive/texmf-dist/tex/latex/tools/tabularx.sty
+Package: tabularx 2023/12/11 v2.12a `tabularx' package (DPC)
+ (/usr/share/texlive/texmf-dist/tex/latex/tools/array.sty
+Package: array 2025/09/25 v2.6n Tabular extension package (FMi)
+\col@sep=\dimen177
+\ar@mcellbox=\box57
+\extrarowheight=\dimen178
+\NC@list=\toks25
+\extratabsurround=\skip52
+\backup@length=\skip53
+\ar@cellbox=\box58
+)
+\TX@col@width=\dimen179
+\TX@old@table=\dimen180
+\TX@old@col=\dimen181
+\TX@target=\dimen182
+\TX@delta=\dimen183
+\TX@cols=\count317
+\TX@ftn=\toks26
+) (/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty
+Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
+\heavyrulewidth=\dimen184
+\lightrulewidth=\dimen185
+\cmidrulewidth=\dimen186
+\belowrulesep=\dimen187
+\belowbottomsep=\dimen188
+\aboverulesep=\dimen189
+\abovetopsep=\dimen190
+\cmidrulesep=\dimen191
+\cmidrulekern=\dimen192
+\defaultaddspace=\dimen193
+\@cmidla=\count318
+\@cmidlb=\count319
+\@aboverulesep=\dimen194
+\@belowrulesep=\dimen195
+\@thisruleclass=\count320
+\@lastruleclass=\count321
+\@thisrulewidth=\dimen196
+) (/usr/share/texlive/texmf-dist/tex/latex/enumitem/enumitem.sty
+Package: enumitem 2025/02/06 v3.11 Customized lists
+\labelindent=\skip54
+\enit@outerparindent=\dimen197
+\enit@toks=\toks27
+\enit@inbox=\box59
+\enit@count@id=\count322
+\enitdp@description=\count323
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcolorbox.sty
+Package: tcolorbox 2025/11/28 version 6.9.0 text color boxes
+ (/usr/share/texlive/texmf-dist/tex/latex/pgf/frontendlayer/tikz.sty (/usr/share/texlive/texmf-dist/tex/latex/pgf/basiclayer/pgf.sty (/usr/share/texlive/texmf-dist/tex/latex/pgf/utilities/pgfrcs.sty (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgfutil-common.tex
+\pgfutil@everybye=\toks28
+\pgfutil@tempdima=\dimen198
+\pgfutil@tempdimb=\dimen199
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgfutil-latex.def
+\pgfutil@abb=\box60
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgfrcs.code.tex (/usr/share/texlive/texmf-dist/tex/generic/pgf/pgf.revision.tex)
+Package: pgfrcs 2025-08-29 v3.1.11a (3.1.11a)
+))
+Package: pgf 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/latex/pgf/basiclayer/pgfcore.sty (/usr/share/texlive/texmf-dist/tex/latex/pgf/systemlayer/pgfsys.sty (/usr/share/texlive/texmf-dist/tex/generic/pgf/systemlayer/pgfsys.code.tex
+Package: pgfsys 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgfkeys.code.tex
+\pgfkeys@pathtoks=\toks29
+\pgfkeys@temptoks=\toks30
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgfkeyslibraryfiltered.code.tex
+\pgfkeys@tmptoks=\toks31
+))
+\pgf@x=\dimen256
+\pgf@y=\dimen257
+\pgf@xa=\dimen258
+\pgf@ya=\dimen259
+\pgf@xb=\dimen260
+\pgf@yb=\dimen261
+\pgf@xc=\dimen262
+\pgf@yc=\dimen263
+\pgf@xd=\dimen264
+\pgf@yd=\dimen265
+\w@pgf@writea=\write3
+\r@pgf@reada=\read3
+\c@pgf@counta=\count324
+\c@pgf@countb=\count325
+\c@pgf@countc=\count326
+\c@pgf@countd=\count327
+\t@pgf@toka=\toks32
+\t@pgf@tokb=\toks33
+\t@pgf@tokc=\toks34
+\pgf@sys@id@count=\count328
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/systemlayer/pgf.cfg
+File: pgf.cfg 2025-08-29 v3.1.11a (3.1.11a)
+)
+Driver file for pgf: pgfsys-pdftex.def
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/systemlayer/pgfsys-pdftex.def
+File: pgfsys-pdftex.def 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/systemlayer/pgfsys-common-pdf.def
+File: pgfsys-common-pdf.def 2025-08-29 v3.1.11a (3.1.11a)
+))) (/usr/share/texlive/texmf-dist/tex/generic/pgf/systemlayer/pgfsyssoftpath.code.tex
+File: pgfsyssoftpath.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfsyssoftpath@smallbuffer@items=\count329
+\pgfsyssoftpath@bigbuffer@items=\count330
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/systemlayer/pgfsysprotocol.code.tex
+File: pgfsysprotocol.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+)) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcore.code.tex
+Package: pgfcore 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmath.code.tex (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathutil.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathparser.code.tex
+\pgfmath@dimen=\dimen266
+\pgfmath@count=\count331
+\pgfmath@box=\box61
+\pgfmath@toks=\toks35
+\pgfmath@stack@operand=\toks36
+\pgfmath@stack@operation=\toks37
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.basic.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.trigonometric.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.random.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.comparison.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.base.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.round.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.misc.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfunctions.integerarithmetics.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathcalc.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmathfloat.code.tex
+\c@pgfmathroundto@lastzeros=\count332
+)) (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfint.code.tex) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorepoints.code.tex
+File: pgfcorepoints.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@picminx=\dimen267
+\pgf@picmaxx=\dimen268
+\pgf@picminy=\dimen269
+\pgf@picmaxy=\dimen270
+\pgf@pathminx=\dimen271
+\pgf@pathmaxx=\dimen272
+\pgf@pathminy=\dimen273
+\pgf@pathmaxy=\dimen274
+\pgf@xx=\dimen275
+\pgf@xy=\dimen276
+\pgf@yx=\dimen277
+\pgf@yy=\dimen278
+\pgf@zx=\dimen279
+\pgf@zy=\dimen280
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorepathconstruct.code.tex
+File: pgfcorepathconstruct.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@path@lastx=\dimen281
+\pgf@path@lasty=\dimen282
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorepathusage.code.tex
+File: pgfcorepathusage.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@shorten@end@additional=\dimen283
+\pgf@shorten@start@additional=\dimen284
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorescopes.code.tex
+File: pgfcorescopes.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfpic=\box62
+\pgf@hbox=\box63
+\pgf@layerbox@main=\box64
+\pgf@picture@serial@count=\count333
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoregraphicstate.code.tex
+File: pgfcoregraphicstate.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgflinewidth=\dimen285
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoretransformations.code.tex
+File: pgfcoretransformations.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@pt@x=\dimen286
+\pgf@pt@y=\dimen287
+\pgf@pt@temp=\dimen288
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorequick.code.tex
+File: pgfcorequick.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoreobjects.code.tex
+File: pgfcoreobjects.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorepathprocessing.code.tex
+File: pgfcorepathprocessing.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorearrows.code.tex
+File: pgfcorearrows.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfarrowsep=\dimen289
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoreshade.code.tex
+File: pgfcoreshade.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@max=\dimen290
+\pgf@sys@shading@range@num=\count334
+\pgf@shadingcount=\count335
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoreimage.code.tex
+File: pgfcoreimage.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoreexternal.code.tex
+File: pgfcoreexternal.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfexternal@startupbox=\box65
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorelayers.code.tex
+File: pgfcorelayers.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcoretransparency.code.tex
+File: pgfcoretransparency.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorepatterns.code.tex
+File: pgfcorepatterns.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/basiclayer/pgfcorerdf.code.tex
+File: pgfcorerdf.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+))) (/usr/share/texlive/texmf-dist/tex/generic/pgf/modules/pgfmoduleshapes.code.tex
+File: pgfmoduleshapes.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfnodeparttextbox=\box66
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/modules/pgfmoduleplot.code.tex
+File: pgfmoduleplot.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/latex/pgf/compatibility/pgfcomp-version-0-65.sty
+Package: pgfcomp-version-0-65 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@nodesepstart=\dimen291
+\pgf@nodesepend=\dimen292
+) (/usr/share/texlive/texmf-dist/tex/latex/pgf/compatibility/pgfcomp-version-1-18.sty
+Package: pgfcomp-version-1-18 2025-08-29 v3.1.11a (3.1.11a)
+)) (/usr/share/texlive/texmf-dist/tex/latex/pgf/utilities/pgffor.sty (/usr/share/texlive/texmf-dist/tex/latex/pgf/utilities/pgfkeys.sty (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgfkeys.code.tex)) (/usr/share/texlive/texmf-dist/tex/latex/pgf/math/pgfmath.sty (/usr/share/texlive/texmf-dist/tex/generic/pgf/math/pgfmath.code.tex)) (/usr/share/texlive/texmf-dist/tex/generic/pgf/utilities/pgffor.code.tex
+Package: pgffor 2025-08-29 v3.1.11a (3.1.11a)
+\pgffor@iter=\dimen293
+\pgffor@skip=\dimen294
+\pgffor@stack=\toks38
+\pgffor@toks=\toks39
+)) (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/tikz.code.tex
+Package: tikz 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/libraries/pgflibraryplothandlers.code.tex
+File: pgflibraryplothandlers.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgf@plot@mark@count=\count336
+\pgfplotmarksize=\dimen295
+)
+\tikz@lastx=\dimen296
+\tikz@lasty=\dimen297
+\tikz@lastxsaved=\dimen298
+\tikz@lastysaved=\dimen299
+\tikz@lastmovetox=\dimen300
+\tikz@lastmovetoy=\dimen301
+\tikzleveldistance=\dimen302
+\tikzsiblingdistance=\dimen303
+\tikz@figbox=\box67
+\tikz@figbox@bg=\box68
+\tikz@tempbox=\box69
+\tikz@tempbox@bg=\box70
+\tikztreelevel=\count337
+\tikznumberofchildren=\count338
+\tikznumberofcurrentchild=\count339
+\tikz@fig@count=\count340
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/modules/pgfmodulematrix.code.tex
+File: pgfmodulematrix.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfmatrixcurrentrow=\count341
+\pgfmatrixcurrentcolumn=\count342
+\pgf@matrix@numberofcolumns=\count343
+)
+\tikz@expandcount=\count344
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibrarytopaths.code.tex
+File: tikzlibrarytopaths.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+))) (/usr/share/texlive/texmf-dist/tex/latex/tools/verbatim.sty
+Package: verbatim 2024-01-22 v1.5x LaTeX2e package for verbatim enhancements
+\every@verbatim=\toks40
+\verbatim@line=\toks41
+\verbatim@in@stream=\read4
+) (/usr/share/texlive/texmf-dist/tex/latex/environ/environ.sty
+Package: environ 2014/05/04 v0.3 A new way to define environments
+ (/usr/share/texlive/texmf-dist/tex/latex/trimspaces/trimspaces.sty
+Package: trimspaces 2009/09/17 v1.1 Trim spaces around a token list
+)
+\@envbody=\toks42
+)
+\tcb@titlebox=\box71
+\tcb@upperbox=\box72
+\tcb@lowerbox=\box73
+\tcb@phantombox=\box74
+\c@tcbbreakpart=\count345
+\c@tcblayer=\count346
+\c@tcolorbox@number=\count347
+\l__tcobox_tmpa_box=\box75
+\l__tcobox_tmpa_dim=\dimen304
+\tcb@temp=\box76
+\tcb@temp=\box77
+\tcb@temp=\box78
+\tcb@temp=\box79
+ (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbraster.code.tex
+Library (tcolorbox): 'tcbraster.code.tex' version '6.9.0'
+\c@tcbrastercolumn=\count348
+\c@tcbrasterrow=\count349
+\c@tcbrasternum=\count350
+\c@tcbraster=\count351
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbskins.code.tex
+Library (tcolorbox): 'tcbskins.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/latex/tikzfill/tikzfill.image.sty
+Package: tikzfill.image 2023/08/08 v1.0.1 Image filling library for TikZ
+ (/usr/share/texlive/texmf-dist/tex/latex/tikzfill/tikzfill-common.sty
+Package: tikzfill-common 2023/08/08 v1.0.1 Auxiliary code for tikzfill
+) (/usr/share/texlive/texmf-dist/tex/latex/tikzfill/tikzlibraryfill.image.code.tex
+File: tikzlibraryfill.image.code.tex 2023/08/08 v1.0.1 Image filling library
+\l__tikzfill_img_box=\box80
+)) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbskinsjigsaw.code.tex
+Library (tcolorbox): 'tcbskinsjigsaw.code.tex' version '6.9.0'
+)) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbbreakable.code.tex
+Library (tcolorbox): 'tcbbreakable.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/latex/pdfcol/pdfcol.sty
+Package: pdfcol 2022-09-21 v1.7 Handle new color stacks for pdfTeX (HO)
+)
+Package pdfcol Info: New color stack `tcb@breakable' = 1 on input line 23.
+\tcb@testbox=\box81
+\tcb@totalupperbox=\box82
+\tcb@totallowerbox=\box83
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbhooks.code.tex
+Library (tcolorbox): 'tcbhooks.code.tex' version '6.9.0'
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbtheorems.code.tex
+Library (tcolorbox): 'tcbtheorems.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/latex/amsmath/amsmath.sty
+Package: amsmath 2025/07/09 v2.17z AMS math features
+\@mathmargin=\skip55
+
+For additional information on amsmath, use the `?' option.
+(/usr/share/texlive/texmf-dist/tex/latex/amsmath/amstext.sty
+Package: amstext 2024/11/17 v2.01 AMS text
+ (/usr/share/texlive/texmf-dist/tex/latex/amsmath/amsgen.sty
+File: amsgen.sty 1999/11/30 v2.0 generic functions
+\@emptytoks=\toks43
+\ex@=\dimen305
+)) (/usr/share/texlive/texmf-dist/tex/latex/amsmath/amsbsy.sty
+Package: amsbsy 1999/11/29 v1.2d Bold Symbols
+\pmbraise@=\dimen306
+) (/usr/share/texlive/texmf-dist/tex/latex/amsmath/amsopn.sty
+Package: amsopn 2022/04/08 v2.04 operator names
+)
+\inf@bad=\count352
+LaTeX Info: Redefining \frac on input line 233.
+\uproot@=\count353
+\leftroot@=\count354
+LaTeX Info: Redefining \overline on input line 398.
+LaTeX Info: Redefining \colon on input line 409.
+\classnum@=\count355
+\DOTSCASE@=\count356
+LaTeX Info: Redefining \ldots on input line 495.
+LaTeX Info: Redefining \dots on input line 498.
+LaTeX Info: Redefining \cdots on input line 619.
+\Mathstrutbox@=\box84
+\strutbox@=\box85
+LaTeX Info: Redefining \big on input line 721.
+LaTeX Info: Redefining \Big on input line 722.
+LaTeX Info: Redefining \bigg on input line 723.
+LaTeX Info: Redefining \Bigg on input line 724.
+\big@size=\dimen307
+LaTeX Font Info:    Redeclaring font encoding OML on input line 742.
+LaTeX Font Info:    Redeclaring font encoding OMS on input line 743.
+\macc@depth=\count357
+LaTeX Info: Redefining \bmod on input line 904.
+LaTeX Info: Redefining \pmod on input line 909.
+LaTeX Info: Redefining \smash on input line 939.
+LaTeX Info: Redefining \relbar on input line 969.
+LaTeX Info: Redefining \Relbar on input line 970.
+\c@MaxMatrixCols=\count358
+\dotsspace@=\muskip18
+\c@parentequation=\count359
+\dspbrk@lvl=\count360
+\tag@help=\toks44
+\row@=\count361
+\column@=\count362
+\maxfields@=\count363
+\andhelp@=\toks45
+\eqnshift@=\dimen308
+\alignsep@=\dimen309
+\tagshift@=\dimen310
+\tagwidth@=\dimen311
+\totwidth@=\dimen312
+\lineht@=\dimen313
+\@envbody=\toks46
+\multlinegap=\skip56
+\multlinetaggap=\skip57
+\mathdisplay@stack=\toks47
+LaTeX Info: Redefining \[ on input line 2950.
+LaTeX Info: Redefining \] on input line 2951.
+)) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbfitting.code.tex
+Library (tcolorbox): 'tcbfitting.code.tex' version '6.9.0'
+\tcbfitdim=\dimen314
+\tcb@lowerfitdim=\dimen315
+\tcb@upperfitdim=\dimen316
+\tcb@cur@hbadness=\count364
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcblistingsutf8.code.tex
+Library (tcolorbox): 'tcblistingsutf8.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcblistings.code.tex
+Library (tcolorbox): 'tcblistings.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcblistingscore.code.tex
+Library (tcolorbox): 'tcblistingscore.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbprocessing.code.tex
+Library (tcolorbox): 'tcbprocessing.code.tex' version '6.9.0'
+)
+\c@tcblisting=\count365
+)) (/usr/share/texlive/texmf-dist/tex/latex/listingsutf8/listingsutf8.sty
+Package: listingsutf8 2019-12-10 v1.5 Allow UTF-8 in listings input (HO)
+)) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbexternal.code.tex
+Library (tcolorbox): 'tcbexternal.code.tex' version '6.9.0'
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbmagazine.code.tex
+Library (tcolorbox): 'tcbmagazine.code.tex' version '6.9.0'
+) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbvignette.code.tex
+Library (tcolorbox): 'tcbvignette.code.tex' version '6.9.0'
+(/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibraryfadings.code.tex
+File: tikzlibraryfadings.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/libraries/pgflibraryfadings.code.tex
+File: pgflibraryfadings.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+))) (/usr/share/texlive/texmf-dist/tex/latex/tcolorbox/tcbposter.code.tex
+Library (tcolorbox): 'tcbposter.code.tex' version '6.9.0'
+)) (/usr/share/texlive/texmf-dist/tex/generic/pgf/libraries/pgflibraryarrows.meta.code.tex
+File: pgflibraryarrows.meta.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+\pgfarrowinset=\dimen317
+\pgfarrowlength=\dimen318
+\pgfarrowwidth=\dimen319
+\pgfarrowlinewidth=\dimen320
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibrarypositioning.code.tex
+File: tikzlibrarypositioning.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibraryshapes.geometric.code.tex
+File: tikzlibraryshapes.geometric.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+ (/usr/share/texlive/texmf-dist/tex/generic/pgf/libraries/shapes/pgflibraryshapes.geometric.code.tex
+File: pgflibraryshapes.geometric.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+)) (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibraryfit.code.tex
+File: tikzlibraryfit.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+) (/usr/share/texlive/texmf-dist/tex/generic/pgf/frontendlayer/tikz/libraries/tikzlibrarycalc.code.tex
+File: tikzlibrarycalc.code.tex 2025-08-29 v3.1.11a (3.1.11a)
+)
+Package french3.ldf Info: Setting StandardItemizeEnv=true for
+(french3.ldf)             compatibility with enumitem package,
+(french3.ldf)             reported on input line 33.
+Package french3.ldf Info: Setting StandardEnumerateEnv=true for
+(french3.ldf)             compatibility with enumitem package,
+(french3.ldf)             reported on input line 33.
+ (/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
+File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
+\l__color_backend_stack_int=\count366
+) (./file.aux (./pagegard.aux)
+Package babel Info: 'french' activates 'french' shorthands.
+(babel)             Reported on input line 12.
+ (./remerciment.aux) (./presentaion_unite.aux) (./generalitecourrier.aux) (./conception.aux) (./implementaion.aux) (./sec.aux) (./bib.aux
+
+LaTeX Warning: Label `axios' multiply defined.
+
+))
+\openout1 = `file.aux'.
+
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 33.
+LaTeX Font Info:    ... okay on input line 33.
+LaTeX Info: Redefining \degres on input line 33.
+ (/usr/share/texlive/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
+[Loading MPS to PDF converter (version 2006.09.02).]
+\scratchcounter=\count367
+\scratchdimen=\dimen321
+\scratchbox=\box86
+\nofMPsegments=\count368
+\nofMParguments=\count369
+\everyMPshowfont=\toks48
+\MPscratchCnt=\count370
+\MPscratchDim=\dimen322
+\MPnumerator=\count371
+\makeMPintoPDFobject=\count372
+\everyMPtoPDFconversion=\toks49
+) (/usr/share/texlive/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
+Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 485.
+ (/usr/share/texlive/texmf-dist/tex/latex/latexconfig/epstopdf-sys.cfg
+File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Live
+))
+Package hyperref Info: Link coloring OFF on input line 33.
+ (./file.out) (./file.out)
+\@outlinefile=\write4
+\openout4 = `file.out'.
+
+
+*geometry* driver: auto-detecting
+*geometry* detected driver: pdftex
+*geometry* verbose mode - [ preamble ] result:
+* driver: pdftex
+* paper: a4paper
+* layout: <same size as paper>
+* layoutoffset:(h,v)=(0.0pt,0.0pt)
+* modes: 
+* h-part:(L,W,R)=(71.13188pt, 455.24411pt, 71.13188pt)
+* v-part:(T,H,B)=(71.13188pt, 702.78308pt, 71.13188pt)
+* \paperwidth=597.50787pt
+* \paperheight=845.04684pt
+* \textwidth=455.24411pt
+* \textheight=702.78308pt
+* \oddsidemargin=-1.1381pt
+* \evensidemargin=-1.1381pt
+* \topmargin=-38.1381pt
+* \headheight=12.0pt
+* \headsep=25.0pt
+* \topskip=12.0pt
+* \footskip=30.0pt
+* \marginparwidth=35.0pt
+* \marginparsep=10.0pt
+* \columnsep=10.0pt
+* \skip\footins=10.8pt plus 4.0pt minus 2.0pt
+* \hoffset=0.0pt
+* \voffset=0.0pt
+* \mag=1000
+* \@twocolumnfalse
+* \@twosidefalse
+* \@mparswitchfalse
+* \@reversemarginfalse
+* (1in=72.27pt=25.4mm, 1cm=28.453pt)
+
+\c@lstlisting=\count373
+\openout2 = `pagegard.aux'.
+
+(./pagegard.tex
+<./images/unita.png, id=449, 185.19188pt x 203.25937pt>
+File: ./images/unita.png Graphic file (type png)
+<use ./images/unita.png>
+Package pdftex.def Info: ./images/unita.png  used on input line 13.
+(pdftex.def)             Requested size: 204.85846pt x 224.84828pt.
+<./images/ecrmt.png, id=451, 189.70876pt x 204.765pt>
+File: ./images/ecrmt.png Graphic file (type png)
+<use ./images/ecrmt.png>
+Package pdftex.def Info: ./images/ecrmt.png  used on input line 18.
+(pdftex.def)             Requested size: 204.85846pt x 221.12102pt.
+ [1
+
+
+{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texmf/fonts/enc/dvips/cm-super/cm-super-t1.enc} <./images/unita.png> <./images/ecrmt.png>]) (./file.toc
+pdfTeX warning (ext4): destination with the same identifier (name{page.1}) has been already used, duplicate ignored
+<to be read again> 
+                   \relax 
+l.47 ...iagramme de classes}{28}{subsection.4.2.2}
+                                                  % [1
+
+
+
+] [2])
+\tf@toc=\write5
+\openout5 = `file.toc'.
+
+ [3] (./file.lof [4
+
+])
+\tf@lof=\write6
+\openout6 = `file.lof'.
+
+ [5]
+\openout2 = `remerciment.aux'.
+
+ (./remerciment.tex) [6
+
+
+]
+\openout2 = `presentaion_unite.aux'.
+
+ (./presentaion_unite.tex
+Chapitre 1.
+
+Overfull \hbox (8.87584pt too wide) in paragraph at lines 8--9
+[]\T1/cmr/m/n/12 L'…tablissement Cen-tral de RÈ-no-va-tion du Ma-tÈ-riel des Trans-mis-sions/1\TS1/cmr/m/n/12 ∞\T1/cmr/m/n/12 RM (ECRMT),
+ []
+
+[7
+
+
+
+
+{/usr/share/texmf/fonts/enc/dvips/cm-super/cm-super-ts1.enc}]
+<./images/organigramme_ecrmt.png, id=746, 575.14874pt x 307.64937pt>
+File: ./images/organigramme_ecrmt.png Graphic file (type png)
+<use ./images/organigramme_ecrmt.png>
+Package pdftex.def Info: ./images/organigramme_ecrmt.png  used on input line 42.
+(pdftex.def)             Requested size: 409.71692pt x 219.16489pt.
+<./images/magasin.png, id=747, 235.37938pt x 107.40125pt>
+File: ./images/magasin.png Graphic file (type png)
+<use ./images/magasin.png>
+Package pdftex.def Info: ./images/magasin.png  used on input line 61.
+(pdftex.def)             Requested size: 364.19667pt x 166.18176pt.
+ [8
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.65 
+      <./images/organigramme_ecrmt.png>]
+<./images/erp_interface.png, id=756, 184.18813pt x 96.36pt>
+File: ./images/erp_interface.png Graphic file (type png)
+<use ./images/erp_interface.png>
+Package pdftex.def Info: ./images/erp_interface.png  used on input line 76.
+(pdftex.def)             Requested size: 364.19667pt x 190.5331pt.
+<./images/stockage_auto.png, id=757, 187.19937pt x 102.88437pt>
+File: ./images/stockage_auto.png Graphic file (type png)
+<use ./images/stockage_auto.png>
+Package pdftex.def Info: ./images/stockage_auto.png  used on input line 85.
+(pdftex.def)             Requested size: 364.19667pt x 200.17314pt.
+ [9
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.89 
+     
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.3}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.89 
+      <./images/magasin.png> <./images/erp_interface.png>]
+<./images/ligne_smt.png, id=765, 248.93pt x 101.37875pt>
+File: ./images/ligne_smt.png Graphic file (type png)
+<use ./images/ligne_smt.png>
+Package pdftex.def Info: ./images/ligne_smt.png  used on input line 105.
+(pdftex.def)             Requested size: 364.19667pt x 148.33504pt.
+<./images/serigraphie.png, id=766, 257.96375pt x 111.41624pt>
+File: ./images/serigraphie.png Graphic file (type png)
+<use ./images/serigraphie.png>
+Package pdftex.def Info: ./images/serigraphie.png  used on input line 117.
+(pdftex.def)             Requested size: 273.14923pt x 117.98505pt.
+ [10
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.4}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.121 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.5}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.121 
+       <./images/stockage_auto.png> <./images/ligne_smt.png>]
+<./images/pick_and_place.png, id=776, 316.68312pt x 193.22188pt>
+File: ./images/pick_and_place.png Graphic file (type png)
+<use ./images/pick_and_place.png>
+Package pdftex.def Info: ./images/pick_and_place.png  used on input line 128.
+(pdftex.def)             Requested size: 273.14923pt x 166.67172pt.
+<./images/ligne_tht.png, id=777, 392.96812pt x 229.35687pt>
+File: ./images/ligne_tht.png Graphic file (type png)
+<use ./images/ligne_tht.png>
+Package pdftex.def Info: ./images/ligne_tht.png  used on input line 154.
+(pdftex.def)             Requested size: 364.19667pt x 212.57874pt.
+ [11
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.6}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.158 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.7}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.158 
+       <./images/serigraphie.png> <./images/pick_and_place.png>]
+<./images/placement_semi_auto.png, id=791, 374.90062pt x 188.705pt>
+File: ./images/placement_semi_auto.png Graphic file (type png)
+<use ./images/placement_semi_auto.png>
+Package pdftex.def Info: ./images/placement_semi_auto.png  used on input line 170.
+(pdftex.def)             Requested size: 218.51521pt x 109.9903pt.
+
+Underfull \hbox (badness 10000) in paragraph at lines 171--171
+[]\T1/cmr/m/sc/12 Figure 1.9 \T1/cmr/m/n/12 ^^U []Placement semi-
+ []
+
+<./images/placement_manuel.png, id=792, 239.89626pt x 113.42375pt>
+File: ./images/placement_manuel.png Graphic file (type png)
+<use ./images/placement_manuel.png>
+Package pdftex.def Info: ./images/placement_manuel.png  used on input line 176.
+(pdftex.def)             Requested size: 218.51521pt x 103.31613pt.
+<./images/soudure_tht.png, id=793, 388.95313pt x 247.42438pt>
+File: ./images/soudure_tht.png Graphic file (type png)
+<use ./images/soudure_tht.png>
+Package pdftex.def Info: ./images/soudure_tht.png  used on input line 186.
+(pdftex.def)             Requested size: 318.66948pt x 202.7194pt.
+[12
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.8}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.190 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.9}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.190 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.10}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.190 
+       <./images/ligne_tht.png> <./images/placement_semi_auto.png> <./images/placement_manuel.png>]
+<./images/inspection_visuelle_tht.png, id=805, 311.66437pt x 236.38312pt>
+File: ./images/inspection_visuelle_tht.png Graphic file (type png)
+<use ./images/inspection_visuelle_tht.png>
+Package pdftex.def Info: ./images/inspection_visuelle_tht.png  used on input line 195.
+(pdftex.def)             Requested size: 364.19667pt x 276.23169pt.
+<./images/nettoyage_cartes.png, id=806, 309.155pt x 283.55937pt>
+File: ./images/nettoyage_cartes.png Graphic file (type png)
+<use ./images/nettoyage_cartes.png>
+Package pdftex.def Info: ./images/nettoyage_cartes.png  used on input line 204.
+(pdftex.def)             Requested size: 273.14923pt x 250.55412pt.
+ [13
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.11}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.208 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.12}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.208 
+       <./images/soudure_tht.png> <./images/inspection_visuelle_tht.png>]
+<./images/test_cartes.png, id=815, 263.98625pt x 176.66pt>
+File: ./images/test_cartes.png Graphic file (type png)
+<use ./images/test_cartes.png>
+Package pdftex.def Info: ./images/test_cartes.png  used on input line 215.
+(pdftex.def)             Requested size: 273.14923pt x 182.80286pt.
+<./images/assemblage_final.png, id=816, 254.9525pt x 193.22188pt>
+File: ./images/assemblage_final.png Graphic file (type png)
+<use ./images/assemblage_final.png>
+Package pdftex.def Info: ./images/assemblage_final.png  used on input line 230.
+(pdftex.def)             Requested size: 364.19667pt x 276.02802pt.
+ [14
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.13}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.234 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.14}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.234 
+       <./images/nettoyage_cartes.png> <./images/test_cartes.png>]
+<./images/chambre_environnementale.png, id=825, 257.96375pt x 183.68625pt>
+File: ./images/chambre_environnementale.png Graphic file (type png)
+<use ./images/chambre_environnementale.png>
+Package pdftex.def Info: ./images/chambre_environnementale.png  used on input line 241.
+(pdftex.def)             Requested size: 364.19667pt x 259.35637pt.
+ [15
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.15}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.250 \section
+              {Qualit√© et Ing√©nierie}
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.16}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.250 \section
+              {Qualit√© et Ing√©nierie} <./images/assemblage_final.png> <./images/chambre_environnementale.png>]
+<./images/organigramme_rd.png, id=833, 595.22375pt x 286.57062pt>
+File: ./images/organigramme_rd.png Graphic file (type png)
+<use ./images/organigramme_rd.png>
+Package pdftex.def Info: ./images/organigramme_rd.png  used on input line 293.
+(pdftex.def)             Requested size: 409.71692pt x 197.25731pt.
+ [16] [17
+pdfTeX warning (ext4): destination with the same identifier (name{figure.1.17}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.332     \item S
+                 alle des machines ; <./images/organigramme_rd.png>]) [18]
+Chapitre 2.
+[19
+
+
+
+]
+<images/redmin/redmine_interface.png, id=859, 803.0pt x 501.875pt>
+File: images/redmin/redmine_interface.png Graphic file (type png)
+<use images/redmin/redmine_interface.png>
+Package pdftex.def Info: images/redmin/redmine_interface.png  used on input line 69.
+(pdftex.def)             Requested size: 409.71692pt x 256.07538pt.
+<images/redmin/limites_redmine_courrier.png, id=862, 1453.43pt x 1090.0725pt>
+File: images/redmin/limites_redmine_courrier.png Graphic file (type png)
+<use images/redmin/limites_redmine_courrier.png>
+Package pdftex.def Info: images/redmin/limites_redmine_courrier.png  used on input line 77.
+(pdftex.def)             Requested size: 432.48051pt x 324.36296pt.
+ [20
+pdfTeX warning (ext4): destination with the same identifier (name{figure.2.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.89 
+      <./images/redmin/redmine_interface.png (PNG copy)>] [21
+pdfTeX warning (ext4): destination with the same identifier (name{figure.2.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.100 
+       <./images/redmin/limites_redmine_courrier.png (PNG copy)>] [22]
+\openout2 = `generalitecourrier.aux'.
+
+ (./generalitecourrier.tex
+Chapitre 3.
+[23
+
+
+
+pdfTeX warning (ext4): destination with the same identifier (name{figure.3.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.33 
+     ]
+<images/courrier/deff.png, id=895, 708.39656pt x 356.0803pt>
+File: images/courrier/deff.png Graphic file (type png)
+<use images/courrier/deff.png>
+Package pdftex.def Info: images/courrier/deff.png  used on input line 42.
+(pdftex.def)             Requested size: 341.43307pt x 171.62837pt.
+
+Overfull \hbox (1.33531pt too wide) in paragraph at lines 54--55
+[]\T1/cmr/m/n/12 Le cour-rier Èlec-tro-nique fa-ci-lite aussi le tra-vail col-la-bo-ra-tif. Plu-sieurs per-sonnes peuvent
+ []
+
+[24
+pdfTeX warning (ext4): destination with the same identifier (name{figure.3.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.56 C
+      ependant, l‚Äôimportance du courriel ne se limite pas seulement √† la ... <./images/courrier/deff.png>]
+<images/courrier/image.png, id=906, 994.46532pt x 499.8675pt>
+File: images/courrier/image.png Graphic file (type png)
+<use images/courrier/image.png>
+Package pdftex.def Info: images/courrier/image.png  used on input line 63.
+(pdftex.def)             Requested size: 341.43307pt x 171.62308pt.
+) [25
+pdfTeX warning (ext4): destination with the same identifier (name{figure.3.3}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.101 \include{generalitecourrier}
+                                   <./images/courrier/image.png>]
+\openout2 = `conception.aux'.
+
+ (./conception.tex
+Chapitre 4.
+[26
+
+
+
+
+] [27]
+<diagrams/classD/classD.png, id=925, 1027.84pt x 578.16pt>
+File: diagrams/classD/classD.png Graphic file (type png)
+<use diagrams/classD/classD.png>
+Package pdftex.def Info: diagrams/classD/classD.png  used on input line 92.
+(pdftex.def)             Requested size: 455.24655pt x 256.07619pt.
+<out/diagrams/usecases/puml/usecase_global/usecase_global.png, id=926, 1263.72125pt x 675.52374pt>
+File: out/diagrams/usecases/puml/usecase_global/usecase_global.png Graphic file (type png)
+<use out/diagrams/usecases/puml/usecase_global/usecase_global.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/usecase_global/usecase_global.png  used on input line 105.
+(pdftex.def)             Requested size: 398.33858pt x 212.93541pt.
+ [28
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.109 
+       <./diagrams/classD/classD.png (PNG copy)>]
+<out/diagrams/usecases/puml/usecase_admin/usecase_admin.png, id=931, 725.71124pt x 546.04pt>
+File: out/diagrams/usecases/puml/usecase_admin/usecase_admin.png Graphic file (type png)
+<use out/diagrams/usecases/puml/usecase_admin/usecase_admin.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/usecase_admin/usecase_admin.png  used on input line 115.
+(pdftex.def)             Requested size: 398.33858pt x 299.72302pt.
+<out/diagrams/usecases/puml/usecase_chef_general/usecase_chef_general.png, id=932, 844.15375pt x 777.90625pt>
+File: out/diagrams/usecases/puml/usecase_chef_general/usecase_chef_general.png Graphic file (type png)
+<use out/diagrams/usecases/puml/usecase_chef_general/usecase_chef_general.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/usecase_chef_general/usecase_chef_general.png  used on input line 125.
+(pdftex.def)             Requested size: 398.33858pt x 367.08784pt.
+ [29
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.129 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.3}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.129 
+       <./out/diagrams/usecases/puml/usecase_global/usecase_global.png (PNG copy)> <./out/diagrams/usecases/puml/usecase_admin/usecase_admin.png (PNG copy)>]
+<out/diagrams/usecases/puml/usecase_secretaire_general/usecase_secretaire_generale.png, id=937, 1127.21124pt x 335.2525pt>
+File: out/diagrams/usecases/puml/usecase_secretaire_general/usecase_secretaire_generale.png Graphic file (type png)
+<use out/diagrams/usecases/puml/usecase_secretaire_general/usecase_secretaire_generale.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/usecase_secretaire_general/usecase_secretaire_generale.png  used on input line 135.
+(pdftex.def)             Requested size: 398.33858pt x 118.47066pt.
+<out/diagrams/usecases/puml/usecase_chef_organe/usecase_chef_organe.png, id=938, 960.58875pt x 523.9575pt>
+File: out/diagrams/usecases/puml/usecase_chef_organe/usecase_chef_organe.png Graphic file (type png)
+<use out/diagrams/usecases/puml/usecase_chef_organe/usecase_chef_organe.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/usecase_chef_organe/usecase_chef_organe.png  used on input line 145.
+(pdftex.def)             Requested size: 398.33858pt x 217.27841pt.
+ [30
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.4}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.149 \subsubsection
+                    {Diagramme de cas d‚Äôutilisation de la secr√©taire d‚Äô...
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.5}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.149 \subsubsection
+                    {Diagramme de cas d‚Äôutilisation de la secr√©taire d‚Äô... <./out/diagrams/usecases/puml/usecase_chef_general/usecase_chef_general.png (PNG copy)> <./out/diagrams/usecases/puml/usecase_secretaire_general/usecase_secretaire_generale.png (PNG copy)>]
+</mnt/c/Users/ENPEI/Desktop/courrier project/courier/out/diagrams/usecases/puml/usecase_secretaire/usecase_secretaire_organe.png, id=944, 1097.09875pt x 327.2225pt>
+File: /mnt/c/Users/ENPEI/Desktop/courrier project/courier/out/diagrams/usecases/puml/usecase_secretaire/usecase_secretaire_organe.png Graphic file (type png)
+<use /mnt/c/Users/ENPEI/Desktop/courrier project/courier/out/diagrams/usecases/puml/usecase_secretaire/usecase_secretaire_organe.png>
+Package pdftex.def Info: /mnt/c/Users/ENPEI/Desktop/courrier project/courier/out/diagrams/usecases/puml/usecase_secretaire/usecase_secretaire_organe.png  used on input line 154.
+(pdftex.def)             Requested size: 398.33858pt x 118.8086pt.
+<out/diagrams/usecases/puml/usecase_agent/usecase_agent.png, id=945, 885.3075pt x 325.215pt>
+File: out/diagrams/usecases/puml/usecase_agent/usecase_agent.png Graphic file (type png)
+<use out/diagrams/usecases/puml/usecase_agent/usecase_agent.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/usecase_agent/usecase_agent.png  used on input line 163.
+(pdftex.def)             Requested size: 398.33858pt x 146.3305pt.
+<out/diagrams/seq_authentification/seq_authentification.png, id=946, 856.19875pt x 614.295pt>
+File: out/diagrams/seq_authentification/seq_authentification.png Graphic file (type png)
+<use out/diagrams/seq_authentification/seq_authentification.png>
+Package pdftex.def Info: out/diagrams/seq_authentification/seq_authentification.png  used on input line 176.
+(pdftex.def)             Requested size: 398.33858pt x 285.79419pt.
+ [31
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.6}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.180 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.7}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.180 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.8}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.180 
+       <./out/diagrams/usecases/puml/usecase_chef_organe/usecase_chef_organe.png (PNG copy)> </mnt/c/Users/ENPEI/Desktop/courrier project/courier/out/diagrams/usecases/puml/usecase_secretaire/usecase_secretaire_organe.png (PNG copy)> <./out/diagrams/usecases/puml/usecase_agent/usecase_agent.png (PNG copy)>]
+<out/diagrams/seq_creation_courrier/seq_creation_courrier.png, id=952, 1323.94624pt x 606.265pt>
+File: out/diagrams/seq_creation_courrier/seq_creation_courrier.png Graphic file (type png)
+<use out/diagrams/seq_creation_courrier/seq_creation_courrier.png>
+Package pdftex.def Info: out/diagrams/seq_creation_courrier/seq_creation_courrier.png  used on input line 186.
+(pdftex.def)             Requested size: 398.33858pt x 182.4082pt.
+<out/diagrams/seq_transmission_courrier/sequence_transmission_courrier.png, id=953, 1039.885pt x 854.19125pt>
+File: out/diagrams/seq_transmission_courrier/sequence_transmission_courrier.png Graphic file (type png)
+<use out/diagrams/seq_transmission_courrier/sequence_transmission_courrier.png>
+Package pdftex.def Info: out/diagrams/seq_transmission_courrier/sequence_transmission_courrier.png  used on input line 196.
+(pdftex.def)             Requested size: 398.33388pt x 351.3807pt.
+ [32
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.9}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.201 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.10}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.201 
+       <./out/diagrams/seq_authentification/seq_authentification.png (PNG copy)> <./out/diagrams/seq_creation_courrier/seq_creation_courrier.png (PNG copy)>]
+<out/diagrams/seq_reponse_courrier/sequence_reponse_courrier.png, id=958, 981.6675pt x 871.255pt>
+File: out/diagrams/seq_reponse_courrier/sequence_reponse_courrier.png Graphic file (type png)
+<use out/diagrams/seq_reponse_courrier/sequence_reponse_courrier.png>
+Package pdftex.def Info: out/diagrams/seq_reponse_courrier/sequence_reponse_courrier.png  used on input line 207.
+(pdftex.def)             Requested size: 398.3371pt x 210.83372pt.
+<out/diagrams/seq_archivage/sequence_archivage_courrier.png, id=959, 926.46124pt x 1487.5575pt>
+File: out/diagrams/seq_archivage/sequence_archivage_courrier.png Graphic file (type png)
+<use out/diagrams/seq_archivage/sequence_archivage_courrier.png>
+Package pdftex.def Info: out/diagrams/seq_archivage/sequence_archivage_courrier.png  used on input line 218.
+(pdftex.def)             Requested size: 409.72229pt x 351.39192pt.
+ [33
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.11}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.222 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.12}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.222 
+       <./out/diagrams/seq_transmission_courrier/sequence_transmission_courrier.png (PNG copy)> <./out/diagrams/seq_reponse_courrier/sequence_reponse_courrier.png (PNG copy)>]
+<out/diagrams/seq_recherche/sequence_recherche_courrier.png, id=964, 779.91376pt x 825.0825pt>
+File: out/diagrams/seq_recherche/sequence_recherche_courrier.png Graphic file (type png)
+<use out/diagrams/seq_recherche/sequence_recherche_courrier.png>
+Package pdftex.def Info: out/diagrams/seq_recherche/sequence_recherche_courrier.png  used on input line 228.
+(pdftex.def)             Requested size: 409.71077pt x 309.22891pt.
+ [34
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.13}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.232 
+       <./out/diagrams/seq_archivage/sequence_archivage_courrier.png (PNG copy)>]
+<out/diagrams/seq_validation_courrier/seq_validation_courrier.png, id=969, 905.3825pt x 474.77374pt>
+File: out/diagrams/seq_validation_courrier/seq_validation_courrier.png Graphic file (type png)
+<use out/diagrams/seq_validation_courrier/seq_validation_courrier.png>
+Package pdftex.def Info: out/diagrams/seq_validation_courrier/seq_validation_courrier.png  used on input line 238.
+(pdftex.def)             Requested size: 398.33858pt x 208.87935pt.
+<out/diagrams/usecases/puml/etat_courrier_creation_validation/etat_courrier.png, id=970, 585.18625pt x 1265.72874pt>
+File: out/diagrams/usecases/puml/etat_courrier_creation_validation/etat_courrier.png Graphic file (type png)
+<use out/diagrams/usecases/puml/etat_courrier_creation_validation/etat_courrier.png>
+Package pdftex.def Info: out/diagrams/usecases/puml/etat_courrier_creation_validation/etat_courrier.png  used on input line 247.
+(pdftex.def)             Requested size: 276.18944pt x 597.38403pt.
+) [35
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.14}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.104 \include{conception}
+                          
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.15}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.104 \include{conception}
+                           <./out/diagrams/seq_recherche/sequence_recherche_courrier.png (PNG copy)> <./out/diagrams/seq_validation_courrier/seq_validation_courrier.png (PNG copy)>] [36
+pdfTeX warning (ext4): destination with the same identifier (name{figure.4.16}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.104 \include{conception}
+                           <./out/diagrams/usecases/puml/etat_courrier_creation_validation/etat_courrier.png (PNG copy)>]
+\openout2 = `implementaion.aux'.
+
+ (./implementaion.tex
+Chapitre 5.
+<images/logos/laravel.png, id=980, 148.555pt x 148.555pt>
+File: images/logos/laravel.png Graphic file (type png)
+<use images/logos/laravel.png>
+Package pdftex.def Info: images/logos/laravel.png  used on input line 23.
+(pdftex.def)             Requested size: 113.81102pt x 113.81647pt.
+[37
+
+
+
+
+
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.29 \subsubsection
+                   {Eloquent ORM} <./images/logos/laravel.png (PNG copy)>] (/usr/share/texlive/texmf-dist/tex/latex/listings/lstlang1.sty
+File: lstlang1.sty 2025/11/14 1.11b listings language file
+) (/usr/share/texlive/texmf-dist/tex/latex/listings/lstlang2.sty
+File: lstlang2.sty 2025/11/14 1.11b listings language file
+)
+Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on input line 36.
+ [38] [39]
+<images/logos/reverb_logo.png, id=1060, 301.125pt x 168.63pt>
+File: images/logos/reverb_logo.png Graphic file (type png)
+<use images/logos/reverb_logo.png>
+Package pdftex.def Info: images/logos/reverb_logo.png  used on input line 121.
+(pdftex.def)             Requested size: 113.81102pt x 63.73526pt.
+<images/logos/react_logo.png, id=1062, 160.6pt x 148.555pt>
+File: images/logos/react_logo.png Graphic file (type png)
+<use images/logos/react_logo.png>
+Package pdftex.def Info: images/logos/react_logo.png  used on input line 134.
+(pdftex.def)             Requested size: 100.15425pt x 92.6449pt.
+ [40
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.138 
+       <./images/logos/reverb_logo.png (PNG copy)>]
+<images/logos/axios_logo.png, id=1075, 335.2525pt x 122.4575pt>
+File: images/logos/axios_logo.png Graphic file (type png)
+<use images/logos/axios_logo.png>
+Package pdftex.def Info: images/logos/axios_logo.png  used on input line 153.
+(pdftex.def)             Requested size: 100.15425pt x 36.58243pt.
+<images/logos/tailwind_logo.png, id=1077, 288.07625pt x 175.65625pt>
+File: images/logos/tailwind_logo.png Graphic file (type png)
+<use images/logos/tailwind_logo.png>
+Package pdftex.def Info: images/logos/tailwind_logo.png  used on input line 165.
+(pdftex.def)             Requested size: 100.15425pt x 61.07051pt.
+<images/logos/plantuml_logo.png, id=1079, 271.0125pt x 148.555pt>
+File: images/logos/plantuml_logo.png Graphic file (type png)
+<use images/logos/plantuml_logo.png>
+Package pdftex.def Info: images/logos/plantuml_logo.png  used on input line 178.
+(pdftex.def)             Requested size: 100.15425pt x 54.89874pt.
+ [41
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.3}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.182 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.4}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.182 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.5}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.182 
+       <./images/logos/react_logo.png (PNG copy)> <./images/logos/axios_logo.png (PNG copy)> <./images/logos/tailwind_logo.png (PNG copy)>]
+<images/logos/xampp_logo.png, id=1089, 602.25pt x 602.25pt>
+File: images/logos/xampp_logo.png Graphic file (type png)
+<use images/logos/xampp_logo.png>
+Package pdftex.def Info: images/logos/xampp_logo.png  used on input line 190.
+(pdftex.def)             Requested size: 91.04742pt x 91.0412pt.
+<images/logos/mariadb_logo.png, id=1091, 182.6825pt x 148.555pt>
+File: images/logos/mariadb_logo.png Graphic file (type png)
+<use images/logos/mariadb_logo.png>
+Package pdftex.def Info: images/logos/mariadb_logo.png  used on input line 203.
+(pdftex.def)             Requested size: 100.15425pt x 81.44481pt.
+<images/logos/apache_logo.png, id=1093, 271.0125pt x 148.555pt>
+File: images/logos/apache_logo.png Graphic file (type png)
+<use images/logos/apache_logo.png>
+Package pdftex.def Info: images/logos/apache_logo.png  used on input line 216.
+(pdftex.def)             Requested size: 100.15425pt x 54.89874pt.
+ [42
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.6}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.223 \subsection
+                 {OCR}
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.7}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.223 \subsection
+                 {OCR}
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.8}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.223 \subsection
+                 {OCR}
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.9}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.223 \subsection
+                 {OCR} <./images/logos/plantuml_logo.png (PNG copy)> <./images/logos/xampp_logo.png (PNG copy)> <./images/logos/mariadb_logo.png (PNG copy)> <./images/logos/apache_logo.png (PNG copy)>]
+<images/logos/tesseract_logo.png, id=1103, 196.735pt x 196.735pt>
+File: images/logos/tesseract_logo.png Graphic file (type png)
+<use images/logos/tesseract_logo.png>
+Package pdftex.def Info: images/logos/tesseract_logo.png  used on input line 229.
+(pdftex.def)             Requested size: 100.15425pt x 100.1534pt.
+<images/logos/laravel_request_cycle.png, id=1108, 1003.75pt x 421.575pt>
+File: images/logos/laravel_request_cycle.png Graphic file (type png)
+<use images/logos/laravel_request_cycle.png>
+Package pdftex.def Info: images/logos/laravel_request_cycle.png  used on input line 250.
+(pdftex.def)             Requested size: 386.96027pt x 162.52237pt.
+ (./app.tex [43
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.10}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.1 \section
+            {Aper√ßu de l'application r√©alis√©e}
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.11}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.1 \section
+            {Aper√ßu de l'application r√©alis√©e} <./images/logos/tesseract_logo.png> <./images/logos/laravel_request_cycle.png (PNG copy)>]
+<images/app/dashboard.png, id=1121, 1130.42325pt x 548.0475pt>
+File: images/app/dashboard.png Graphic file (type png)
+<use images/app/dashboard.png>
+Package pdftex.def Info: images/app/dashboard.png  used on input line 13.
+(pdftex.def)             Requested size: 418.81927pt x 203.05035pt.
+<images/app/courier_recu.png, id=1122, 1131.0255pt x 549.252pt>
+File: images/app/courier_recu.png Graphic file (type png)
+<use images/app/courier_recu.png>
+Package pdftex.def Info: images/app/courier_recu.png  used on input line 25.
+(pdftex.def)             Requested size: 418.81804pt x 203.38766pt.
+ [44
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.12}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.29 
+      <./images/app/dashboard.png>]
+<images/app/courier_recu_crre1.png, id=1130, 506.49225pt x 481.8pt>
+File: images/app/courier_recu_crre1.png Graphic file (type png)
+<use images/app/courier_recu_crre1.png>
+Package pdftex.def Info: images/app/courier_recu_crre1.png  used on input line 39.
+(pdftex.def)             Requested size: 223.07367pt x 212.19849pt.
+<images/app/courier_recu_crr2.png, id=1131, 504.08325pt x 431.81325pt>
+File: images/app/courier_recu_crr2.png Graphic file (type png)
+<use images/app/courier_recu_crr2.png>
+Package pdftex.def Info: images/app/courier_recu_crr2.png  used on input line 44.
+(pdftex.def)             Requested size: 223.06644pt x 191.08559pt.
+<images/app/trans.png, id=1132, 504.08325pt x 486.618pt>
+File: images/app/trans.png Graphic file (type png)
+<use images/app/trans.png>
+Package pdftex.def Info: images/app/trans.png  used on input line 57.
+(pdftex.def)             Requested size: 320.33543pt x 309.2366pt.
+ [45
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.13}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.61 
+     
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.14}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.61 
+      <./images/app/courier_recu.png> <./images/app/courier_recu_crre1.png> <./images/app/courier_recu_crr2.png>]
+<images/app/respo_cor.png, id=1140, 504.08325pt x 497.4585pt>
+File: images/app/respo_cor.png Graphic file (type png)
+<use images/app/respo_cor.png>
+Package pdftex.def Info: images/app/respo_cor.png  used on input line 69.
+(pdftex.def)             Requested size: 213.64413pt x 210.83638pt.
+ [46
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.15}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.78 
+     
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.16}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.78 
+      <./images/app/trans.png> <./images/app/respo_cor.png>]
+<images/app/archive.png, id=1147, 1145.4795pt x 548.64975pt>
+File: images/app/archive.png Graphic file (type png)
+<use images/app/archive.png>
+Package pdftex.def Info: images/app/archive.png  used on input line 81.
+(pdftex.def)             Requested size: 409.71556pt x 196.24126pt.
+<images/app/courrier_env.png, id=1148, 1140.05925pt x 543.83176pt>
+File: images/app/courrier_env.png Graphic file (type png)
+<use images/app/courrier_env.png>
+Package pdftex.def Info: images/app/courrier_env.png  used on input line 94.
+(pdftex.def)             Requested size: 418.82323pt x 199.78731pt.
+<images/app/Courier_envoye_create.png, id=1149, 504.08325pt x 307.1475pt>
+File: images/app/Courier_envoye_create.png Graphic file (type png)
+<use images/app/Courier_envoye_create.png>
+Package pdftex.def Info: images/app/Courier_envoye_create.png  used on input line 108.
+(pdftex.def)             Requested size: 223.06644pt x 135.91861pt.
+<images/app/coureur_env_crea2.png, id=1150, 489.62926pt x 340.27126pt>
+File: images/app/coureur_env_crea2.png Graphic file (type png)
+<use images/app/coureur_env_crea2.png>
+Package pdftex.def Info: images/app/coureur_env_crea2.png  used on input line 113.
+(pdftex.def)             Requested size: 223.07303pt x 155.02615pt.
+ [47
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.17}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.118 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.18}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.118 
+       <./images/app/archive.png> <./images/app/courrier_env.png>]
+<images/app/msg_+create.png, id=1157, 1135.24126pt x 557.08125pt>
+File: images/app/msg_+create.png Graphic file (type png)
+<use images/app/msg_+create.png>
+Package pdftex.def Info: images/app/msg_+create.png  used on input line 126.
+(pdftex.def)             Requested size: 409.70856pt x 201.05061pt.
+File: images/app/msg_+create.png Graphic file (type png)
+<use images/app/msg_+create.png>
+Package pdftex.def Info: images/app/msg_+create.png  used on input line 138.
+(pdftex.def)             Requested size: 409.70856pt x 201.05061pt.
+ [48
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.19}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.142 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.20}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.142 
+       <./images/app/Courier_envoye_create.png> <./images/app/coureur_env_crea2.png> <./images/app/msg_+create.png>]
+<images/app/cons_im.png, id=1167, 1150.2975pt x 552.26324pt>
+File: images/app/cons_im.png Graphic file (type png)
+<use images/app/cons_im.png>
+Package pdftex.def Info: images/app/cons_im.png  used on input line 150.
+(pdftex.def)             Requested size: 409.71877pt x 196.7079pt.
+File: images/app/archive.png Graphic file (type png)
+<use images/app/archive.png>
+Package pdftex.def Info: images/app/archive.png  used on input line 162.
+(pdftex.def)             Requested size: 409.71556pt x 196.24126pt.
+ [49
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.21}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.166 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.22}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.166 
+       <./images/app/cons_im.png>]
+<images/app/filtre.png, id=1173, 751.00575pt x 260.172pt>
+File: images/app/filtre.png Graphic file (type png)
+<use images/app/filtre.png>
+Package pdftex.def Info: images/app/filtre.png  used on input line 174.
+(pdftex.def)             Requested size: 409.7083pt x 141.9358pt.
+<images/app/users_index.png, id=1174, 1145.4795pt x 549.252pt>
+File: images/app/users_index.png Graphic file (type png)
+<use images/app/users_index.png>
+Package pdftex.def Info: images/app/users_index.png  used on input line 191.
+(pdftex.def)             Requested size: 409.71556pt x 196.45667pt.
+ [50
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.23}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.195 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.24}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.195 
+       <./images/app/filtre.png>]
+<images/app/adminstrationindex.png, id=1180, 1142.46825pt x 552.26324pt>
+File: images/app/adminstrationindex.png Graphic file (type png)
+<use images/app/adminstrationindex.png>
+Package pdftex.def Info: images/app/adminstrationindex.png  used on input line 203.
+(pdftex.def)             Requested size: 418.81915pt x 202.455pt.
+<images/app/struct_crr.png, id=1181, 292.09125pt x 215.00325pt>
+File: images/app/struct_crr.png Graphic file (type png)
+<use images/app/struct_crr.png>
+Package pdftex.def Info: images/app/struct_crr.png  used on input line 215.
+(pdftex.def)             Requested size: 400.65283pt x 294.91354pt.
+ [51
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.25}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.219 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.26}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.219 
+       <./images/app/users_index.png> <./images/app/adminstrationindex.png>]
+<images/app/services.png, id=1188, 1147.8885pt x 545.03625pt>
+File: images/app/services.png Graphic file (type png)
+<use images/app/services.png>
+Package pdftex.def Info: images/app/services.png  used on input line 227.
+(pdftex.def)             Requested size: 418.82695pt x 198.86589pt.
+ [52
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.27}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.236 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.28}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.236 
+       <./images/app/struct_crr.png> <./images/app/services.png>]
+<images/app/services1.png, id=1195, 284.262pt x 263.18324pt>
+File: images/app/services1.png Graphic file (type png)
+<use images/app/services1.png>
+Package pdftex.def Info: images/app/services1.png  used on input line 239.
+(pdftex.def)             Requested size: 273.27444pt x 253.01045pt.
+<images/app/affect.png, id=1196, 1145.4795pt x 545.6385pt>
+File: images/app/affect.png Graphic file (type png)
+<use images/app/affect.png>
+Package pdftex.def Info: images/app/affect.png  used on input line 251.
+(pdftex.def)             Requested size: 400.60922pt x 190.82646pt.
+)) [53
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.29}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.106 \include{implementaion}
+                             
+pdfTeX warning (ext4): destination with the same identifier (name{figure.5.30}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.106 \include{implementaion}
+                              <./images/app/services1.png> <./images/app/affect.png>] [54]
+\openout2 = `sec.aux'.
+
+ (./sec.tex
+Chapitre 6.
+[55
+
+
+
+
+
+pdfTeX warning (ext4): destination with the same identifier (name{figure.6.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.73 S
+      anctum est adapt√© aux applications SPA, car il permet d'utiliser des ...]
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/bx/n/10.95 Actions ty-
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/bx/n/10.95 ContrÙle
+ []
+
+
+Overfull \hbox (2.75261pt too wide) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Administration,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+\T1/cmr/m/n/10.95 sup-pres-sion,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+\T1/cmr/m/n/10.95 compte com-
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Middleware
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Validation et
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+\T1/cmr/m/n/10.95 su-per-vi-sion
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Ne doit pas
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Structure ou
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Validation
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+\T1/cmr/m/n/10.95 autres struc-
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Filtrage
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+\T1/cmr/m/n/10.95 par struc-
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Service ou
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 CrÈation et
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+[]|\T1/cmr/m/n/10.95 Soumission
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 111--111
+\T1/cmr/m/n/10.95 sous contrÙle
+ []
+
+[56] [57
+pdfTeX warning (ext4): destination with the same identifier (name{table.6.1}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.153 
+      
+pdfTeX warning (ext4): destination with the same identifier (name{figure.6.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.153 
+      ]
+Overfull \hbox (41.63577pt too wide) in paragraph at lines 159--160
+\T1/cmr/m/n/12 doivent aussi Ítre ac-ti-vÈs, no-tam-ment \T1/cmtt/m/n/12 Content-Security-Policy\T1/cmr/m/n/12 , \T1/cmtt/m/n/12 Strict-Transport-Security\T1/cmr/m/n/12 ,
+ []
+
+
+Overfull \hbox (6.92346pt too wide) in paragraph at lines 159--160
+\T1/cmtt/m/n/12 X-Frame-Options\T1/cmr/m/n/12 , \T1/cmtt/m/n/12 X-Content-Type-Options\T1/cmr/m/n/12 , \T1/cmtt/m/n/12 Referrer-Policy \T1/cmr/m/n/12 et \T1/cmtt/m/n/12 Permissions-Policy\T1/cmr/m/n/12 . 
+ []
+
+
+Underfull \hbox (badness 3815) in paragraph at lines 181--181
+[]|\T1/cmtt/m/n/10.95 auth:sanctum\T1/cmr/m/n/10.95 , po-li-cies, va-li-da-
+ []
+
+[58
+pdfTeX warning (ext4): destination with the same identifier (name{table.6.2}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.192 
+      ]) [59]
+\openout2 = `bib.aux'.
+
+ (./bib.tex
+Underfull \hbox (badness 1132) in paragraph at lines 6--11
+[]\T1/cmr/m/n/12 Natalie Bis-son-nette, \T1/cmr/m/it/12 Ges-tion des cour-riels : stra-tÈ-gies, tech-no-lo-gies et bonnes
+ []
+
+
+Underfull \hbox (badness 1215) in paragraph at lines 6--11
+\T1/cmr/m/it/12 pra-tiques\T1/cmr/m/n/12 , Ar-chives, vol. 44, no. 1, pp. 77--113, 2012--2013. Dis-po-nible sur :
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 6--11
+[]$\T1/cmtt/m/n/12 https : / / bibliopiaf . ebsi . umontreal . ca / bibliographie / HSIFPFA9 / download /
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 6--11
+\T1/cmtt/m/n/12 5TI3E5XK / Bissonnette % 20-[] % 202012 % 20-[] % 20Gestion % 20des % 20courriels % 20 %
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 13--17
+[]\T1/cmr/m/n/12 PIAF Ar-chives, \T1/cmr/m/it/12 DÈ-fi-ni-tion du cour-rier Èlec-tro-nique\T1/cmr/m/n/12 , Dis-po-nible sur :
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 13--17
+[]$\T1/cmtt/m/n/12 https : / / www . piaf-[]archives . org / sites / default / files / bulk _ media / m07bs7 /
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 25--29
+[]\T1/cmr/m/n/12 Techno-Science, \T1/cmr/m/it/12 Cour-rier Èlec-tro-nique\T1/cmr/m/n/12 , Dis-po-nible sur : []$\T1/cmtt/m/n/12 https : / / www .
+ []
+
+[60
+
+
+
+
+]
+Underfull \hbox (badness 1097) in paragraph at lines 182--186
+[]\T1/cmr/m/n/12 Redmine, \T1/cmr/m/it/12 REST API\T1/cmr/m/n/12 , Dis-po-nible sur : []$\T1/cmtt/m/n/12 https : / / www . redmine . org / projects /
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 215--217
+[]\T1/cmr/m/n/12 Parixit Pa-tel, \T1/cmr/m/it/12 La-ra-vel Re-quest Li-fe-cycle\T1/cmr/m/n/12 , DEV Com-mu-nity, pu-bliÈ le
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 215--217
+\T1/cmr/m/n/12 15 juillet 2020. Dis-po-nible sur : []$\T1/cmtt/m/n/12 https : / / dev . to / patelparixit07 /
+ []
+
+[61
+pdfTeX warning (ext4): destination with the same identifier (name{cite.axios}) has been already used, duplicate ignored
+<argument> ...shipout:D \box_use:N \l_shipout_box 
+                                                  \__shipout_drop_firstpage_...
+l.224 
+      ]) [62] (./file.aux (./pagegard.aux) (./remerciment.aux) (./presentaion_unite.aux) (./generalitecourrier.aux) (./conception.aux) (./implementaion.aux) (./sec.aux) (./bib.aux))
+ ***********
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+ ***********
+
+
+LaTeX Warning: There were multiply-defined labels.
+
+Package rerunfilecheck Info: File `file.out' has not changed.
+(rerunfilecheck)             Checksum: BCD2D0F4A5BF7E0479F1B626A3712F1E;21569.
+ ) 
+Here is how much of TeX's memory you used:
+ 33901 strings out of 467533
+ 688160 string characters out of 5422138
+ 1562061 words of memory out of 5000000
+ 61899 multiletter control sequences out of 15000+600000
+ 643850 words of font info for 73 fonts, out of 8000000 for 9000
+ 1141 hyphenation exceptions out of 8191
+ 98i,10n,108p,1056b,3013s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfbx1095.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfbx1200.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfbx1440.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfbx1728.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfbx2488.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfcc1200.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm0600.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm0800.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm1095.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm1200.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm1440.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm1728.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfti1200.pfb></usr/share/texmf/fonts/type1/public/cm-super/sftt1095.pfb></usr/share/texmf/fonts/type1/public/cm-super/sftt1200.pfb>
+Output written on file.pdf (63 pages, 15591421 bytes).
+PDF statistics:
+ 1512 PDF objects out of 1728 (max. 8388607)
+ 1267 compressed objects within 13 object streams
+ 367 named destinations out of 1000 (max. 500000)
+ 1310 words of extra memory for PDF output out of 10000 (max. 10000000)
+

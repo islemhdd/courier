@@ -1,0 +1,30 @@
+@startuml usecase_chef_organe
+left to right direction
+skinparam shadowing false
+
+actor "Chef d'Organe (Structure/Service)" as CO
+
+rectangle "Gestion d'Unité (Structure ou Service)" {
+    usecase "Authentification" as Auth
+    usecase "Consulter les courriers de l'organe" as UC1
+    usecase "Valider les courriers de l'organ cree par les secretaire" as UC2
+    usecase "Transmettre le courrier en interne" as UC3
+    usecase "Répondre à un courrier reçu" as UC4
+    usecase "Ajouter des instructions / annotations lors la transmission" as UC5
+
+
+}
+
+CO --> UC1
+CO --> UC2
+CO --> UC3
+CO --> UC4
+CO --> UC5
+UC1 ..> Auth : <<include>>
+UC2 ..> Auth : <<include>>
+UC3 ..> Auth : <<include>>
+UC4 ..> Auth : <<include>>
+UC5 ..> Auth : <<include>>
+
+
+@enduml

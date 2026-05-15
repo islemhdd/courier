@@ -1,0 +1,32 @@
+@startuml seq_validation_courrier
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Chef d'Organe" as Chef
+participant "Interface Web" as Front
+participant "Contrôleur\nCourrier" as Ctrl
+database "Base de Données" as DB
+
+Chef -> Front : Consulte un courrier (statut="CREE")
+activate Front
+
+Chef -> Front : Clique sur "Valider le courrier"
+Front -> Ctrl : PUT /courriers/{id}/valider
+activate Ctrl
+
+Ctrl -> DB : Vérifie les permissions du Chef\n(peutEtreValidePar)
+activate DB
+DB --> Ctrl : Permissions accordées
+deactivate DB
+
+Ctrl -> DB : UPDATE courriers SET statut="VALIDE", valideur_id=...
+activate DB
+DB --> Ctrl : OK
+deactivate DB
+
+Ctrl --> Front : 200 OK (Succès)
+deactivate Ctrl
+
+Front --> Chef : Affiche "Courrier validé" et met à jour l'UI
+deactivate Front
+@enduml

@@ -1,0 +1,40 @@
+@startuml sequence_recherche_courrier
+title Diagramme de séquence - Recherche d'un courrier par résumé
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Utilisateur" as User
+
+participant "Interface" as UI
+participant "Système de Gestion\nde Courrier" as Sys
+database "Base de données" as DB
+
+User -> UI : saisir le résumé recherché
+User -> UI : lancer la recherche
+
+UI -> Sys : envoyer la demande de recherche
+
+Sys -> DB : rechercher les courriers\npar résumé avec LIKE
+DB --> Sys : retourner les résultats trouvés
+
+alt Résultats trouvés
+    Sys --> UI : retourner la liste des courriers
+    UI --> User : afficher les résultats
+
+else Aucun résultat trouvé
+    Sys -> DB : appeler la procédure\nLevenshtein sur le résumé
+    DB --> Sys : retourner les courriers similaires\navec score de distance
+
+    alt Résultats similaires trouvés
+        Sys -> Sys : trier les résultats\npar score de similarité
+        Sys --> UI : retourner les résultats similaires
+        UI --> User : afficher les suggestions trouvées
+
+    else Aucun résultat similaire
+        Sys --> UI : retourner une liste vide
+        UI --> User : afficher aucun résultat trouvé
+    end
+end
+
+@enduml

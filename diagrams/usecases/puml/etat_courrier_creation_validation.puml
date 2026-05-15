@@ -1,0 +1,53 @@
+@startuml etat_courrier
+
+[*] --> Cree : création du courrier
+
+state Cree
+state Recu
+state EnAttenteValidation
+state NonValide
+state Modifie
+state Supprime
+state Transmis
+state Repondu
+state Archive
+
+state "Test création" as TestCreation <<choice>>
+state "Test validation" as TestValidation <<choice>>
+state "Choix après rejet" as TestRejet <<choice>>
+state "Test réponse" as TestReponse <<choice>>
+state "Test archivage" as TestArchivage <<choice>>
+
+Cree --> TestCreation
+
+TestCreation --> Recu : créé par le Chef Général
+TestCreation --> EnAttenteValidation : créé par la Secrétaire Générale
+
+EnAttenteValidation --> TestValidation : demande de validation
+
+TestValidation --> Recu : validé
+TestValidation --> NonValide : non validé
+
+NonValide --> TestRejet
+
+TestRejet --> Modifie : modifier
+TestRejet --> Supprime : supprimer
+
+Modifie --> EnAttenteValidation : redemander la validation
+
+Recu --> Transmis : transmettre vers un Chef d'Organe
+
+Transmis --> TestReponse : vérifier le besoin de réponse
+
+TestReponse --> Repondu : [attend une réponse]
+TestReponse --> Recu : [n'attend pas de réponse]
+
+Repondu --> TestArchivage
+Recu --> TestArchivage
+
+TestArchivage --> Archive : [archivage manuel ou délai d'un mois dépassé]
+
+Archive --> [*]
+Supprime --> [*]
+
+@enduml

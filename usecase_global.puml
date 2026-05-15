@@ -1,0 +1,37 @@
+@startuml usecase_global
+left to right direction
+skinparam shadowing false
+
+' --- Acteurs avec Héritage ---
+
+actor "Utilisateur / Agent" as Agent
+actor "Chef d'Organe" as CO
+actor "Chef Général" as CG
+actor "Administrateur" as Admin
+
+' Héritage
+CO --|> Agent
+Admin --|> Agent
+CG --|> CO
+
+' --- Système ---
+
+rectangle "Système de Gestion de Courrier" {
+
+    usecase "Consulter & Traiter\n(use case <<Agent>>)" as UCA
+    
+    usecase "Valider & Orienter\n(use case <<Chef Organe>>)" as UCO
+    
+    usecase "Superviser & Décider\n(use case <<Chef Général>>)" as UCG
+    
+    usecase "Administrer & Configurer\n(use case <<Admin>>)" as UCAd
+}
+
+' --- Relations ---
+
+Agent --> UCA
+CO --> UCO
+CG --> UCG
+Admin --> UCAd
+
+@enduml

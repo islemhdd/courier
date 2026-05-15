@@ -1,0 +1,33 @@
+@startuml seq_authentification
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Utilisateur" as User
+participant "Interface Web\n(React)" as Front
+participant "Backend API\n(Laravel)" as Back
+database "Base de Données\n(MySQL)" as DB
+
+User -> Front : Saisit ses identifiants (email, mot de passe)
+activate Front
+
+Front -> Back : POST /login (credentials)
+activate Back
+
+Back -> DB : SELECT utilisateur WHERE email = ?
+activate DB
+DB --> Back : Données utilisateur & Mot de passe haché
+deactivate DB
+
+alt Identifiants invalides
+    Back --> Front : 401 Unauthorized (Erreur)
+    Front --> User : Affiche un message d'erreur
+else Identifiants valides
+    Back -> Back : Vérifie le mot de passe\net génère le token/session
+    Back --> Front : 200 OK (Token + Rôle)
+    Front -> Front : Stocke le token localement
+    Front --> User : Redirige vers le tableau de bord\n(selon le rôle)
+end
+
+deactivate Back
+deactivate Front
+@enduml

@@ -1,0 +1,110 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true
+}
+
+
+\usepackage{booktabs}
+\usepackage{array}
+
+\usepackage{enumitem}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+
+\begin{document}
+\include{pagegard}
+\tableofcontents
+uhjuhu
+\newpage
+\listoffigures
+\newpage
+\include{remerciment}
+\include{presentaion_unite}
+\chapter{Etude de l'existant et proposition de solution}
+
+\section*{Introduction}
+
+Ce chapitre présente d'abord le problème rencontré dans la gestion du courrier administratif. Il décrit ensuite le système existant basé sur Redmine, ses apports et ses limites. Enfin, il propose une solution web dédiée, mieux adaptée au suivi, à la validation, à la transmission et à l'archivage des courriers.
+\section{Problématique}
+\label{sec:problematique}
+
+La gestion du courrier paraît, au premier abord, comme une tâche assez simple : recevoir un document, l’enregistrer, le transmettre à la personne concernée, puis le classer. Pourtant, dans une organisation où plusieurs services interviennent, les choses deviennent rapidement moins évidentes. Un même courrier peut passer par plusieurs responsables, attendre une validation, être renvoyé vers un autre service ou rester bloqué faute de suivi clair.
+
+Avec l’augmentation des échanges numériques, le problème devient encore plus visible. Les courriers, les pièces jointes et les réponses s’accumulent dans plusieurs espaces. Certains documents sont conservés dans les boîtes de réception, d’autres dans des dossiers partagés, parfois même sur les postes des utilisateurs. À ce moment-là, retrouver un courrier précis ou connaître son état réel demande souvent du temps.
+
+Un autre problème se pose au niveau du suivi. Lorsqu’un courrier doit être validé ou traité par plusieurs personnes, il n’est pas toujours facile de savoir qui l’a consulté, qui doit répondre, ou à quelle étape il se trouve. Cette situation peut provoquer des retards, des oublis ou même une perte d’information, surtout lorsque les méthodes de classement changent d’un utilisateur à un autre.
+
+La confidentialité des documents représente aussi un point sensible. Les courriers administratifs peuvent contenir des informations importantes ou personnelles. S’ils sont mal transmis, mal classés ou accessibles à des personnes non concernées, cela peut créer des risques pour l’organisation.
+
+Ces difficultés montrent que la gestion du courrier ne peut pas se limiter à un simple échange de messages ou à un stockage de fichiers. Elle demande un système plus organisé, capable de suivre les documents depuis leur création jusqu’à leur archivage, tout en respectant les rôles des utilisateurs et les étapes de validation.
+
+\section{Étude du système de gestion de courrier actuel}
+\label{sec:etude_existant}
+
+Le système existant est basé sur Redmine, installé à l’aide de la stack Bitnami. Bitnami facilite l’installation de Redmine en regroupant les éléments nécessaires à son fonctionnement dans un seul environnement \cite{bitnami_redmine}. Redmine est une application web de gestion de projet écrite avec Ruby on Rails. Il propose notamment le suivi des demandes, les rôles, les workflows, les documents, les fichiers, le wiki et les notifications par email \cite{redmine_overview}.
+
+Dans le système actuel, le courrier est traité avec la logique de Redmine. Ce fonctionnement peut aider pour suivre une demande ou une tâche, mais il reste moins adapté à un courrier administratif. Un courrier ne passe pas seulement d’un état à un autre : il peut être reçu, enregistré, transmis, validé, retourné, répondu puis archivé. Redmine permet bien de gérer des statuts et des transitions dans ses workflows \cite{redmine_workflow}, mais cette logique reste orientée vers le suivi d’\textit{issues} plutôt que vers le cycle complet d’un document administratif.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.9\textwidth]{images/redmin/redmine_interface.png}
+  \caption{Interface du système actuel basé sur Redmine \cite{redmineup_themes_2025}.}
+  \label{fig:redmine_ui}
+\end{figure}
+
+Redmine possède aussi une API REST qui donne accès à certaines ressources et permet des opérations de base comme la création, la modification ou la suppression. Cette API supporte les formats XML et JSON \cite{redmine_rest_api}. Malgré cela, le besoin de notre projet dépasse la simple gestion d’une demande. Il faut suivre le parcours du courrier, gérer les validations, faciliter la recherche, notifier les utilisateurs concernés et garder une trace claire des actions.
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\textwidth]{images/redmin/limites_redmine_courrier.png}
+  \caption{Comparaison entre le modèle Redmine et le circuit de gestion du courrier voulus}
+  \label{fig:limites_schema}
+\end{figure}
+
+Redmine reste donc utile pour la gestion de projet et le suivi des tâches, mais il ne répond pas entièrement aux besoins d’une gestion de courrier. Les limites les plus visibles concernent la logique documentaire, la validation hiérarchique, le suivi des transmissions et la communication en temps réel. Ces limites expliquent le choix de développer une application dédiée à la gestion du courrier.
+
+
+\section{Proposition de solution}
+\label{sec:proposition_solution}
+
+Pour améliorer cette situation, nous proposons de développer une application web dédiée à la gestion du courrier. Cette solution vise à regrouper les courriers, les pièces jointes et les échanges dans un même espace, afin d’éviter la dispersion des informations entre plusieurs outils ou dossiers.
+
+L’application permettra d’enregistrer les courriers entrants et sortants, de les transmettre aux services concernés et de suivre leur avancement. Chaque utilisateur accédera aux fonctions liées à son rôle, ce qui permettra de mieux organiser les responsabilités entre les agents, les secrétaires et les responsables.
+
+Le système prendra aussi en charge les validations hiérarchiques. Ainsi, lorsqu’un courrier nécessite l’avis ou l’approbation d’un responsable, son parcours pourra être suivi plus clairement. Les utilisateurs concernés seront informés des actions à effectuer, ce qui réduira les risques d’oubli ou de retard.
+
+La solution proposée intégrera également la gestion des pièces jointes, les notifications, l’archivage et l’historique des actions réalisées sur chaque courrier. De cette manière, il sera plus simple de savoir qui a traité un document, quand il a été transmis et dans quel état il se trouve.
+
+Cette application devrait donc rendre la circulation du courrier plus claire, réduire les manipulations répétitives et faciliter la recherche des informations. Elle permettra aussi d’améliorer le suivi administratif des documents au sein de l’organisation.
+\section*{Conclusion}
+
+Cette étude montre que le système actuel facilite certains aspects du suivi, mais ne couvre pas entièrement les besoins liés au courrier administratif. La solution proposée permet de mieux organiser le traitement des documents, de clarifier les responsabilités et d'assurer un suivi plus fiable depuis la création du courrier jusqu'à son archivage.
+
+\include{generalitecourrier}
+\label{chap:generalitecourrier}
+
+\include{conception}
+
+\include{implementaion}
+\include{sec}
+\include{bib}
+
+\end{document}

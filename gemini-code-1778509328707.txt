@@ -1,0 +1,43 @@
+### RESSOURCES ARCHIVISTIQUES ET THÉORIQUES (PIAF) ###
+
+1. Module complet PIAF - Section 7 (Gestion des courriels) :
+https://www.piaf-archives.org/sites/default/files/bulk_media/m07bs7/co/07B_section7.html
+
+2. Guide complet sur les stratégies et technologies des courriels (PDF) :
+https://bibliopiaf.ebsi.umontreal.ca/bibliographie/HSIFPFA9/download/5TI3E5XK/Bissonnette%20-%202012%20-%20Gestion%20des%20courriels%20%20strat%C3%A9gies%2C%20technologies%20e.pdf
+
+3. Le champ normatif de l'archivage électronique (Normes ISO/NF) :
+https://bibliopiaf.ebsi.umontreal.ca/bibliographie/6766BLZI/download/74WSPITH/Roussel%20-%202012%20-%20Le%20champ%20normatif%20de%20l%E2%80%99archivage%20%C3%A9lectronique.pdf
+
+
+### INSTITUTIONS ET BONNES PRATIQUES ###
+
+4. Archives Nationales (France) - Gérer vos courriels :
+https://www.archives-nationales.culture.gouv.fr/web/guest/gerer-vos-courriels
+
+5. BAnQ (Québec) - Cadre de gestion des courriels :
+https://www.banq.qc.ca/archives/gerer-archives/votre-institution/gestion-courriels/
+
+6. Association des Archivistes du Québec - Les courriels comme actif :
+https://cora.archivistes.qc.ca/revuearchives/vol37_2/37_2_Saulnier.pdf
+
+
+### SOLUTIONS TECHNIQUES ET AUTOMATISATION (GEC/GED) ###
+
+7. Archimag - Actualités et dossiers sur la gestion des emails :
+https://www.archimag.com/tags/gestion-des-courriels
+
+8. Efalia - Logiciel de Gestion Électronique de Courrier (GEC) :
+https://www.efalia.com/nos-solutions/gestion-electronique-de-courrier/
+
+9. Open-Mairie - Solution Open Source de gestion des courriers :
+https://demo.openmairie.org/open-courrier
+
+10. Microsoft Support - Automatisation et règles de courrier :
+https://support.microsoft.com/fr-fr/office/g%C3%A9rer-les-messages-%C3%A9lectroniques-%C3%A0-l-aide-de-r%C3%A8gles-c24f5dea-9465-4271-ad74-35697449e08a
+
+
+### RECHERCHE INTERNATIONALE ###
+
+11. Projet InterPARES - Standards pour la préservation numérique :
+http://www.interpares.org/display_file.cfm?doc=ip3_gs04_international_standards_v1-4p.pdf

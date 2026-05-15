@@ -1,0 +1,260 @@
+\chapter{Réalisation et Implémentation}
+\label{chap:implementation}
+
+
+\section{Introduction}
+\label{sec:introduction_implementation}
+
+Après avoir présenté l’analyse et la conception de notre système, ce chapitre est consacré à la réalisation pratique de l’application. Il permet de montrer comment les besoins définis précédemment ont été transformés en une solution web fonctionnelle pour la gestion du courrier.
+
+Dans cette partie, nous présentons d’abord les outils et technologies utilisés durant le développement, notamment Laravel pour la partie serveur, React pour l’interface utilisateur, ainsi que les autres bibliothèques et services nécessaires au bon fonctionnement de l’application. Ensuite, nous expliquons le principe de communication entre le front-end et le back-end à travers une API REST, avant de donner un aperçu des principales interfaces réalisées.
+
+Ce chapitre permet donc de passer de la conception théorique à l’implémentation réelle du système, en mettant en évidence les choix techniques adoptés et leur rôle dans le fonctionnement global de l’application.
+\section{Environnement et outils de développement}
+Le développement de notre application repose sur plusieurs outils utilisés pour gérer le serveur, l’interface, la base de données, la communication et la conception du système.
+
+\subsection{Laravel}
+\label{subsec:laravel}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo officiel de Laravel
+    % Exemple : images/laravel_logo.png
+    \includegraphics[width=0.25\textwidth]{images/logos/laravel.png}
+    \caption{Logo du framework Laravel}
+    \label{fig:laravel_logo}
+\end{figure}
+
+Laravel est un framework PHP utilisé dans notre projet pour gérer la logique de l’application, les routes, les contrôleurs, les modèles et les échanges avec la base de données. D’après la documentation officielle, Laravel est présenté comme un framework destiné au développement d’applications web en PHP \cite{laravel}. Il ne se limite pas seulement à l’écriture du code serveur, car il propose aussi plusieurs outils autour du développement, comme l’authentification, les notifications, les files d’attente, les migrations, Eloquent ORM, Sanctum et Reverb \cite{laraveldocs}. C’est pour cette raison que Laravel peut être considéré comme un écosystème complet. Dans notre application, il nous a surtout permis de créer une API RESTful, utilisée par l’interface React pour envoyer des requêtes, récupérer les données et effectuer les différentes opérations liées à la gestion du courrier.
+\subsubsection{Eloquent ORM}
+\label{subsubsec:eloquent_orm}
+
+Eloquent ORM est l’outil de Laravel qui permet de travailler avec la base de données d’une manière plus simple. Au lieu d’écrire directement des requêtes SQL dans tout le projet, on utilise des classes appelées \textit{models}. Chaque modèle représente généralement une table de la base de données. Par exemple, dans notre application, un modèle \texttt{Courrier} peut représenter la table des courriers, tandis qu’un modèle \texttt{User} représente les utilisateurs du système. D’après la documentation officielle de Laravel, Eloquent associe chaque table de la base à un modèle qui permet de récupérer, ajouter, modifier ou supprimer les enregistrements \cite{laravel_eloquent}.
+
+Dans notre projet, Eloquent nous a aidés à organiser la partie liée aux données. Les courriers, les utilisateurs, les pièces jointes, les commentaires et les messages peuvent être manipulés à partir de modèles. Cela rend le code plus lisible, surtout lorsque plusieurs opérations doivent être faites sur les mêmes données. Par exemple, au lieu d’écrire une requête SQL pour chercher les courriers reçus, on peut utiliser une méthode du modèle \texttt{Courrier}.
+
+\begin{lstlisting}[language=PHP, caption={Exemple simple de modèle Eloquent}]
+class Courrier extends Model
+{
+    protected $fillable = [
+        'objet',
+        'type',
+        'statut',
+        'priorite',
+        'user_id',
+        'structure_id'
+    ];
+}
+\end{lstlisting}
+
+Un autre point important dans Eloquent est la gestion des relations entre les tables. Dans une application de gestion de courrier, un courrier peut appartenir à un utilisateur, avoir plusieurs pièces jointes ou recevoir plusieurs commentaires. Ces relations peuvent être écrites directement dans les modèles. La documentation Laravel précise que les relations Eloquent sont définies comme des méthodes dans les classes des modèles, ce qui permet ensuite de les utiliser facilement dans les requêtes \cite{laravel_relationships}.
+
+\begin{lstlisting}[language=PHP, caption={Exemple de relations dans un modèle Courrier}]
+class Courrier extends Model
+{
+    public function utilisateur()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function piecesJointes()
+    {
+        return $this->hasMany(CourrierAttachment::class);
+    }
+
+    public function commentaires()
+    {
+        return $this->hasMany(CourrierComment::class);
+    }
+}
+\end{lstlisting}
+
+Les \textit{scopes} sont aussi très utiles dans Eloquent. Ils permettent de regrouper des conditions de recherche que l’on utilise souvent. Par exemple, dans notre application, on peut avoir besoin d’afficher seulement les courriers reçus, les courriers archivés ou les courriers en attente de validation. Au lieu de répéter les mêmes conditions dans plusieurs contrôleurs, on peut les mettre une seule fois dans le modèle. Laravel distingue notamment les scopes locaux et les scopes globaux. Les scopes locaux servent à réutiliser une condition précise dans certaines requêtes, alors que les scopes globaux s’appliquent automatiquement à toutes les requêtes d’un modèle \cite{laravel_eloquent}.
+
+\begin{lstlisting}[language=PHP, caption={Exemple de scopes locaux pour les courriers}]
+class Courrier extends Model
+{
+    public function scopeRecus($query)
+    {
+        return $query->where('type', 'recu');
+    }
+
+    public function scopeArchives($query)
+    {
+        return $query->where('statut', 'archive');
+    }
+
+    public function scopeEnAttente($query)
+    {
+        return $query->where('statut', 'en_attente');
+    }
+}
+\end{lstlisting}
+
+Après la définition de ces scopes, leur utilisation devient plus claire dans le contrôleur :
+
+\begin{lstlisting}[language=PHP, caption={Utilisation des scopes dans un contrôleur}]
+$courriersRecus = Courrier::recus()->get();
+
+$courriersArchives = Courrier::archives()
+    ->where('structure_id', $structureId)
+    ->get();
+
+$courriersEnAttente = Courrier::enAttente()->get();
+\end{lstlisting}
+
+Eloquent propose aussi d’autres fonctionnalités pratiques, comme les migrations, les timestamps automatiques, la suppression douce avec \texttt{SoftDeletes}, ainsi que les \textit{casts}. Les casts permettent de transformer automatiquement certains champs lorsqu’ils sont lus ou enregistrés. Par exemple, un champ de type date peut être manipulé directement comme un objet date, et un champ JSON peut être converti automatiquement en tableau PHP. La documentation officielle indique que les accessors, mutators et casts permettent de transformer les valeurs des attributs lorsqu’elles sont récupérées ou définies dans un modèle \cite{laravel_mutators}.
+
+Dans notre application, Eloquent a donc joué un rôle important dans la communication avec la base de données. Il a permis de garder un code plus propre, de limiter la répétition des requêtes et de mieux représenter les éléments principaux du système sous forme de modèles liés entre eux.
+
+\subsubsection{Laravel Sanctum}
+\label{subsubsec:sanctum}
+Laravel Sanctum est un package officiel de Laravel consacré à l’authentification. Il permet de sécuriser les applications de type SPA, les applications mobiles ainsi que les API simples basées sur des tokens \cite{laravel_sanctum}. Son rôle est de vérifier l’identité de l’utilisateur avant de lui donner accès aux ressources protégées. Il peut fonctionner soit avec les cookies de session, soit avec des tokens d’API envoyés avec les requêtes. Sanctum reste donc une solution assez simple à mettre en place, sans passer par un système plus lourd comme OAuth.
+
+\subsubsection{Laravel Reverb}
+\label{subsubsec:reverb}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo officiel de Laravel Reverb
+    % Exemple : images/reverb_logo.png
+    \includegraphics[width=0.25\textwidth]{images/logos/reverb_logo.png}
+    \caption{Logo de Laravel Reverb}
+    \label{fig:reverb_logo}
+\end{figure}
+
+Laravel Reverb est le serveur WebSocket officiel de Laravel. Il permet d’ajouter des échanges en temps réel dans une application, comme les notifications ou les messages instantanés. Reverb fonctionne avec le broadcasting de Laravel et reste compatible avec Laravel Echo grâce au protocole Pusher \cite{laravel_reverb}.
+\subsection{React}
+\label{subsec:react}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo officiel de React
+    % Exemple : images/react_logo.png
+    \includegraphics[width=0.22\textwidth]{images/logos/react_logo.png}
+    \caption{Logo de React}
+    \label{fig:react_logo}
+\end{figure}
+
+React est une bibliothèque JavaScript utilisée pour créer des interfaces utilisateur. Le site officiel la présente comme \textit{``the library for web and native user interfaces''} \cite{react}. Dans notre projet, React est utilisé pour construire les pages et les composants visibles par l’utilisateur.
+
+\subsubsection{React Router DOM}
+\label{subsubsec:react_router_dom}
+
+React Router DOM permet de gérer la navigation entre les pages d’une application React. Il relie les URL aux composants affichés, ce qui permet de passer d’une page à une autre sans recharger toute l’application \cite{react_router}.
+
+\subsubsection{Axios}
+\label{subsubsec:axios}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo officiel d'Axios
+    % Exemple : images/axios_logo.png
+    \includegraphics[width=0.22\textwidth]{images/logos/axios_logo.png}
+    \caption{Logo d’Axios}
+    \label{fig:axios_logo}
+\end{figure}
+
+Axios est un client HTTP utilisé pour envoyer des requêtes vers une API. Sa documentation le définit comme un client HTTP simple pour le navigateur et Node.js \cite{axios}. Dans notre application, il sert surtout à envoyer les requêtes depuis React vers le serveur Laravel.
+\subsection{Tailwind CSS}
+\label{subsec:tailwind}
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo officiel de Tailwind CSS
+    % Exemple : images/tailwind_logo.png
+    \includegraphics[width=0.22\textwidth]{images/logos/tailwind_logo.png}
+    \caption{Logo de Tailwind CSS}
+    \label{fig:tailwind_logo}
+\end{figure}
+Tailwind CSS est \textit{``a utility-first CSS framework for rapidly building modern websites without ever leaving your HTML''} \cite{tailwind}. Dans notre application, il sert surtout à styliser les composants React et à rendre l’interface plus claire, moderne et responsive.
+
+\subsection{PlantUML}
+\label{subsec:plantuml}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo PlantUML
+    % Exemple : images/plantuml_logo.png
+    \includegraphics[width=0.22\textwidth]{images/logos/plantuml_logo.png}
+    \caption{Logo de PlantUML}
+    \label{fig:plantuml_logo}
+\end{figure}
+
+PlantUML est un composant qui permet de dessiner rapidement des diagrammes UML à l’aide d’un langage simple et intuitif \cite{plantuml}.
+\subsection{XAMPP}
+\label{subsec:xampp}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo XAMPP
+    \includegraphics[width=0.20\textwidth]{images/logos/xampp_logo.png}
+    \caption{Logo de XAMPP}
+    \label{fig:xampp_logo}
+\end{figure}
+
+XAMPP est une distribution Apache facile à installer qui contient MariaDB, PHP et Perl \cite{xampp}.
+
+\subsubsection{MariaDB / MySQL}
+\label{subsubsec:mariadb_mysql}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo MariaDB
+    \includegraphics[width=0.22\textwidth]{images/logos/mariadb_logo.png}
+    \caption{Logo de MariaDB}
+    \label{fig:mariadb_logo}
+\end{figure}
+
+MariaDB Server est un système de gestion de base de données relationnelle open source \cite{mariadb}.
+
+\subsubsection{Apache Server}
+\label{subsubsec:apache_server}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo Apache
+    \includegraphics[width=0.22\textwidth]{images/logos/apache_logo.png}
+    \caption{Logo d'Apache HTTP Server}
+    \label{fig:apache_logo}
+\end{figure}
+
+Apache HTTP Server est un serveur HTTP open source pour les systèmes d’exploitation modernes, y compris UNIX et Windows \cite{apache}.
+
+\subsection{OCR}
+\label{subsec:ocr}
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : logo Tesseract OCR
+    \includegraphics[width=0.22\textwidth]{images/logos/tesseract_logo.png}
+    \caption{Logo de Tesseract OCR}
+    \label{fig:tesseract_logo}
+\end{figure}
+
+Tesseract est un moteur de reconnaissance de texte open source OCR, disponible sous licence Apache 2.0 \cite{tesseract}. Dans notre projet, nous avons utilisé \texttt{tesseract.exe} pour extraire le texte à partir des documents numérisés.
+
+\section{API RESTful}
+\label{sec:api_restful}
+
+Une API REST est une interface de programmation d'application qui respecte les principes de conception du style d'architecture REST \cite{rest_api}.
+
+\section{Cycle de traitement d’une requête Laravel}
+\label{sec:cycle_requete_laravel}
+
+Dans une application Laravel, le traitement commence lorsqu’une requête HTTP arrive vers l’application. Le fichier \texttt{index.php} est le point d’entrée de toutes les requêtes, puis Laravel charge l’application et transmet la requête vers le routeur \cite{laravel_lifecycle}. Dans notre projet, cette requête peut être envoyée depuis React avec Axios. Axios est un \textit{``Promise based HTTP client for the browser and node.js''} \cite{axios}. Il permet donc d’envoyer une demande vers un endpoint Laravel, par exemple pour récupérer la liste des courriers ou enregistrer un nouveau courrier.
+
+\begin{figure}[H]
+    \centering
+    % Image à ajouter : schéma du cycle d’une requête Laravel
+    % Exemple : images/laravel_request_cycle.png
+    \includegraphics[width=0.85\textwidth]{images/logos/laravel_request_cycle.png }
+    \caption{Cycle de traitement d’une requête Laravel\cite{patel_laravel_lifecycle}}
+    \label{fig:laravel_request_cycle}
+\end{figure}
+
+Après l’arrivée de la requête, Laravel cherche la route correspondante, applique les middlewares nécessaires, puis exécute le contrôleur associé. La validation peut intervenir avant le traitement pour vérifier les données envoyées par l’utilisateur. Ensuite, le contrôleur utilise souvent un modèle Eloquent pour lire ou modifier les données dans la base. Une fois le traitement terminé, la réponse revient vers le client. Laravel précise que \textit{``All routes and controllers should return a response to be sent back to the user's browser''} \cite{laravel_responses}. Dans le cas d’une API, cette réponse est souvent envoyée au format JSON. JSON est un format textuel utilisé pour représenter des données structurées, ce qui le rend pratique pour transmettre les résultats vers le front-end \cite{mdn_json}. L’interface React peut ensuite exploiter ces données pour afficher les informations à l’utilisateur.
+\input{app.tex}
+\section{Conclusion}
+\label{sec:conclusion_implementation}
+
+Ce chapitre a présenté les principaux éléments liés à la réalisation de notre application web de gestion de courrier. Nous avons décrit les outils utilisés, l’architecture générale du système, le fonctionnement des échanges entre Laravel et React, ainsi que les principales interfaces développées. Cette étape permet de montrer comment les choix techniques ont été utilisés pour transformer la conception réalisée précédemment en une application fonctionnelle.

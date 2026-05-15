@@ -1,0 +1,43 @@
+@startuml sequence_reponse_courrier
+title Diagramme de séquence - Réponse à un courrier
+
+actor "Agent" as Agent
+actor "Chef d'Organe" as ChefOrg
+
+participant "Interface" as UI
+participant "Système de Gestion\nde Courrier" as Sys
+database "Base de données" as DB
+participant "Service de Notification" as Notif
+
+Agent -> UI : consulter le courrier
+Agent -> UI : saisir la réponse
+Agent -> UI : joindre un fichier
+Agent -> UI : confirmer la réponse
+
+UI -> Sys : envoyer la demande de réponse
+Sys -> Sys : vérifier l'assignation de l'Agent
+
+alt Assignation valide
+    Sys -> DB : enregistrer la réponse\ncomme courrier enfant
+    DB --> Sys : réponse enregistrée
+
+    Sys -> DB : mettre à jour le courrier parent\ncomme répondu
+    DB --> Sys : courrier parent mis à jour
+
+    note right: Le compteur de délai du courrier parent est arrêté
+
+    Sys -> Notif : créer une notification
+    Notif -> DB : enregistrer la notification
+    DB --> Notif : notification enregistrée
+
+    Notif --> ChefOrg : notifier le Chef d'Organe
+
+    Sys --> UI : confirmer l'ajout de la réponse
+    UI --> Agent : afficher le message de succès
+
+else Assignation invalide
+    Sys --> UI : refuser la réponse
+    UI --> Agent : afficher le message d'erreur
+end
+
+@enduml

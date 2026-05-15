@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "chef_structure_id": 1,
+    "libelle": "Structure principale",
+    "created_at": "2026-05-04 13:15:33",
+    "updated_at": "2026-05-04 13:15:33"
+  },
+  {
+    "id": 2,
+    "chef_structure_id": 11,
+    "libelle": "drh",
+    "created_at": "2026-05-04 14:24:47",
+    "updated_at": "2026-05-04 14:24:47"
+  },
+  {
+    "id": 3,
+    "chef_structure_id": 12,
+    "libelle": "technique",
+    "created_at": "2026-05-05 10:57:31",
+    "updated_at": "0000-00-00 00:00:00"
+  },
+  {
+    "id": 4,
+    "chef_structure_id": 13,
+    "libelle": "production",
+    "created_at": "2026-05-05 10:57:31",
+    "updated_at": "2026-05-05 10:57:31"
+  },
+  {
+    "id": 5,
+    "chef_structure_id": 4,
+    "libelle": "references",
+    "created_at": "2026-05-05 10:57:31",
+    "updated_at": "2026-05-05 10:57:31"
+  }
+]

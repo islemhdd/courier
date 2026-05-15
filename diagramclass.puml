@@ -1,0 +1,164 @@
+@startuml Courrier_Management_System
+
+' --- Configuration Visuelle ---
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam nodesep 60
+skinparam ranksep 80
+
+' --- Enums (Regroupés en haut) ---
+package "Référentiels Enums" <<Rectangle>> {
+    enum Role {
+        ADMIN
+        CHEF
+        SECRETAIRE
+    }
+    enum RoleScope {
+        GENERAL
+        STRUCTURE
+        SERVICE
+    }
+    enum StatutCourrier {
+        CREE
+        NON_VALIDE
+        VALIDE
+        TRANSMIS
+        RECU
+    }
+    enum TypeCourrierEnum {
+        ENTRANT
+        SORTANT
+    }
+    enum OCRStatus {
+        PENDING
+        PROCESSING
+        COMPLETED
+        FAILED
+    }
+    enum RecipientType {
+        USER
+        SERVICE
+        STRUCTURE
+        ALL
+    }
+}
+
+' --- Classes Principales ---
+
+package "Gestion Organisation" <<Rectangle>> {
+    class Structure {
+        - id : int
+        - libelle : String
+    }
+
+    class Service {
+        - id : int
+        - libelle : String
+    }
+
+    class User {
+        - id : int
+        - nom : String
+        - prenom : String
+        - email : String
+        - role : Role
+        - role_scope : RoleScope
+        - actif : boolean
+    }
+}
+
+package "Gestion Courrier" <<Rectangle>> {
+    class Courrier {
+        - id : int
+        - numero : String
+        - objet : String
+        - type : TypeCourrierEnum
+        - statut : StatutCourrier
+        - date_reception : DateTime
+        - resume : Text
+        - ocr_status : OCRStatus
+        - requiert_reponse : boolean
+        - date_limite_reponse : DateTime
+    }
+
+    class CourrierType {
+        - id : int
+        - libelle : String
+    }
+
+    class Source {
+        - id : int
+        - libelle : String
+    }
+
+    class NiveauConfidentialite {
+        - id : int
+        - libelle : String
+        - rang : int
+    }
+}
+
+package "Détails & Communication" <<Rectangle>> {
+    class CourrierAttachment {
+        - id : int
+        - nom_fichier : String
+        - chemin_fichier : String
+    }
+
+    class CourrierComment {
+        - id : int
+        - commentaire : Text
+        - date_post : DateTime
+    }
+
+    class CourrierRecipient {
+        - id : int
+        - recipient_type : RecipientType
+    }
+
+    class Message {
+        - id : int
+        - contenu : Text
+        - lu : boolean
+        - date_envoi : DateTime
+    }
+
+    class Archive {
+        - id : int
+        - lieu_archivage : String
+        - date_archivage : DateTime
+    }
+}
+
+' --- Relations de Structure ---
+Structure "1" *-- "0..*" Service : contient
+User "0..*" -up- "1" Structure : rattaché à
+User "0..*" -up- "1" Service : rattaché à
+User "0..*" -- "1" NiveauConfidentialite : habilitation
+
+' --- Flux Courrier (Relations vers le haut/côtés) ---
+Courrier "0..*" -right-> "1" CourrierType : type
+Courrier "0..*" -right-> "1" Source : source
+Courrier "0..*" -left-> "1" NiveauConfidentialite : confidentialité
+
+' --- Acteurs (User <-> Courrier) ---
+Courrier "0..*" -- "1" User : créé par
+Courrier "0..*" -- "0..1" User : validé par
+Courrier "0..*" -- "0..1" User : transmis par
+
+' --- Orientations ---
+Courrier "0..*" -- "0..1" Service : émetteur / destinataire
+Courrier "0..*" -- "0..1" Structure : origine / destination
+
+' --- Compositions (Détails attachés sous le courrier) ---
+Courrier "1" *--down- "0..*" CourrierAttachment
+Courrier "1" *--down- "0..*" CourrierComment
+Courrier "1" *--down- "0..*" CourrierRecipient
+Courrier "1" --down- "0..1" Archive
+
+' --- Communication ---
+Message "0..*" -- "1" User : de / pour
+Message "0..*" -- "0..1" Courrier : concerne
+
+@enduml

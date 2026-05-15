@@ -1,0 +1,27 @@
+[
+  {
+    "key": "chef.generale@courrier.dz|127.0.0.1",
+    "value": "i:1;",
+    "expiration": 1778361915
+  },
+  {
+    "key": "chef.generale@courrier.dz|127.0.0.1:timer",
+    "value": "i:1778361915;",
+    "expiration": 1778361915
+  },
+  {
+    "key": "laravel:reverb:restart",
+    "value": "i:1778371409;",
+    "expiration": 2093731409
+  },
+  {
+    "key": "production@courrier.de|127.0.0.1",
+    "value": "i:2;",
+    "expiration": 1777977503
+  },
+  {
+    "key": "production@courrier.de|127.0.0.1:timer",
+    "value": "i:1777977503;",
+    "expiration": 1777977503
+  }
+]

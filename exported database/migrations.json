@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "migration": "0001_01_01_000000_create_users_table",
+    "batch": 1
+  },
+  {
+    "id": 2,
+    "migration": "0001_01_01_000001_create_cache_table",
+    "batch": 1
+  },
+  {
+    "id": 3,
+    "migration": "0001_01_01_000002_create_jobs_table",
+    "batch": 1
+  },
+  {
+    "id": 4,
+    "migration": "2025_04_27_204220_create_niveau_confidentialites_table",
+    "batch": 1
+  },
+  {
+    "id": 5,
+    "migration": "2026_04_27_204219_create_services_table",
+    "batch": 1
+  },
+  {
+    "id": 6,
+    "migration": "2026_04_27_204220_create_courriers_table",
+    "batch": 1
+  },
+  {
+    "id": 7,
+    "migration": "2026_04_27_204221_add_columns_to_users_table",
+    "batch": 1
+  },
+  {
+    "id": 8,
+    "migration": "2026_04_27_204221_create_messages_table",
+    "batch": 1
+  },
+  {
+    "id": 9,
+    "migration": "2026_04_28_173653_create_personal_access_tokens_table",
+    "batch": 1
+  },
+  {
+    "id": 10,
+    "migration": "2026_04_28_200000_add_destinataire_to_courriers_table",
+    "batch": 1
+  },
+  {
+    "id": 11,
+    "migration": "2026_04_29_000001_add_transmission_fields_to_courriers_table",
+    "batch": 1
+  },
+  {
+    "id": 12,
+    "migration": "2026_04_29_000002_create_archives_table",
+    "batch": 1
+  },
+  {
+    "id": 13,
+    "migration": "2026_04_29_150000_add_non_valide_to_courrier_statuts",
+    "batch": 1
+  },
+  {
+    "id": 14,
+    "migration": "2026_04_29_160000_ensure_courrier_transmission_columns_exist",
+    "batch": 1
+  },
+  {
+    "id": 15,
+    "migration": "2026_04_30_090000_allow_valide_in_archives_statut_original",
+    "batch": 1
+  },
+  {
+    "id": 16,
+    "migration": "2026_04_30_120000_add_statut_to_messages_table",
+    "batch": 1
+  },
+  {
+    "id": 17,
+    "migration": "2026_05_04_000000_add_organisation_and_advanced_courrier_schema",
+    "batch": 1
+  },
+  {
+    "id": 18,
+    "migration": "2026_05_04_100000_complete_courrier_requirements",
+    "batch": 2
+  },
+  {
+    "id": 19,
+    "migration": "2026_05_04_120000_add_chef_structure_to_structures_table",
+    "batch": 3
+  },
+  {
+    "id": 20,
+    "migration": "2026_05_05_101408_add_structure_fields_to_courriers_table",
+    "batch": 4
+  },
+  {
+    "id": 21,
+    "migration": "2026_05_07_000000_add_fulltext_indexes_to_courriers_table",
+    "batch": 5
+  },
+  {
+    "id": 22,
+    "migration": "2026_05_07_000001_add_ocr_to_courrier_attachments",
+    "batch": 5
+  },
+  {
+    "id": 23,
+    "migration": "2026_05_07_000002_add_ocr_to_courriers",
+    "batch": 5
+  },
+  {
+    "id": 24,
+    "migration": "2026_05_07_000003_add_extracted_text_fulltext_index",
+    "batch": 5
+  }
+]

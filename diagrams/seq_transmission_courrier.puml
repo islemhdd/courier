@@ -1,0 +1,40 @@
+@startuml sequence_transmission_courrier
+title Diagramme de séquence - Transmission d'un courrier
+
+actor "Expéditeur\n(Chef d'Organe ou Secrétaire)" as Sender
+actor "Utilisateur" as User
+
+participant "Interface" as UI
+participant "Système de Gestion\nde Courrier" as Sys
+database "Base de données" as DB
+participant "Service de Notification" as Notif
+
+Sender -> UI : sélectionner le courrier
+Sender -> UI : choisir l'utilisateur destinataire
+Sender -> UI : confirmer la transmission
+
+UI -> Sys : envoyer la demande de transmission
+Sys -> Sys : vérifier les droits de transmission
+
+alt Droits valides
+    Sys -> DB : enregistrer la transmission
+    DB --> Sys : transmission enregistrée
+
+    Sys -> DB : mettre à jour l'état du courrier\nà "Transmis"
+    DB --> Sys : état mis à jour
+
+    Sys -> Notif : créer une notification
+    Notif -> DB : enregistrer la notification
+    DB --> Notif : notification enregistrée
+
+    Notif --> User : notifier l'utilisateur
+
+    Sys --> UI : confirmer la transmission
+    UI --> Sender : afficher le message de succès
+
+else Droits invalides
+    Sys --> UI : refuser la transmission
+    UI --> Sender : afficher le message d'erreur
+end
+
+@enduml

@@ -1,0 +1,38 @@
+@startuml usecase_chef_general
+left to right direction
+skinparam shadowing false
+
+actor "Chef Général" as CG
+
+rectangle "Supervision Globale (Direction)" {
+    usecase "Autentification" as Auth
+    usecase "Consulter l'intégralité des courriers" as UC1
+    usecase "Valider les courriers entrants/sortants" as UC2
+    usecase "Transmettre les courriers aux structures/services/utilisateurs" as UC3
+    usecase "Créer un nouveau courrier reçu" as UC4
+    usecase "Suivre les délais et les retards" as UC5
+    usecase "Affecter des agents sur un dossier" as UC6
+    usecase "ajouter des sources de courrier" as UC7
+    usecase "Accéder aux statistiques globales" as UC8
+}
+
+CG --> UC1
+CG --> UC2
+CG --> UC3
+CG --> UC4
+CG --> UC5
+CG --> UC6
+CG --> UC7
+CG --> UC8
+UC1 ..> Auth : <<include>>
+UC2 ..> Auth : <<include>>
+UC3 ..> Auth : <<include>>
+UC4 ..> Auth : <<include>>
+UC5 ..> Auth : <<include>>
+
+UC6 ..> Auth : <<include>>
+UC7 ..> Auth : <<include>>
+UC8 ..> Auth : <<include>>
+
+
+@enduml

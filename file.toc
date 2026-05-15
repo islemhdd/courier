@@ -1,0 +1,111 @@
+\babel@toc {french}{}\relax 
+\contentsline {chapter}{Remerciements}{6}{chapter*.3}%
+\contentsline {chapter}{\numberline {1}Présentation de l'unité d'accueil}{7}{chapter.1}%
+\contentsline {section}{\numberline {1.1}Introduction}{7}{section.1.1}%
+\contentsline {section}{\numberline {1.2}Missions de l'ECRMT}{7}{section.1.2}%
+\contentsline {paragraph}{En termes de production}{7}{section*.4}%
+\contentsline {paragraph}{Maintenance, Rénovation et Installation}{7}{section*.5}%
+\contentsline {paragraph}{Développement, Formation et Veille technologique}{8}{section*.6}%
+\contentsline {section}{\numberline {1.3}Structure Organisationnelle de l'ECRMT}{8}{section.1.3}%
+\contentsline {subsection}{\numberline {1.3.1}Département d'Assemblage des Moyens de Commutation}{8}{subsection.1.3.1}%
+\contentsline {subsection}{\numberline {1.3.2}Processus d'assemblage}{8}{subsection.1.3.2}%
+\contentsline {paragraph}{Magasin (Warehouse)}{9}{figure.1.2}%
+\contentsline {paragraph}{Zone de production}{10}{section*.8}%
+\contentsline {subsection}{\numberline {1.3.3}Lignes d'assemblage des cartes électroniques}{10}{subsection.1.3.3}%
+\contentsline {subsection}{\numberline {1.3.4}Lignes d'assemblage final}{14}{subsection.1.3.4}%
+\contentsline {paragraph}{Assemblage final}{14}{section*.11}%
+\contentsline {paragraph}{Test final}{15}{section*.12}%
+\contentsline {section}{\numberline {1.4}Qualité et Ingénierie}{16}{section.1.4}%
+\contentsline {section}{\numberline {1.5}Laboratoire Central de Recherche et Développement}{16}{section.1.5}%
+\contentsline {subsection}{\numberline {1.5.1}Organisation du Laboratoire Central R\&D}{16}{subsection.1.5.1}%
+\contentsline {subsection}{\numberline {1.5.2}Missions et activités du Laboratoire Central R\&D}{17}{subsection.1.5.2}%
+\contentsline {paragraph}{Activités techniques}{17}{section*.13}%
+\contentsline {paragraph}{Tâches managériales}{17}{section*.14}%
+\contentsline {subsection}{\numberline {1.5.3}Infrastructure du Laboratoire Central R\&D}{17}{subsection.1.5.3}%
+\contentsline {subsection}{\numberline {1.5.4}Objectifs à long terme}{18}{subsection.1.5.4}%
+\contentsline {chapter}{\numberline {2}Etude de l'existant et proposition de solution}{19}{chapter.2}%
+\contentsline {section}{\numberline {2.1}Problématique}{19}{section.2.1}%
+\contentsline {section}{\numberline {2.2}Étude du système de gestion de courrier actuel}{20}{section.2.2}%
+\contentsline {section}{\numberline {2.3}Proposition de solution}{21}{section.2.3}%
+\contentsline {chapter}{\numberline {3}Généralités sur le courrier}{23}{chapter.3}%
+\contentsline {section}{\numberline {3.1}Introduction}{23}{section.3.1}%
+\contentsline {section}{\numberline {3.2}Définition du courrier}{23}{section.3.2}%
+\contentsline {section}{\numberline {3.3}Défis de la gestion du courrier}{23}{section.3.3}%
+\contentsline {section}{\numberline {3.4}Importance du courrier électronique}{24}{section.3.4}%
+\contentsline {section}{\numberline {3.5}Conclusion}{25}{section.3.5}%
+\contentsline {chapter}{\numberline {4}Généralités UML et Conception du système}{26}{chapter.4}%
+\contentsline {section}{\numberline {4.1}Le langage UML}{26}{section.4.1}%
+\contentsline {subsection}{\numberline {4.1.1}Définition}{26}{subsection.4.1.1}%
+\contentsline {subsection}{\numberline {4.1.2}Caractéristiques d’UML}{26}{subsection.4.1.2}%
+\contentsline {subsection}{\numberline {4.1.3}Les points forts et faibles d’UML}{27}{subsection.4.1.3}%
+\contentsline {subsubsection}{\numberline {4.1.3.1}Les points forts d’UML}{27}{subsubsection.4.1.3.1}%
+\contentsline {subsubsection}{\numberline {4.1.3.2}Les points faibles d’UML}{27}{subsubsection.4.1.3.2}%
+\contentsline {section}{\numberline {4.2}Conception du système}{27}{section.4.2}%
+\contentsline {subsection}{\numberline {4.2.1}Étude préliminaire}{27}{subsection.4.2.1}%
+\contentsline {subsubsection}{\numberline {4.2.1.1}Identification des acteurs}{27}{subsubsection.4.2.1.1}%
+\contentsline {subsubsection}{\numberline {4.2.1.2}Identification des fonctionnalités}{28}{subsubsection.4.2.1.2}%
+\contentsline {subsection}{\numberline {4.2.2}Diagramme de classes}{28}{subsection.4.2.2}%
+\contentsline {subsection}{\numberline {4.2.3}Diagrammes de cas d’utilisation}{29}{subsection.4.2.3}%
+\contentsline {subsubsection}{\numberline {4.2.3.1}Diagramme de cas d’utilisation global}{29}{subsubsection.4.2.3.1}%
+\contentsline {subsubsection}{\numberline {4.2.3.2}Diagramme de cas d’utilisation de l’administrateur}{29}{subsubsection.4.2.3.2}%
+\contentsline {subsubsection}{\numberline {4.2.3.3}Diagramme de cas d’utilisation du chef général}{30}{subsubsection.4.2.3.3}%
+\contentsline {subsubsection}{\numberline {4.2.3.4}Diagramme de cas d’utilisation de la secrétaire générale}{30}{subsubsection.4.2.3.4}%
+\contentsline {subsubsection}{\numberline {4.2.3.5}Diagramme de cas d’utilisation du chef d’organe}{31}{subsubsection.4.2.3.5}%
+\contentsline {subsubsection}{\numberline {4.2.3.6}Diagramme de cas d’utilisation de la secrétaire d’organe}{31}{subsubsection.4.2.3.6}%
+\contentsline {subsubsection}{\numberline {4.2.3.7}Diagramme de cas d’utilisation de l’agent}{31}{subsubsection.4.2.3.7}%
+\contentsline {subsection}{\numberline {4.2.4}Diagrammes de séquence}{32}{subsection.4.2.4}%
+\contentsline {subsubsection}{\numberline {4.2.4.1}Diagramme de séquence d’authentification}{32}{subsubsection.4.2.4.1}%
+\contentsline {subsubsection}{\numberline {4.2.4.2}Diagramme de séquence de création d’un courrier}{32}{subsubsection.4.2.4.2}%
+\contentsline {subsubsection}{\numberline {4.2.4.3}Diagramme de séquence de transmission d’un courrier}{33}{subsubsection.4.2.4.3}%
+\contentsline {subsubsection}{\numberline {4.2.4.4}Diagramme de séquence de réponse à un courrier}{33}{subsubsection.4.2.4.4}%
+\contentsline {subsubsection}{\numberline {4.2.4.5}Diagramme de séquence d’archivage d’un courrier}{34}{subsubsection.4.2.4.5}%
+\contentsline {subsubsection}{\numberline {4.2.4.6}Diagramme de séquence de recherche d’un courrier}{35}{subsubsection.4.2.4.6}%
+\contentsline {subsubsection}{\numberline {4.2.4.7}Diagramme de séquence de validation d’un courrier}{35}{subsubsection.4.2.4.7}%
+\contentsline {subsection}{\numberline {4.2.5}Diagramme d’états-transitions}{36}{subsection.4.2.5}%
+\contentsline {chapter}{\numberline {5}Réalisation et Implémentation}{37}{chapter.5}%
+\contentsline {section}{\numberline {5.1}Introduction}{37}{section.5.1}%
+\contentsline {section}{\numberline {5.2}Environnement et outils de développement}{37}{section.5.2}%
+\contentsline {subsection}{\numberline {5.2.1}Laravel}{37}{subsection.5.2.1}%
+\contentsline {subsubsection}{\numberline {5.2.1.1}Eloquent ORM}{38}{subsubsection.5.2.1.1}%
+\contentsline {subsubsection}{\numberline {5.2.1.2}Laravel Sanctum}{40}{subsubsection.5.2.1.2}%
+\contentsline {subsubsection}{\numberline {5.2.1.3}Laravel Reverb}{40}{subsubsection.5.2.1.3}%
+\contentsline {subsection}{\numberline {5.2.2}React}{41}{subsection.5.2.2}%
+\contentsline {subsubsection}{\numberline {5.2.2.1}React Router DOM}{41}{subsubsection.5.2.2.1}%
+\contentsline {subsubsection}{\numberline {5.2.2.2}Axios}{41}{subsubsection.5.2.2.2}%
+\contentsline {subsection}{\numberline {5.2.3}Tailwind CSS}{41}{subsection.5.2.3}%
+\contentsline {subsection}{\numberline {5.2.4}PlantUML}{42}{subsection.5.2.4}%
+\contentsline {subsection}{\numberline {5.2.5}XAMPP}{42}{subsection.5.2.5}%
+\contentsline {subsubsection}{\numberline {5.2.5.1}MariaDB / MySQL}{42}{subsubsection.5.2.5.1}%
+\contentsline {subsubsection}{\numberline {5.2.5.2}Apache Server}{42}{subsubsection.5.2.5.2}%
+\contentsline {subsection}{\numberline {5.2.6}OCR}{43}{subsection.5.2.6}%
+\contentsline {section}{\numberline {5.3}API RESTful}{43}{section.5.3}%
+\contentsline {section}{\numberline {5.4}Cycle de traitement d’une requête Laravel}{43}{section.5.4}%
+\contentsline {section}{\numberline {5.5}Aperçu de l'application réalisée}{44}{section.5.5}%
+\contentsline {subsection}{\numberline {5.5.1}Tableau de bord}{44}{subsection.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.2}Gestion des courriers reçus}{44}{subsection.5.5.2}%
+\contentsline {subsubsection}{\numberline {5.5.2.1}Création d’un nouveau courrier reçu}{45}{subsubsection.5.5.2.1}%
+\contentsline {subsubsection}{\numberline {5.5.2.2}Transmission d’un courrier}{45}{subsubsection.5.5.2.2}%
+\contentsline {subsubsection}{\numberline {5.5.2.3}Réponse à un courrier}{46}{subsubsection.5.5.2.3}%
+\contentsline {subsubsection}{\numberline {5.5.2.4}Archivage d’un courrier}{47}{subsubsection.5.5.2.4}%
+\contentsline {subsection}{\numberline {5.5.3}Gestion des courriers envoyés}{47}{subsection.5.5.3}%
+\contentsline {subsubsection}{\numberline {5.5.3.1}Création d’un nouveau courrier envoyé}{47}{subsubsection.5.5.3.1}%
+\contentsline {subsection}{\numberline {5.5.4}Messagerie interne}{48}{subsection.5.5.4}%
+\contentsline {subsubsection}{\numberline {5.5.4.1}Création d’un nouveau message}{48}{subsubsection.5.5.4.1}%
+\contentsline {subsubsection}{\numberline {5.5.4.2}Consultation des messages}{49}{subsubsection.5.5.4.2}%
+\contentsline {subsection}{\numberline {5.5.5}Gestion des archives}{49}{subsection.5.5.5}%
+\contentsline {subsubsection}{\numberline {5.5.5.1}Recherche et filtrage des courriers archivés}{50}{subsubsection.5.5.5.1}%
+\contentsline {subsection}{\numberline {5.5.6}Gestion de l’administration}{50}{subsection.5.5.6}%
+\contentsline {subsubsection}{\numberline {5.5.6.1}Gestion des utilisateurs}{50}{subsubsection.5.5.6.1}%
+\contentsline {subsubsection}{\numberline {5.5.6.2}Affichage des structures}{51}{subsubsection.5.5.6.2}%
+\contentsline {subsubsection}{\numberline {5.5.6.3}Création d’une structure}{51}{subsubsection.5.5.6.3}%
+\contentsline {subsubsection}{\numberline {5.5.6.4}Affichage des services}{52}{subsubsection.5.5.6.4}%
+\contentsline {subsubsection}{\numberline {5.5.6.5}Création d’un service}{53}{subsubsection.5.5.6.5}%
+\contentsline {subsubsection}{\numberline {5.5.6.6}Affectation des responsables}{53}{subsubsection.5.5.6.6}%
+\contentsline {section}{\numberline {5.6}Conclusion}{54}{section.5.6}%
+\contentsline {chapter}{\numberline {6}Sécurité globale de l'application}{55}{chapter.6}%
+\contentsline {section}{\numberline {6.1}Introduction}{55}{section.6.1}%
+\contentsline {section}{\numberline {6.2}Authentification et gestion des utilisateurs}{55}{section.6.2}%
+\contentsline {section}{\numberline {6.3}Sécurité native offerte par Laravel}{56}{section.6.3}%
+\contentsline {section}{\numberline {6.4}Rôles, autorisations et confidentialité des courriers}{56}{section.6.4}%
+\contentsline {section}{\numberline {6.5}Sécurité côté web, API et fichiers}{58}{section.6.5}%
+\contentsline {section}{\numberline {6.6}Conclusion}{59}{section.6.6}%
