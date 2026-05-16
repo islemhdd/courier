@@ -26,17 +26,17 @@ rectangle "Système de Gestion de Courrier" {
 
     usecase "Authentification" as Auth
 
-    usecase "Consulter et traiter les dossiers qui le concernent\n(use case <<Agent>>)" as UCA
-    
-    usecase "Enregistrer et numériser le courrier local\n(use case <<Secrétaire>>)" as UCS
-    
-    usecase "Gérer l'arrivée globale et la diffusion\n(use case <<Secrétaire Générale>>)" as UCSG
-    
-    usecase "Valider et orienter le courrier de l'organe\n(use case <<Chef Organe>>)" as UCO
-    
-    usecase "Superviser et piloter la gouvernance globale\n(use case <<Chef Général>>)" as UCG
-    
-    usecase "Administrer le référentiel et la configuration\n(use case <<Admin>>)" as UCAd
+    usecase "Consulter et traiter les dossiers qui le concernent\n" as UCA
+
+    usecase "Enregistrer et numériser le courrier local\n" as UCS
+
+    usecase "Gérer l'arrivée globale et la diffusion\n" as UCSG
+
+    usecase "Valider et orienter le courrier de l'organe\n" as UCO
+
+    usecase "Superviser et piloter la gouvernance globale\n" as UCG
+
+    usecase "Administrer le référentiel et la configuration\n" as UCAd
 }
 
 ' --- Relations Acteurs / Use cases ---

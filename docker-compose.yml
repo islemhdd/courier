@@ -1,0 +1,50 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cmanager
+    container_name: cmanager_app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - cmanager_network
+
+  nginx:
+    image: nginx:alpine
+    container_name: cmanager_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./:/var/www/html
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - cmanager_network
+
+  mariadb:
+    image: mariadb:11.4
+    container_name: cmanager_mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: cmanager
+      MARIADB_USER: cmanager
+      MARIADB_PASSWORD: secret
+      MARIADB_ROOT_PASSWORD: rootsecret
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - cmanager_network
+
+volumes:
+  mariadb_data:
+
+networks:
+  cmanager_network:
